@@ -65,3 +65,13 @@ test('eventos de ronda/fin/posición/clinch traducidos con ids numéricos, src y
   const e = one({ type: 'fightEnd', result: { winner: 'b', method: 'TKO' } }); assert.equal(e.attacker, 9); assert.equal(e.result, 'TKO');
   assert.equal(one({ type: 'tap', attacker: 'a', defender: 'b', result: 'tap' }).result, 'tap');
 });
+
+test('contrato v0.4: los eventos traducidos llevan round (1-based) del evento KAGE', async () => {
+  const { simulateFight } = await import('./index.js');
+  const spec = (id, style) => ({ id, name: id, level: 50, style, stats: { fuerza: 55, velocidad: 55, tecnica: 55, resistencia: 55 } });
+  const r = simulateFight(spec('a', 'boxer'), spec('b', 'kickboxer'), 77);
+  const tr = createCombatTranslator({ ids: { a: 0, b: 1 } });
+  const out = tr.translateAll(r.events);
+  assert.ok(out.length > 20 && out.every((e) => Number.isInteger(e.round) && e.round >= 1));
+  assert.equal(out.find((e) => e.type === 'roundStart').round, 1);
+});
