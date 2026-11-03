@@ -8,7 +8,7 @@
 // SUAVIZAR el yaw solo para la pose visual, y NUNCA devuelve root motion a la sim.
 export const TICK_HZ = 60;
 export const BLOCK_M = 0.5;
-export const CONTRACTS_VERSION = '0.3';
+export const CONTRACTS_VERSION = '0.4';
 export const headingDir = (h) => [Math.cos(h), 0, -Math.sin(h)];
 export const CHUNK = Object.freeze({ SX: 16, SY: 64, SZ: 16 });
 
@@ -29,6 +29,7 @@ export const BLOCK = Object.freeze({ AIR: 0, GRASS: 1, DIRT: 2, STONE: 3, WOOD: 
 /** @typedef {{pos:[number,number,number],normal:[number,number,number],block:number,dist:number}} RaycastHit */
 export const chunkIndex = (x, y, z) => x + CHUNK.SX * (z + CHUNK.SZ * y);
 
+// UNIDADES v0.4: Skeleton3D (pose, root), hurtboxes y tickExtras van en METROS; CombatEvent.point en BLOQUES.
 // Skeleton3D (lo implementa Animador en src/anim/). Huesos humanos canónicos:
 export const HUMAN_BONES = Object.freeze([
   'pelvis', 'spine', 'chest', 'neck', 'head',
@@ -62,7 +63,8 @@ export const COMBAT_EVENT = Object.freeze({
  * @property {string} [action]    id de movimiento
  * @property {string} [zone]
  * @property {number} [damage]
- * @property {[number,number,number]} [point]  punto de contacto en coords MUNDO (bloques)
+ * @property {number} [round]  número de round (1-based) en que ocurre el evento
+ * @property {[number,number,number]} [point]  punto de contacto en coords MUNDO, en BLOQUES (×BLOCK_M = metros)
  * @property {string} [src]       tipo de evento de origen (KAGE), para depurar
  * @property {string} [result]    submission: 'attempt'|'tap'|'break'|'escape'; decision/fightEnd: método
  */
