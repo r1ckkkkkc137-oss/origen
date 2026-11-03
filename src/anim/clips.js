@@ -17,7 +17,7 @@ export const CHANNELS = [
 
 // Guardia MMA ortodoxa (izquierda adelante): cuerpo en ~30° de blade, mentón bajo, manos altas, codos pegados.
 export const GUARD = Object.freeze({
-  dy: 0, px: 0, pz: 0, hipYaw: -0.50, hipRoll: 0, hipPitch: 0.12, spYaw: 0.12, spPitch: 0.16, spRoll: 0, hdYaw: 0.34, hdPitch: 0.10, hdRoll: 0,
+  dy: 0, px: 0, pz: 0, hipYaw: -0.50, hipRoll: 0, hipPitch: 0.04, spYaw: 0.12, spPitch: 0.04, spRoll: 0, hdYaw: 0.34, hdPitch: 0.20, hdRoll: 0,
   shrugL: 0.10, shrugR: 0.14, protL: 0.08, protR: 0.04,
   hLx: 0.00, hLy: 0.03, hLz: 0.17, hRx: 0.14, hRy: 0.04, hRz: 0.15, elbL: -0.18, elbR: -0.18,
   elvL: 0, elvR: 0, fLx: 0, fLy: 0, fLz: 0, fLyaw: 0, fLpitch: 0, fRx: 0, fRy: 0, fRz: 0, fRyaw: 0, fRpitch: 0,
@@ -131,32 +131,54 @@ export const CROSS = {
   },
 };
 
-// GANCHO (mano delantera L): el codo sube a ~horizontal, el puño describe un arco HORIZONTAL (codo ≈90°), la cadera y el pie delantero
-// (pivote sobre la bola, el talón sale) giran con el golpe; el puño llega último.
+// GANCHO (mano delantera L) — ronda 3: BRAZO BLOQUEADO. El codo queda fijo (~92°, ver HOOK_E) y a la altura del hombro durante TODO el golpe
+// (carga → impacto → retorno inicial): el arco horizontal lo hace la ROTACIÓN del cuerpo (cadera primero, pecho/hombros después), no la extensión del brazo.
+// El puño va colgado del hombro (vector muñeca-hombro de largo constante en el marco del pecho) y sólo gira en la articulación del hombro (aducción
+// horizontal, un "snap" final ~15° para que el puño salga último). Pie delantero: pivote sobre la bola, talón hacia afuera. Termina frente a la línea central.
+// Los canales hLx/hLy/hLz del gancho se HORNEAN abajo a partir de las pistas de cadera/pecho (la muñeca depende de la rotación del pecho).
+export const HOOK_E = 92 * Math.PI / 180;                       // ángulo del codo (rad), constante
+const HOOK_UA = 0.31, HOOK_FA = 0.27;                             // = DIM.upperArm, DIM.foreArm (skeleton3d.js)
+export const HOOK_R = Math.sqrt(HOOK_UA * HOOK_UA + HOOK_FA * HOOK_FA - 2 * HOOK_UA * HOOK_FA * Math.cos(HOOK_E));   // |muñeca - hombro|
 export const HOOK = {
   name: 'hook', duration: 0.50, impactT: 0.17, tip: 'L', feet: true, ball: { L: true },
   phases: [{ name: 'anticipation', t0: 0, t1: 0.09 }, { name: 'strike', t0: 0.09, t1: 0.21 }, { name: 'recovery', t0: 0.21, t1: 0.50 }],
+  lock: { tLoad: 0.09, tRelease: 0.22, tFree: 0.36, y: -0.02 },
   tracks: {
     dy:      [K(0, 0), K(0.06, -0.03, 'easeOutQuad'), K(0.17, -0.035), K(0.34, -0.01), K(0.50, 0)],
     pz:      [K(0, 0), K(0.17, 0.03), K(0.50, 0)],
-    hipYaw:  [K(0, 0), K(0.05, 0.10, 'easeOutQuad'), K(0.13, -0.48), K(0.20, -0.50), K(0.34, -0.08), K(0.42, 0.02), K(0.50, 0)],
-    spYaw:   [K(0, 0), K(0.06, 0.10, 'easeOutQuad'), K(0.155, -0.45), K(0.21, -0.46), K(0.35, -0.05), K(0.50, 0)],
-    spRoll:  [K(0, 0), K(0.17, 0.05), K(0.50, 0)],
-    spPitch: [K(0, 0), K(0.17, 0.06), K(0.50, 0)],
+    hipYaw:  [K(0, 0), K(0.065, 0.17, 'easeOutQuad'), K(0.14, -0.30, 'easeInOutQuad'), K(0.20, -0.33), K(0.34, -0.08), K(0.42, 0.02), K(0.50, 0)],
+    spYaw:   [K(0, 0), K(0.085, 0.14, 'easeOutQuad'), K(0.165, -0.22, 'easeInOutQuad'), K(0.215, -0.24), K(0.35, -0.05), K(0.50, 0)],
+    spRoll:  [K(0, 0), K(0.17, 0.04), K(0.50, 0)],
+    spPitch: [K(0, 0), K(0.17, 0.04), K(0.50, 0)],
     hdYaw:   [K(0, 0), K(0.17, 0.42), K(0.36, 0.04), K(0.50, 0)],
     shrugL:  [K(0, 0), K(0.17, 0.06, 'easeOutQuad'), K(0.34, 0.01), K(0.50, 0)],
     protL:   [K(0, 0), K(0.17, 0.05, 'easeOutQuad'), K(0.36, 0.01), K(0.50, 0)],
-    // arco: ángulo del puño respecto del frente 40° -> 8° -> -15° a radio ≈0.40 m del hombro
-    hLx: [K(0, 0), K(0.07, 0.22, 'easeOutQuad'), K(0.12, 0.05, 'easeInQuad'), K(0.17, -0.10, 'easeInOutQuad'), K(0.20, -0.10, 'linear'), K(0.30, 0), K(0.50, 0)],
-    hLz: [K(0, 0), K(0.07, 0.16, 'easeOutQuad'), K(0.12, 0.225), K(0.17, 0.21), K(0.20, 0.21, 'linear'), K(0.30, 0), K(0.50, 0)],
-    hLy: [K(0, 0), K(0.07, 0), K(0.17, 0.02), K(0.34, 0), K(0.50, 0)],
-    elvL: [K(0, 0), K(0.06, 0.5, 'easeOutQuad'), K(0.20, 0.5, 'linear'), K(0.32, 0.1), K(0.50, 0)],
-    elbL: [K(0, 0), K(0.06, 0.35, 'easeOutQuad'), K(0.20, 0.35, 'linear'), K(0.34, 0), K(0.50, 0)],
+    elvL: [K(0, 0), K(0.09, 0.5, 'easeInOutQuad'), K(0.21, 0.5, 'linear'), K(0.36, 0.1), K(0.50, 0)],
+    elbL: [K(0, 0), K(0.09, 0.35, 'easeInOutQuad'), K(0.21, 0.35, 'linear'), K(0.36, 0), K(0.50, 0)],
     hRy: [K(0, 0), K(0.17, 0.02), K(0.36, 0), K(0.50, 0)],
-    fLyaw:   [K(0, 0), K(0.06, 0.05), K(0.14, -0.65), K(0.30, -0.55), K(0.42, 0), K(0.50, 0)],
+    fLyaw:   [K(0, 0), K(0.06, 0.05), K(0.14, -0.70), K(0.30, -0.58), K(0.42, 0), K(0.50, 0)],
     fLpitch: [K(0, 0), K(0.06, -0.12), K(0.14, -0.50, 'easeOutQuad'), K(0.30, -0.42), K(0.42, 0), K(0.50, 0)],
   },
 };
+// Hornea hLx/hLy/hLz: muñeca = hombro + vector de largo HOOK_R girado por el yaw del pecho (cadera+columna, rel. a la cara).
+// Ángulo del brazo en el marco del pecho: a(t) (0 = adelante, + = izquierda). Va de A0 (carga) a A1 (snap del hombro, tarde en el golpe).
+export const HOOK_A0 = 84 * Math.PI / 180, HOOK_A1 = 42 * Math.PI / 180;
+(function bakeHook() {
+  const T = HOOK.tracks, L = HOOK.lock, G = GUARD, dt = 0.01, n = Math.round(HOOK.duration / dt);
+  const sm = (x) => { x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x); };
+  const X = [], Y = [], Z = [];
+  for (let i = 0; i <= n; i++) {
+    const t = +(i * dt).toFixed(4);
+    const psi = G.hipYaw + G.spYaw + sampleTrack(T.hipYaw, t) + sampleTrack(T.spYaw, t);
+    const snap = sm((t - 0.12) / 0.065);                                   // aducción horizontal tardía: el puño sale último
+    const a = HOOK_A0 + (HOOK_A1 - HOOK_A0) * snap;
+    const lam = sm(t / L.tLoad) * (1 - sm((t - L.tRelease) / (L.tFree - L.tRelease)));   // 0 = guardia, 1 = bloqueado
+    const h = Math.sqrt(Math.max(1e-6, HOOK_R * HOOK_R - L.y * L.y));      // radio horizontal
+    const th = a + psi, lx = h * Math.sin(th), lz = h * Math.cos(th);
+    X.push(K(t, lam * (lx - G.hLx), 'linear')); Z.push(K(t, lam * (lz - G.hLz), 'linear')); Y.push(K(t, lam * (L.y - G.hLy), 'linear'));
+  }
+  T.hLx = X; T.hLy = Y; T.hLz = Z;
+})();
 
 // PATADA BAJA TRASERA (pierna R, roundhouse): 1) el pie delantero da un pequeño paso hacia afuera y PIVOTA sobre la bola (~70°);
 // 2) la cadera gira entera; 3) la rodilla sube (chamber), 4) el tibia barre y pega a la altura del muslo (impacto 0.30 s),
@@ -185,7 +207,7 @@ export const LOWKICK = {
     fLpitch: [K(0, 0), K(0.14, 0), K(0.24, -0.35), K(0.32, -0.6), K(0.50, -0.5), K(0.64, -0.5, 'linear'), K(0.78, 0), K(0.84, 0)],
     // pie que patea (R): chamber -> barrido -> pliega -> baja
     fRx: [K(0, 0), K(0.10, 0.05), K(0.20, 0.14), K(0.30, 0.29), K(0.35, 0.29, 'linear'), K(0.44, 0.15), K(0.62, 0), K(0.84, 0)],
-    fRz: [K(0, 0), K(0.10, 0.10), K(0.20, 0.22), K(0.30, 0.84, 'easeInCubic'), K(0.35, 0.84, 'linear'), K(0.44, 0.28), K(0.62, 0), K(0.84, 0)],
+    fRz: [K(0, 0), K(0.10, 0.10), K(0.20, 0.22), K(0.30, 1.10, 'easeInCubic'), K(0.35, 1.10, 'linear'), K(0.44, 0.28), K(0.62, 0), K(0.84, 0)],
     fRy: [K(0, 0), K(0.10, 0.12, 'easeOutQuad'), K(0.20, 0.26), K(0.30, 0.50, 'easeOutQuad'), K(0.35, 0.50, 'linear'), K(0.44, 0.28), K(0.58, 0.06, 'easeInQuad'), K(0.64, 0), K(0.84, 0)],
     fRyaw: [K(0, 0), K(0.20, 0.2), K(0.30, 1.3), K(0.44, 0.6), K(0.64, 0), K(0.84, 0)],
     fRpitch: [K(0, 0), K(0.30, -0.4), K(0.50, -0.2), K(0.64, 0), K(0.84, 0)],

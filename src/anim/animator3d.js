@@ -285,7 +285,7 @@ export function createAnimator3D(opts = {}) {
         r.arms[s].wrist = wr;
         // codo: abierto hacia fuera mientras el brazo cuelga/apunta abajo (polo normal = abajo → degenerado), vuelve al polo de guardia al subir la mano
         const sh = rig.pose['shoulder' + s].t, ay = (wr[1] - sh[1]) / (Math.hypot(wr[0] - sh[0], wr[1] - sh[1], wr[2] - sh[2]) || 1);
-        const kp = 1 - w * (1 - smooth01((ay + 0.9) / 1.4)), np = r.arms[s].pole, sx = s === 'L' ? 1 : -1, fl = [sx * 0.6, -0.5, -0.9];
+        const kp = 1 - w * (1 - smooth01((ay + 1.3) / 2.6)), np = r.arms[s].pole, sx = s === 'L' ? 1 : -1, fl = [sx * 0.6, -0.5, -0.9];
         r.arms[s].pole = [fl[0] + (np[0] - fl[0]) * kp, fl[1] + (np[1] - fl[1]) * kp, fl[2] + (np[2] - fl[2]) * kp];
       }
       solveRig(rig, r);
