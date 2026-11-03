@@ -124,6 +124,75 @@ function stepBlocks(world, body, dt, o) {
   if (body.z !== sz && Math.abs(body.z - sz) < Math.abs(dz) - 1e-9) body.vz = 0;
 }
 
+// ---------------------------------------------------------------------------------------------------------------------------------
+// JUGADOR: createPlayerBody + stepPlayer (METROS, segundos). Construido sobre moveAndCollide (barrido por eje, sin tunneling, auto-escalón).
+// Sin Math.random ni relojes: el mismo mundo + la misma secuencia (input, dt) da la misma trayectoria bit a bit.
+// ---------------------------------------------------------------------------------------------------------------------------------
+/** Parámetros del jugador (m, m/s, m/s²). jumpHeight 0.6 m = 1.2 bloques: salta 1 bloque (0.5 m) pero no 2 (1.0 m). */
+export const PLAYER_DEFAULTS = Object.freeze({
+  walkSpeed: 4.0, sprintScale: 1.5, groundAccel: 50, airAccel: 12, jumpHeight: 0.6, stepHeight: 0.5, // stepHeight = 1 bloque
+  swimSpeedScale: 0.6, swimUp: 2.5, maxSubDt: 1 / 120, maxDt: 0.25, unstickMax: 1.0,
+});
+
+/** Cuerpo del jugador. w = ancho (m), h = alto (m), eye = altura de los ojos sobre los pies (m). (x,y,z) = pies, centro en XZ. */
+export function createPlayerBody({ w = 0.6, h = 1.8, eye = 1.62, x = 0, y = 0, z = 0 } = {}) {
+  const b = createBody(x, y, z, { halfW: w / 2, height: h });
+  b.eye = eye; b.jumped = false;
+  return b;
+}
+/** Posición de los ojos [x,y,z] en metros (para la cámara). */
+export const playerEye = (b) => [b.x, b.y + b.eye, b.z];
+
+const liquidAt = (world, x, y, z) => IS_LIQUID[world.getBlock(Math.floor(x / S), Math.floor(y / S), Math.floor(z / S))] === 1;
+
+/**
+ * Avanza el jugador dt segundos (en subpasos de ≤ maxSubDt, dt se limita a maxDt).
+ * input: { moveX (+ derecha), moveZ (+ adelante), jump (mantenido), yaw (rad; yaw 0 mira a -Z como la cámara de Three, + gira a la izquierda), sprint? }
+ * Efectos: gravedad, salto (si onGround), auto-escalón de 1 bloque sin saltar al caminar contra él (no sube 2), nado (en agua: salto = subir),
+ * y desatasco (si un bloque colocado queda dentro del cuerpo, lo sube hasta salir). Devuelve el mismo body (x,y,z,vx,vy,vz,onGround,inWater).
+ * opts opcional: sobreescribe PLAYER_DEFAULTS.
+ */
+export function stepPlayer(world, body, input, dt, opts) {
+  const o = opts ? { ...PLAYER_DEFAULTS, ...opts } : PLAYER_DEFAULTS;
+  if (!(dt > 0)) return body;
+  if (dt > o.maxDt) dt = o.maxDt;
+  const n = Math.ceil(dt / o.maxSubDt - 1e-9), h = dt / n;
+  // dirección deseada en el mundo (yaw 0 mira a -Z)
+  let mx = input.moveX || 0, mz = input.moveZ || 0;
+  const len = Math.hypot(mx, mz);
+  if (len > 1) { mx /= len; mz /= len; }
+  const sin = Math.sin(input.yaw || 0), cos = Math.cos(input.yaw || 0);
+  const dirX = mx * cos - mz * sin, dirZ = -mx * sin - mz * cos;
+  const speed = o.walkSpeed * (input.sprint ? o.sprintScale : 1);
+  const jumpV = Math.sqrt(2 * -DEFAULTS.gravity * o.jumpHeight);
+  const phys = { stepHeight: o.stepHeight };
+  for (let i = 0; i < n; i++) {
+    unstick(world, body, o);
+    const wet = body.inWater;
+    const feetWet = liquidAt(world, body.x, body.y + 0.05, body.z);
+    const sp = wet ? speed * o.swimSpeedScale : speed;
+    const a = (body.onGround ? o.groundAccel : o.airAccel) * h;
+    body.vx = approach(body.vx, dirX * sp, a); body.vz = approach(body.vz, dirZ * sp, a);
+    if (input.jump) {
+      if (wet || feetWet) { if (body.vy < o.swimUp) body.vy = o.swimUp; }   // nadar hacia arriba / salir del agua
+      else if (body.onGround) { body.vy = jumpV; body.onGround = false; }
+    }
+    moveAndCollide(world, body, h, phys);
+  }
+  return body;
+}
+const approach = (v, t, a) => (v < t ? Math.min(t, v + a) : Math.max(t, v - a));
+/** Si el cuerpo quedó dentro de sólidos (p. ej. se colocó un bloque encima), súbelo en pasos de 0.05 m hasta salir (máx. unstickMax). */
+function unstick(world, body, o) {
+  if (!collides(world, body)) return;
+  const y0 = body.y;
+  for (let up = 0.05; up <= o.unstickMax + 1e-9; up += 0.05) {
+    body.y = y0 + up;
+    if (!collides(world, body)) { body.vy = Math.max(body.vy, 0); return; }
+  }
+  body.y = y0;
+}
+
 /**
  * Raycast de bloques (Amanatides-Woo) en ESPACIO DE BLOQUES: origin [x,y,z] y maxDist en bloques (dir no hace falta normalizarla). Es el que
  * implementa World.raycast del contrato v0.2 ("MUNDO en BLOQUES"). Devuelve { pos:[bx,by,bz] (bloque golpeado), normal:[nx,ny,nz] (cara golpeada,

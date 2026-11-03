@@ -200,17 +200,17 @@ export class World {
 
   // ---------- carga por radio ----------
   /**
-   * Garantiza cargados los chunks a distancia <= radius (en chunks, círculo) de la posición mundo (px,pz) EN METROS, de cerca a lejos, y descarga
+   * Garantiza cargados los chunks a distancia <= radius (en chunks, círculo; radio fraccionario permitido: solo es el umbral de distancia, las coords de chunk son siempre enteras) de la posición mundo (px,pz) EN METROS, de cerca a lejos, y descarga
    * los que superan radius + unloadMargin. maxNew limita cuántos chunks se generan en esta llamada (reparto de carga entre frames).
    * Devuelve { added:[{cx,cz}], removed:[{cx,cz}], pending:n } (pending = chunks que faltan por generar).
    */
   ensureChunks(px, pz, radius, opts = {}) {
     const maxNew = opts.maxNew ?? Infinity, margin = opts.unloadMargin ?? 2;
     const pcx = Math.floor(toBlocks(px)) >> 4, pcz = Math.floor(toBlocks(pz)) >> 4;
-    const want = [];
-    for (let dz = -radius; dz <= radius; dz++) for (let dx = -radius; dx <= radius; dx++) {
+    const want = [], R = Math.floor(radius), r2 = radius * radius;   // desplazamientos SIEMPRE enteros; un radio fraccionario (4.5) solo es el umbral de la distancia circular dx²+dz² <= r²
+    for (let dz = -R; dz <= R; dz++) for (let dx = -R; dx <= R; dx++) {
       const d2 = dx * dx + dz * dz;
-      if (d2 <= radius * radius) want.push([d2, pcx + dx, pcz + dz]);
+      if (d2 <= r2) want.push([d2, pcx + dx, pcz + dz]);
     }
     want.sort((a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2]);
     const added = []; let pending = 0;

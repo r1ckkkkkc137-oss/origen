@@ -17,7 +17,7 @@ Cumple `src/shared/contracts.js` v0.2b: `CHUNK` 16×64×16, índice `x + 16·z +
 | `world.js` | clase `World` (interfaz del contrato + dig/place, diff, carga por radio, mallas) |
 | `mesher.js` | greedy meshing, 3 capas, tile por cara, uvs repetibles |
 | `tilemap.js` | **único** mapa `blockId + cara → tile` del atlas |
-| `physics.js` | AABB barrido por eje, escalones, agua, raycast DDA |
+| `physics.js` | AABB barrido por eje, escalones, agua, raycast DDA, **jugador** (`createPlayerBody` / `stepPlayer`) |
 | `threeAdapter.js` | `createWorldView` (carga por radio + mallado con presupuesto + atlas de Arte), `createGeometry`, `createVoxelMaterial`, `buildTileMap` + shaders base (con niebla/sRGB/tonemap de THREE). Solo probado en SwiftShader |
 | `bench.mjs` | benchmark real (`node src/world/bench.mjs`) |
 | `index.js` | reexporta todo; `createWorld(seed)` |
@@ -78,7 +78,33 @@ El módulo ya usa estos valores como respaldo (`BLOCK.IRON ?? 9`, …) y los tom
 Notas para la interfaz `World` (aclaraciones, no cambios): `raycast` devuelve además `place:[bx,by,bz]`; `setBlock` marca `dirty` también en el chunk vecino cargado si el bloque está en el borde; `chunk.dirty` lo limpia quien re-malla (`World.consumeDirty()` lo hace por ti).
 
 ## Integración con el motor (atlas conectado)
-`src/main.js` (único archivo de Motor que se tocó, mínimo): `applyLook` (Arte) + `createAtlas(SEED)` + `createWorld(seed)` + `createWorldView(THREE, scene, world, atlas, { tileNames: TILES, radius })`; cada frame `view.update(camera.x, camera.z)` (metros). Se quitó el `GridHelper` y la luz/niebla provisorias. `?r=<chunks>` fija el radio (por defecto 4,5 ≈ 8×8 chunks = 60 chunks cargados), `?wseed=` la semilla del mundo. `window.__ORIGEN__` expone `world, view, look, renderer`.
+`src/main.js` (único archivo de Motor que se tocó, mínimo): `applyLook` (Arte) + `createAtlas(SEED)` + `createWorld(seed)` + `createWorldView(THREE, scene, world, atlas, { tileNames: TILES, radius })`; cada frame `view.update(camera.x, camera.z)` (metros). Se quitó el `GridHelper` y la luz/niebla provisorias. `?r=<chunks>` fija el radio (por defecto 4,5; **desde el fix de `ensureChunks` carga 69 chunks de coordenadas enteras**: antes cargaba 60 en coordenadas x.5, es decir, geometría duplicada/desplazada — las cifras de rendimiento de más abajo con «60 chunks» son anteriores al fix), `?wseed=` la semilla del mundo. `window.__ORIGEN__` expone `world, view, look, renderer`.
+
+## Jugador (`createPlayerBody` + `stepPlayer`, para Motor)
+
+Todo en METROS y segundos, sobre `moveAndCollide` (barrido por eje sin tunneling, `solidAt` vía `getBlock`; el agua no es sólida). Determinista: sin azar ni reloj, la misma secuencia `(input, dt)` sobre el mismo mundo da la misma trayectoria bit a bit (test). `dt` se parte en subpasos de ≤ 1/120 s (y se limita a 0,25 s), así 1/30, 1/60 y 1/144 dan la misma trayectoria (±3 cm, test).
+
+* `createPlayerBody({ w=0.6, h=1.8, eye=1.62, x, y, z })` → cuerpo (`x,y,z` = pies; `vx,vy,vz`, `onGround`, `inWater`). `playerEye(body)` → `[x,y+eye,z]` para la cámara.
+* `stepPlayer(world, body, { moveX, moveZ, jump, yaw, sprint? }, dt)`: `moveX` + derecha, `moveZ` + adelante (−1..1, la diagonal se normaliza), `yaw` en rad (0 mira a −Z como la cámara de Three, + gira a la izquierda), `jump` se puede mantener (salta al tocar suelo).
+* Valores (`PLAYER_DEFAULTS`, sobreescribibles como 5.º argumento): camina 4 m/s (×1,5 con `sprint`), aceleración 50 m/s² en suelo / 12 en aire, salto de 0,6 m (= 1,2 bloques, ~0,7 s en el aire: salta 1 bloque, no 2), gravedad −9,81 m/s².
+* **Escalón**: al caminar contra un bloque de 1 bloque (0,5 m) sube solo, sin saltar; contra 2 bloques no sube (ni con salto).
+* **Agua**: cae lento (gravedad ×0,15 + arrastre), velocidad horizontal ×0,6; con `jump` mantenido nada hacia arriba (2,5 m/s) y sale a un borde de 1 bloque.
+* **Desatasco**: si se coloca un bloque dentro del cuerpo, lo sube (pasos de 5 cm, máx. 1 m) hasta que no choque.
+
+Conexión en `main.js` (Motor; yo no lo toco):
+
+```js
+import { createPlayerBody, stepPlayer, playerEye } from './world/index.js';
+const player = createPlayerBody({ x: spawn.x, y: spawn.y, z: spawn.z });        // metros; pies
+const keys = { moveX: 0, moveZ: 0, jump: false, sprint: false };               // teclado -> moveX (D−A), moveZ (W−S), jump (Space)
+// cada frame, con dt en segundos (no hace falta ancho fijo):
+const input = { moveX: keys.moveX, moveZ: keys.moveZ, jump: keys.jump, sprint: keys.sprint, yaw: cameraYaw };
+stepPlayer(world, player, input, dt);
+const [ex, ey, ez] = playerEye(player);
+camera.position.set(ex, ey, ez);                                                // la cámara se orienta con yaw/pitch aparte
+```
+
+Costo medido (`node src/world/bench.mjs`, dt=1/60 = 2 subpasos, mundo real, caminando+saltando+sprint): 2 corridas: media 1,9 y 2,3 µs/step, mediana 1,8 y 1,7, p95 3,0 y 5,3 (máquina compartida, ruido alto); 16,7 ms de frame = ~0,01 %.
 
 ## Para Animador (`createAnimator3D({ seed, getBlock, blockM })`)
 `getBlock` de Animador es un predicado «sólido» en celdas enteras: usar **`(x,y,z) => world.solidAt(x,y,z)`** con `blockM: BLOCK_M`. No pasar `world.getBlock` crudo: devuelve el id (el agua, id 6, es truthy y contaría como suelo). `solidAt`/`getBlock` hacen una sola indexación con caché del último chunk y no asignan memoria (se mide en `bench.mjs`).
@@ -120,4 +146,4 @@ Cifras de una sola máquina/corrida; la variación entre corridas es visible (p.
 
 ## Tests
 
-`npm test` corre `test/world-*.test.js` junto a los de Motor: generador (determinismo entre órdenes, árboles, agua, cuevas), ruido, mundo (contrato, edición, diff, carga), mesher (comparado cara por cara con fuerza bruta por capa, winding, uvs, tiles, unidades), physics/raycast (DDA vs muestreo fino, 1000 rayos), tilemap, contrato y adaptador Three falso.
+`npm test` corre `test/world-*.test.js` junto a los de Motor: generador (determinismo entre órdenes, árboles, agua, cuevas), ruido, mundo (contrato, edición, diff, carga), mesher (comparado cara por cara con fuerza bruta por capa, winding, uvs, tiles, unidades), physics/raycast (DDA vs muestreo fino, 1000 rayos), jugador (`world-player.test.js`: caída/aterrizaje, paredes sin tunneling, escalón 1 vs 2 bloques, salto, determinismo, dt 1/30 vs 1/144, esquinas, agua, desatasco), carga por radio entero y fraccionario, tilemap, contrato y adaptador Three falso.
