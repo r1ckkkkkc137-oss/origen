@@ -1,4 +1,4 @@
-// ORIGEN — contratos compartidos v0.2 (dueño: Motor). Cambios se anuncian en la sala.
+// ORIGEN — contratos compartidos v0.3 (dueño: Motor). Cambios se anuncian en la sala.
 // UNIDADES Y EJES: mano derecha, +Y arriba. MUNDO (World, chunks, raycast) en BLOQUES; 1 bloque = BLOCK_M = 0.5 m.
 // SIM y Skeleton3D en METROS. La conversión bloques<->metros se hace SOLO en el adaptador 3D (combat/geometry.js).
 // Frente local de todo esqueleto/criatura = +X. root.yaw en radianes alrededor de +Y;
@@ -8,7 +8,7 @@
 // SUAVIZAR el yaw solo para la pose visual, y NUNCA devuelve root motion a la sim.
 export const TICK_HZ = 60;
 export const BLOCK_M = 0.5;
-export const CONTRACTS_VERSION = '0.2';
+export const CONTRACTS_VERSION = '0.3';
 export const headingDir = (h) => [Math.cos(h), 0, -Math.sin(h)];
 export const CHUNK = Object.freeze({ SX: 16, SY: 64, SZ: 16 });
 
