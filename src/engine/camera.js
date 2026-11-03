@@ -1,9 +1,10 @@
 import * as THREE from 'three';
 // Cámara libre (vuelo) y tercera persona (orbita un target). Tecla C alterna.
-export function createCameraRig(camera, input) {
-  let mode = 'free';
-  let yaw = 0, pitch = -0.35, dist = 6;
-  const pos = new THREE.Vector3(0, 40, 30);
+export function createCameraRig(camera, input, opts = {}) {
+  let mode = opts.mode ?? 'free';
+  let yaw = opts.yaw ?? 0, pitch = opts.pitch ?? -0.3, dist = opts.dist ?? 4.5;
+  const baseSpeed = opts.speed ?? 6;
+  const pos = new THREE.Vector3(...(opts.pos ?? [0, 3, 6]));
   const target = new THREE.Vector3();
   const fwd = new THREE.Vector3(), right = new THREE.Vector3();
   let cWas = false;
@@ -18,7 +19,7 @@ export function createCameraRig(camera, input) {
       fwd.set(-Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), -Math.cos(yaw) * Math.cos(pitch));
       if (mode === 'free') {
         const [mx, mz] = input.moveAxis();
-        const speed = (input.down('ShiftLeft') ? 40 : 14) * dt;
+        const speed = (input.down('ShiftLeft') ? baseSpeed * 3 : baseSpeed) * dt;
         right.set(Math.cos(yaw), 0, -Math.sin(yaw));
         pos.addScaledVector(fwd, mz * speed).addScaledVector(right, mx * speed);
         if (input.down('Space')) pos.y += speed; if (input.down('ControlLeft') || input.down('KeyQ')) pos.y -= speed;
