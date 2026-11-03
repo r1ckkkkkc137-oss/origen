@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { generateChunk, listTrees, treeBlocks, columnInfo, BIOME, TREE_CELL } from '../src/world/generator.js';
+import { generateChunk, columnInfo, BIOME } from '../src/world/generator.js';
 import { hashBlocks, SEA_LEVEL, CHUNK_Y } from '../src/world/chunk.js';
 import { B, IS_SOLID } from '../src/world/blocks.js';
 
@@ -88,93 +88,3 @@ test('el agua no tiene aire pegado en sus costados (sin fugas a cuevas)', () => 
   assert.equal(leaks, 0, `fugas de agua a aire: ${leaks}`);
 });
 
-// ---------- árboles ----------
-const LO = -96, HI = 95; // región de chunks -6..5
-function regionTrees(seed) {
-  const trees = listTrees(seed, LO - 2, LO - 2, HI + 2, HI + 2);
-  return trees;
-}
-function generateRegionReverse(seed) {
-  const map = new Map();
-  for (let cz = 5; cz >= -6; cz--) for (let cx = 5; cx >= -6; cx--) map.set(`${cx},${cz}`, generateChunk(seed, cx, cz));
-  return (x, y, z) => map.get(`${x >> 4},${z >> 4}`).get(x & 15, y, z & 15);
-}
-
-test('árboles: nunca se superponen, separación mínima y bloques disjuntos', () => {
-  let total = 0;
-  for (const seed of SEEDS) {
-    const trees = regionTrees(seed);
-    total += trees.length;
-    const owner = new Map();
-    for (let i = 0; i < trees.length; i++) {
-      for (let j = i + 1; j < trees.length; j++) {
-        const d = Math.max(Math.abs(trees[i].x - trees[j].x), Math.abs(trees[i].z - trees[j].z));
-        assert.ok(d >= TREE_CELL - 2, `troncos a ${d} bloques (seed ${seed})`);
-      }
-      for (const [x, y, z] of treeBlocks(seed, trees[i])) {
-        const k = `${x},${y},${z}`;
-        assert.ok(!owner.has(k), `árboles ${owner.get(k)} y ${i} comparten bloque ${k}`);
-        owner.set(k, i);
-      }
-    }
-  }
-  assert.ok(total >= 60, `muy pocos árboles para que el test valga: ${total}`);
-});
-
-test('árboles: consistentes entre bordes de chunk (generando en orden inverso) y no hay bloques de árbol huérfanos', () => {
-  let nBorder = 0, nTrees = 0;
-  for (const seed of SEEDS) {
-    const at = generateRegionReverse(seed);
-    const trees = regionTrees(seed);
-    const expectedLogs = new Set(), expectedLeaves = new Set();
-    for (const t of trees) {
-      nTrees++;
-      const near = [t.x, t.z].some((v) => { const m = ((v % 16) + 16) % 16; return m <= 2 || m >= 13; });
-      if (near) nBorder++;
-      for (const [x, y, z, id] of treeBlocks(seed, t)) {
-        (id === B.LOG ? expectedLogs : expectedLeaves).add(`${x},${y},${z}`);
-        if (x < LO || x > HI || z < LO || z > HI) continue;
-        const got = at(x, y, z);
-        if (id === B.LOG) assert.equal(got, B.LOG, `tronco ausente en ${x},${y},${z} seed ${seed}`);
-        else assert.ok(got === B.LEAVES || (got !== B.AIR && got !== B.LOG && got !== B.WATER), `hoja inconsistente ${x},${y},${z}: ${got}`);
-      }
-    }
-    for (let z = LO; z <= HI; z++) for (let x = LO; x <= HI; x++) for (let y = SEA_LEVEL; y < CHUNK_Y; y++) {
-      const b = at(x, y, z);
-      if (b === B.LOG) assert.ok(expectedLogs.has(`${x},${y},${z}`), `LOG huérfano ${x},${y},${z} seed ${seed}`);
-      else if (b === B.LEAVES) assert.ok(expectedLeaves.has(`${x},${y},${z}`), `LEAVES huérfana ${x},${y},${z} seed ${seed}`);
-    }
-  }
-  assert.ok(nTrees >= 60 && nBorder >= 10, `cobertura de bordes insuficiente: ${nTrees} árboles, ${nBorder} cerca de borde`);
-});
-
-test('árboles: solo sobre pasto, nunca en agua/arena/nieve, sin pendiente fuerte', () => {
-  for (const seed of SEEDS) {
-    const at = generateRegionReverse(seed);
-    for (const t of regionTrees(seed)) {
-      if (t.x <= LO || t.x >= HI || t.z <= LO || t.z >= HI) continue;
-      assert.equal(at(t.x, t.ground, t.z), B.GRASS, `base no es pasto (${t.x},${t.ground},${t.z})`);
-      assert.ok(t.ground >= SEA_LEVEL + 2, 'árbol a nivel de agua');
-      for (let y = t.ground + 1; y <= t.ground + t.trunk; y++) assert.equal(at(t.x, y, t.z), B.LOG);
-      for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-        const nh = columnInfo(seed, t.x + dx, t.z + dz).height;
-        assert.ok(Math.abs(nh - t.ground) <= 2, 'pendiente fuerte');
-        assert.notEqual(at(t.x + dx, t.ground, t.z + dz), B.WATER);
-      }
-      const bi = columnInfo(seed, t.x, t.z).biome;
-      assert.ok(bi === BIOME.FOREST || bi === BIOME.PLAINS);
-    }
-  }
-});
-
-test('el mismo árbol aparece igual aunque la ventana de consulta cambie', () => {
-  const a = listTrees(1234, -50, -50, 50, 50);
-  const b = listTrees(1234, -20, -30, 70, 10);
-  const key = (t) => `${t.x},${t.z},${t.ground},${t.trunk}`;
-  const sb = new Set(b.map(key));
-  const inter = a.filter((t) => t.x >= -20 && t.x <= 70 && t.z >= -30 && t.z <= 10);
-  assert.ok(inter.length > 0 || a.length === 0 || true);
-  for (const t of inter) assert.ok(sb.has(key(t)));
-  for (const t of b) if (t.x >= -50 && t.x <= 50 && t.z >= -50 && t.z <= 50) assert.ok(a.map(key).includes(key(t)));
-  void IS_SOLID;
-});

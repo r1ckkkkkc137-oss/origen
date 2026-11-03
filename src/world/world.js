@@ -113,6 +113,38 @@ export class World {
   }
 
   /**
+   * Tala un árbol entero a partir de UN bloque de tronco (sirve con troncos gruesos 2x2 y ramas): quita todos los LOG conectados por
+   * caras (hasta maxLogs) y deja caer las hojas que ya no están conectadas a ningún tronco (por cadena de hojas). Devuelve
+   * { logs, leaves, drops: [{ id, count }] } o null si (x,y,z) no es un tronco. Cada cambio pasa por setBlock (diff y dirty normales).
+   */
+  fellTree(x, y, z, maxLogs = 4096) {
+    if (this.getBlock(x, y, z) !== B.LOG) return null;
+    const N6 = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
+    const key = (a, b, c) => `${a},${b},${c}`;
+    const logs = [], seen = new Set([key(x, y, z)]), st = [[x, y, z]];
+    while (st.length && logs.length < maxLogs) {
+      const [a, b, c] = st.pop(); logs.push([a, b, c]);
+      for (const [dx, dy, dz] of N6) {
+        const k = key(a + dx, b + dy, c + dz);
+        if (!seen.has(k) && this.getBlock(a + dx, b + dy, c + dz) === B.LOG) { seen.add(k); st.push([a + dx, b + dy, c + dz]); }
+      }
+    }
+    for (const [a, b, c] of logs) this.setBlock(a, b, c, B.AIR);
+    // hojas candidatas: alcanzables desde los troncos quitados por cadena de hojas
+    const cand = new Map(), q = [];
+    const push = (a, b, c) => { const k = key(a, b, c); if (!cand.has(k) && this.getBlock(a, b, c) === B.LEAVES) { cand.set(k, [a, b, c]); q.push([a, b, c]); } };
+    for (const [a, b, c] of logs) for (const [dx, dy, dz] of N6) push(a + dx, b + dy, c + dz);
+    while (q.length) { const [a, b, c] = q.pop(); for (const [dx, dy, dz] of N6) push(a + dx, b + dy, c + dz); }
+    // las que siguen unidas a un tronco que quedó en pie se conservan (y toda su cadena)
+    const keep = new Set(), kq = [];
+    for (const [k, [a, b, c]] of cand) if (N6.some(([dx, dy, dz]) => this.getBlock(a + dx, b + dy, c + dz) === B.LOG)) { keep.add(k); kq.push([a, b, c]); }
+    while (kq.length) { const [a, b, c] = kq.pop(); for (const [dx, dy, dz] of N6) { const k = key(a + dx, b + dy, c + dz); if (cand.has(k) && !keep.has(k)) { keep.add(k); kq.push([a + dx, b + dy, c + dz]); } } }
+    let leaves = 0;
+    for (const [k, [a, b, c]] of cand) if (!keep.has(k) && this.setBlock(a, b, c, B.AIR)) leaves++;
+    return { logs: logs.length, leaves, drops: [{ id: BLOCKS[B.LOG].drop, count: logs.length }] };
+  }
+
+  /**
    * ¿Se puede colocar `id` en (x,y,z) (enteros, bloques)? Reglas: rango válido, id no-aire, la celda es aire o agua, y toca (6 caras) un
    * bloque sólido (sin bloques flotando en el vacío). `solids` opcional: AABBs en METROS {minX,minY,minZ,maxX,maxY,maxZ} de entidades que
    * no deben quedar dentro del bloque (solo se chequea si el bloque a colocar es sólido).
