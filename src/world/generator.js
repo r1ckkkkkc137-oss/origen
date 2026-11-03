@@ -85,7 +85,70 @@ function steepAt(g, i, j) {
   return Math.max(Math.abs(h - g.h[k - 1]), Math.abs(h - g.h[k + 1]), Math.abs(h - g.h[k - g.w]), Math.abs(h - g.h[k + g.w]));
 }
 
-function isMouth(S, x, z, h) { return h >= SEA_LEVEL + 6 && S.mouth.noise2(x / 62, z / 62) > 0.55; }
+// ---------- entradas de cueva (túneles-rampa que cortan la superficie) ----------
+// Cada celda de ENT_CELL x ENT_CELL (32 = 2 chunks) tiene como mucho UNA entrada: posición, rumbo y ritmo de giro salen de hash3(seed, celda). Hasta 6 posiciones
+// candidatas por celda; vale la primera con tierra firme (h >= SEA+3, así el túnel nunca queda bajo agua ni en una playa). El túnel arranca en la superficie, se
+// mete hacia la ladera MÁS ALTA (si hay pendiente; si no, rumbo por hash), baja 0,55 bloques por bloque hasta ~12 bajo la entrada y sigue llano 10 bloques
+// con una sala al final. Es una lista de elipsoides (rh x rv) ya calculada de forma pura: cada chunk solo estampa los que lo tocan, en cualquier orden.
+// Reglas de seguridad: nunca talla agua ni columnas con agua alrededor (3x3 con h < SEA_LEVEL), nunca por encima de la superficie, y fuera de la "zona de boca"
+// (los primeros ENT_MOUTH_STEPS pasos) deja >= 2 bloques de techo. Los árboles no nacen a ENT_TREE_CLEAR de la boca (no quedan troncos flotando sobre el hueco).
+export const ENT_CELL = 32, ENT_P = 1.0, ENT_MOUTH_STEPS = 9, ENT_TREE_CLEAR = 12;
+const ENT_SALT = 0xca7e, ENT_REACH = 52, ENT_RH = 2.3, ENT_RV = 2.7, ENT_SLOPE = 0.55;
+function entranceCell(S, ex, ez) {
+  const key = ex * 2097152 + ez;
+  let cache = S.entCells; if (!cache) cache = S.entCells = new Map();
+  if (cache.has(key)) return cache.get(key);
+  if (cache.size > 20000) cache.clear();
+  const res = computeEntrance(S, ex, ez);
+  cache.set(key, res);
+  return res;
+}
+function computeEntrance(S, ex, ez) {
+  const es = S.seed ^ ENT_SALT;
+  if (hash3(es, ex, 0, ez) >= ENT_P) return null;
+  let x = 0, z = 0, h = -1;
+  for (let k = 0; k < 6 && h < 0; k++) {
+    const cx = ex * ENT_CELL + 4 + Math.floor(hash3(es, ex, 20 + 2 * k, ez) * (ENT_CELL - 8)), cz = ez * ENT_CELL + 4 + Math.floor(hash3(es, ex, 21 + 2 * k, ez) * (ENT_CELL - 8));
+    const hh = colInfo(S, cx, cz);
+    if (hh >= SEA_LEVEL + 3 && hh <= HEIGHT_MAX - 8) { x = cx; z = cz; h = hh; }
+  }
+  if (h < 0) return null;
+  // rumbo: hacia el lado más alto (se mete en la ladera); sin pendiente, rumbo por hash
+  const gx = colInfo(S, x + 6, z) - colInfo(S, x - 6, z), gz = colInfo(S, x, z + 6) - colInfo(S, x, z - 6);
+  let a = Math.hypot(gx, gz) >= 3 ? Math.atan2(gz, gx) + (hash3(es, ex, 8, ez) - 0.5) * 0.6 : hash3(es, ex, 9, ez) * Math.PI * 2;
+  const yT = Math.max(5, h - 12);
+  const spheres = [];                                  // [cx, cy, cz, rh, rv, step]
+  let px = x + 0.5, pz = z + 0.5, yc = h + 1, step = 0, flat = 0;
+  while (flat < 10 && step < 60) {
+    spheres.push([px, yc, pz, ENT_RH, ENT_RV, step]);
+    a += (hash3(es, ex, 100 + step, ez) - 0.5) * 0.3;
+    px += Math.cos(a); pz += Math.sin(a);
+    if (yc > yT + 1) yc = Math.max(yT + 1, yc - ENT_SLOPE); else flat++;
+    step++;
+  }
+  spheres.push([px, yc, pz, 3.4, 3.2, step]);          // sala final
+  return { ex, ez, x, z, h, spheres };
+}
+/** ¿Hay una boca de cueva a menos de `d` bloques (Chebyshev) de (x,z)? Pura. Solo la boca (inicio), no todo el túnel. */
+function nearEntrance(S, x, z, d = ENT_TREE_CLEAR) {
+  const ex0 = Math.floor((x - d) / ENT_CELL), ex1 = Math.floor((x + d) / ENT_CELL), ez0 = Math.floor((z - d) / ENT_CELL), ez1 = Math.floor((z + d) / ENT_CELL);
+  for (let ez = ez0; ez <= ez1; ez++) for (let ex = ex0; ex <= ex1; ex++) {
+    const e = entranceCell(S, ex, ez);
+    if (e && Math.abs(e.x - x) <= d && Math.abs(e.z - z) <= d) return true;
+  }
+  return false;
+}
+/** Entradas de cueva cuya boca cae en [x0,x1]x[z0,z1]: [{x,z,h,dirX,dirZ}] (debug, tests, spawn de cámara). */
+export function listCaveEntrances(seed, x0, z0, x1, z1) {
+  const S = getSampler(seed), out = [];
+  for (let ez = Math.floor(z0 / ENT_CELL); ez <= Math.floor(z1 / ENT_CELL); ez++) for (let ex = Math.floor(x0 / ENT_CELL); ex <= Math.floor(x1 / ENT_CELL); ex++) {
+    const e = entranceCell(S, ex, ez);
+    if (!e || e.x < x0 || e.x > x1 || e.z < z0 || e.z > z1) continue;
+    const s1 = e.spheres[Math.min(4, e.spheres.length - 1)];
+    out.push({ x: e.x, z: e.z, h: e.h, dirX: s1[0] - (e.x + 0.5), dirZ: s1[2] - (e.z + 0.5), bottomY: e.spheres[e.spheres.length - 1][1] });
+  }
+  return out.sort((a, b) => a.z - b.z || a.x - b.x);
+}
 
 /** Superficie de una columna: { top, filler, depth } (depth = bloques de filler bajo el top). */
 function surfaceOf(biome, h, steep) {
@@ -157,7 +220,7 @@ function computeTreeCell(S, cx, cz) {
   if (steep > 2) return null;
   const top = surfaceOf(biome, ground, steep).top;
   if (top !== B.GRASS && !(biome === BIOME.SNOWY_MOUNTAIN && top === B.SNOW)) return null;
-  if (isMouth(S, x, z, ground)) return null;
+  if (nearEntrance(S, x, z)) return null;
   const species = chooseSpecies(biome, t, hash3(ts, cx, 7, cz));
   const [hMin, hMax] = TREE_HEIGHT[species];
   const height = hMin + Math.floor(hash3(ts, cx, 6, cz) * (hMax - hMin + 1));
@@ -183,7 +246,7 @@ function computeTreeCell(S, cx, cz) {
       for (const [, [rx, rz, tx, tz]] of order) {
         if (roots.length >= want) break;
         const hr = colInfo(S, x + rx, z + rz), ht = cols.find((c) => c[0] === tx && c[1] === tz)[2];
-        if (hr < SEA_LEVEL + 2 || hr < ht || hr > ht + 1 || isMouth(S, x + rx, z + rz, hr)) continue;     // sobre suelo sólido, pegada a un tronco al mismo nivel
+        if (hr < SEA_LEVEL + 2 || hr < ht || hr > ht + 1 || nearEntrance(S, x + rx, z + rz)) continue;     // sobre suelo sólido, pegada a un tronco al mismo nivel
         roots.push([rx, rz, hr]);
       }
     }
@@ -329,6 +392,67 @@ export function listTrees(seed, x0, z0, x1, z1) {
   return out;
 }
 
+// ---------- minerales en vetas ----------
+// Cada celda (cs^3) tiene como mucho UNA veta: ¿hay?, centro, radios y ruido del borde salen de hash3(seed, celda). Solo reemplaza PIEDRA (nunca tierra/grava/agua)
+// y se estampa ANTES de las cuevas, así las paredes de cueva exponen mena donde se cruzan. Carbón: más superficial y abundante (centros y 10..45, celda 8, vetas de
+// ~30-60 bloques). Hierro: más profundo y escaso (centros y 2..17, celda 10, vetas de ~15-30). Si dos vetas se solapan gana la primera estampada (hierro primero).
+const ORE_KINDS = [
+  { id: B.IRON, salt: 0x1a0e, cs: 10, yLo: 2, yHi: 15, p: 0.24, rMin: 1.3, rMax: 2.4 },
+  { id: B.COAL, salt: 0xc0a1, cs: 8, yLo: 12, yHi: 46, p: 0.68, rMin: 1.5, rMax: 3.0 },
+];
+function stampOres(S, blocks, x0, z0) {
+  for (const k of ORE_KINDS) {
+    const { cs, rMax } = k, os = S.seed ^ k.salt;
+    const ex0 = Math.floor((x0 - rMax) / cs), ex1 = Math.floor((x0 + 15 + rMax) / cs), ez0 = Math.floor((z0 - rMax) / cs), ez1 = Math.floor((z0 + 15 + rMax) / cs);
+    const ey0 = Math.floor((k.yLo - rMax) / cs), ey1 = Math.floor((k.yHi + rMax) / cs);
+    for (let ez = ez0; ez <= ez1; ez++) for (let ey = ey0; ey <= ey1; ey++) for (let ex = ex0; ex <= ex1; ex++) {
+      if (hash3(os, ex, ey, ez) >= k.p) continue;
+      const cx = ex * cs + hash3(os, ex, ey + 1000, ez) * cs, cy = ey * cs + hash3(os, ex, ey + 2000, ez) * cs, cz = ez * cs + hash3(os, ex, ey + 3000, ez) * cs;
+      if (cy < k.yLo || cy > k.yHi) continue;
+      const rx = k.rMin + hash3(os, ex, ey + 4000, ez) * (k.rMax - k.rMin), ry = rx * (0.7 + 0.3 * hash3(os, ex, ey + 5000, ez)), rz = k.rMin + hash3(os, ex, ey + 6000, ez) * (k.rMax - k.rMin);
+      const xa = Math.max(x0, Math.ceil(cx - rx)), xb = Math.min(x0 + 15, Math.floor(cx + rx)), za = Math.max(z0, Math.ceil(cz - rz)), zb = Math.min(z0 + 15, Math.floor(cz + rz));
+      const ya = Math.max(1, Math.ceil(cy - ry)), yb = Math.min(CHUNK_Y - 1, Math.floor(cy + ry));
+      for (let y = ya; y <= yb; y++) for (let z = za; z <= zb; z++) for (let x = xa; x <= xb; x++) {
+        const idx = (x - x0) + ((z - z0) << 4) + (y << 8);
+        if (blocks[idx] !== B.STONE) continue;
+        const d = ((x + 0.5 - cx) / rx) ** 2 + ((y + 0.5 - cy) / ry) ** 2 + ((z + 0.5 - cz) / rz) ** 2;
+        if (d <= 1 - 0.45 * hash3(os, x, y + 7000, z)) blocks[idx] = k.id;
+      }
+    }
+  }
+}
+
+/** Talla las entradas de cueva que tocan este chunk (ver entranceCell). Solo columnas del chunk; usa la rejilla de alturas g (con pad) para las reglas de agua/techo. */
+function carveEntrances(S, blocks, g, W, x0, z0) {
+  const ex0 = Math.floor((x0 - ENT_REACH) / ENT_CELL), ex1 = Math.floor((x0 + 15 + ENT_REACH) / ENT_CELL), ez0 = Math.floor((z0 - ENT_REACH) / ENT_CELL), ez1 = Math.floor((z0 + 15 + ENT_REACH) / ENT_CELL);
+  for (let ez = ez0; ez <= ez1; ez++) for (let ex = ex0; ex <= ex1; ex++) {
+    const e = entranceCell(S, ex, ez);
+    if (!e) continue;
+    for (const [cx, cy, cz, rh, rv, step] of e.spheres) {
+      const xa = Math.max(x0, Math.floor(cx - rh)), xb = Math.min(x0 + 15, Math.ceil(cx + rh)), za = Math.max(z0, Math.floor(cz - rh)), zb = Math.min(z0 + 15, Math.ceil(cz + rh));
+      if (xa > xb || za > zb) continue;
+      const ya = Math.max(2, Math.floor(cy - rv)), yb = Math.min(CHUNK_Y - 1, Math.ceil(cy + rv));
+      const mouth = step < ENT_MOUTH_STEPS;
+      for (let z = za; z <= zb; z++) for (let x = xa; x <= xb; x++) {
+        const dh = ((x + 0.5 - cx) / rh) ** 2 + ((z + 0.5 - cz) / rh) ** 2;
+        if (dh > 1) continue;
+        const gi = (x - x0) + GRID_PAD + ((z - z0) + GRID_PAD) * W;
+        const h = g.h[gi];
+        // sin agua en la columna ni a su lado (3x3): ningún hueco queda pegado a agua
+        if (g.h[gi - 1] < SEA_LEVEL || g.h[gi + 1] < SEA_LEVEL || g.h[gi - W] < SEA_LEVEL || g.h[gi + W] < SEA_LEVEL || g.h[gi - W - 1] < SEA_LEVEL || g.h[gi - W + 1] < SEA_LEVEL || g.h[gi + W - 1] < SEA_LEVEL || g.h[gi + W + 1] < SEA_LEVEL || h < SEA_LEVEL) continue;
+        const ymax = mouth ? h : h - 2;
+        for (let y = ya; y <= yb && y <= ymax; y++) {
+          const dy = (y + 0.5 - cy) / rv;
+          if (dh + dy * dy > 1) continue;
+          const idx = (x - x0) + ((z - z0) << 4) + (y << 8);
+          const cur = blocks[idx];
+          if (cur !== B.AIR && cur !== B.WATER) blocks[idx] = B.AIR;
+        }
+      }
+    }
+  }
+}
+
 // ---------- chunk ----------
 export function generateChunk(seed, cx, cz) {
   const S = getSampler(seed);
@@ -337,7 +461,7 @@ export function generateChunk(seed, cx, cz) {
   const x0 = cx * 16, z0 = cz * 16;
   const W = 16 + GRID_PAD * 2;
   const g = buildGrid(S, x0 - GRID_PAD, z0 - GRID_PAD, W, W);
-  const ore = S.ore, grv = S.gravel;
+  const grv = S.gravel;
 
   for (let lz = 0; lz < 16; lz++) for (let lx = 0; lx < 16; lx++) {
     const wx = x0 + lx, wz = z0 + lz;
@@ -357,22 +481,24 @@ export function generateChunk(seed, cx, cz) {
     // agua
     for (let y = h + 1; y <= SEA_LEVEL; y++) blocks[col + (y << 8)] = B.WATER;
 
-    // 2) minerales y grava (solo reemplazan piedra, bajo la capa superficial)
+    // 2) grava (solo reemplaza piedra, bajo la capa superficial). Los minerales son vetas por celda (stampOres, más abajo).
     const stoneTop = h - 1 - surf.depth;
-    for (let y = 1; y <= stoneTop; y++) {
+    for (let y = 3; y <= stoneTop && y <= h - 4; y++) {
       const idx = col + (y << 8);
-      if (blocks[idx] !== B.STONE) continue;
-      const v = ore.noise3(wx * 0.14, y * 0.14, wz * 0.14);
-      if (v > 0.60) { blocks[idx] = B.COAL; continue; }
-      if (v < -0.64 && y <= 28) { blocks[idx] = B.IRON; continue; }
-      if (y >= 3 && y <= h - 4 && grv.noise3(wx * 0.07, y * 0.09, wz * 0.07) > 0.62) blocks[idx] = B.GRAVEL;
+      if (blocks[idx] === B.STONE && grv.noise3(wx * 0.07, y * 0.09, wz * 0.07) > 0.62) blocks[idx] = B.GRAVEL;
     }
 
+  }
+  stampOres(S, blocks, x0, z0);
+
+  for (let lz = 0; lz < 16; lz++) for (let lx = 0; lx < 16; lx++) {
+    const wx = x0 + lx, wz = z0 + lz;
+    const h = g.h[lx + GRID_PAD + (lz + GRID_PAD) * W];
+    const col = lx + (lz << 4);
     // 3) cuevas: túneles "spaghetti" (dos ruidos 3D cerca de 0) + cavernas profundas.
-    // Techo: solo a >= 4 bloques bajo la superficie, salvo en "bocas" (rara, solo tierra alta y seca) -> el agua nunca queda sobre aire.
-    const mouth = isMouth(S, wx, wz, h);
-    const minDepth = mouth ? -1 : MIN_CAVE_DEPTH;
-    const yMax = Math.min(h - (mouth ? 0 : MIN_CAVE_DEPTH), CHUNK_Y - 1);
+    // Techo: a >= 4 bloques bajo la superficie -> el agua nunca queda sobre aire. Las bocas son los túneles-rampa de entranceCell (más abajo).
+    const minDepth = MIN_CAVE_DEPTH;
+    const yMax = Math.min(h - MIN_CAVE_DEPTH, CHUNK_Y - 1);
     for (let y = 2; y <= yMax; y++) {
       const depth = h - y;
       const idx = col + (y << 8);
@@ -391,6 +517,8 @@ export function generateChunk(seed, cx, cz) {
       if (carve) blocks[idx] = B.AIR;
     }
   }
+
+  carveEntrances(S, blocks, g, W, x0, z0);
 
   // 4) árboles: troncos a TREE_MARGIN del chunk; solo se escribe dentro del chunk y solo sobre aire.
   const trees = treesInRect(S, x0 - TREE_MARGIN, z0 - TREE_MARGIN, x0 + 15 + TREE_MARGIN, z0 + 15 + TREE_MARGIN);
