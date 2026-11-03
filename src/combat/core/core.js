@@ -13,7 +13,7 @@ import { createFighter, createRuntime, condition, fatigueOf, damageOf } from './
 import * as AI from './ai.js';
 import { createGeometry } from '../geometry.js';
 import { resolveControllers, sameIntent } from './controllers.js';
-import { resolveStrike, resolveTakedown, resolveGroundContest, checkDamage, subOffense, subDefense, prowess, rel, softSubEdge, dist, clamp, sig, skill, hitstopFor, cornered, stepInPerTick, stepInReach, STEP_BACK_PX, reachable, canUseMove } from './resolve.js';
+import { resolveStrike, resolveTakedown, resolveGroundContest, checkDamage, subOffense, subDefense, prowess, rel, softSubEdge, dist, clamp, sig, skill, hitstopFor, cornered, stepInPerTick, stepInReach, STEP_BACK_PX, reachable, canUseMove, rw } from './resolve.js';
 const KD_BACK = 0.04; // prob. de tomar la espalda al rematar en el suelo tras knockdown
 
 // Valores tunables. tuning.js (del otro agente) puede pasar overrides en options (merge superficial + hitstop/windows).
@@ -87,7 +87,7 @@ export function createFightCore(a, b, seed = 1, options = {}) {
   geo.place(A, B, opt.startGap);
   A.mem = AI.initMemory(); B.mem = AI.initMemory();
   const F = {
-    seed, opt, rng, ai: AI, geo,
+    seed, opt, rng, ai: AI, geo, reach: geo.reachTable ?? null, // ventanas de alcance por geometría (null = moves.js)
     controllers: resolveControllers(options.controllers), // { a, b }: quién decide cada lado (default IA)
     inputs: [],                                           // grabación de inputs humanos: [{ t, side, intent }] (sólo cambios)
     lastInput: { a: null, b: null },
@@ -460,7 +460,7 @@ function advanceAction(F, f) {
   // Apunta a que la distancia EN EL TICK DE IMPACTO sea rangeIdeal; nunca bajo minGap.
   if (F.phase === 'stand' && !act.resolved && !act.feint && mv.rangeMax && act.t < act.startup && F.impactT !== F.t) {
     const d = dist(F);
-    const target = Math.max(mv.rangeIdeal ?? mv.rangeMax * 0.9, F.opt.minGap);
+    const target = Math.max(rw(F, mv).rangeIdeal ?? rw(F, mv).rangeMax * 0.9, F.opt.minGap);
     const left = act.startup - act.t; // ticks de startup que quedan (sin contar el de impacto)
     if (d > target) {
       const cap = Math.max(stepInPerTick(mv, Math.max(1, act.startup - 1)), (act.stepLeft ??= stepInReach(mv)) / Math.max(1, left));

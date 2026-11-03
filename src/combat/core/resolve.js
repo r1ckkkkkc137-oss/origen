@@ -78,6 +78,8 @@ export function prowess(f, area, exOverride = null) {
   return (0.3 + 0.7 * base) * Math.pow(skill(f, area), ex);
 }
 
+/** Ventana de alcance del movimiento según la geometría (3D: data/reach3d.js; 2D: la de moves.js). */
+export const rw = (F, mv) => (F.reach && mv && F.reach[mv.id]) || mv;
 export const dist = (F) => F.geo.distance(F.fighters[0], F.fighters[1]);
 /** Holgura (px) sobre la ventana de alcance del clip al resolver: la sim mide entre anclas, el dibujo interpola. */
 export const REACH_SLACK = 0; // la tolerancia ya está en la ventana (REACH_TOL de moves.js)
@@ -101,7 +103,7 @@ export function stepInReach(mv) {
 export const stepInPerTick = (mv, startup) => stepInReach(mv) / Math.max(1, startup);
 /** ¿Puede este golpe impactar dentro de su ventana desde la distancia d? (paso adentro / atrás del startup incluidos) */
 /** Igual que inStrikeWindow y además alcanzable de pie sin bajar de minGap. */
-export const reachable = (F, mv, d) => inStrikeWindow(mv, d) && (F.phase !== 'stand' || mv.rangeMax == null || mv.rangeMax >= F.opt.minGap);
+export const reachable = (F, mv, d) => { mv = rw(F, mv); return inStrikeWindow(mv, d) && (F.phase !== 'stand' || mv.rangeMax == null || mv.rangeMax >= F.opt.minGap); };
 export const inStrikeWindow = (mv, d) => d <= mv.rangeMax + (mv.short ? SHORT_STEP_PX : stepInReach(mv)) && d >= mv.rangeMin - STEP_BACK_PX * 0.6;
 export const cornered = (F, f) => F.geo.cornered(f, 0.15 * U);
 
@@ -142,7 +144,7 @@ export function resolveStrike(F, A, B, act) {
 
   // De pie la distancia del tick de impacto tiene que caer en la ventana del clip: si no, whiff.
   if (!ground && !clinch) F.impactT = F.t;
-  const outKind = ground || clinch ? null : d > move.rangeMax + REACH_SLACK ? 'short' : d < move.rangeMin - REACH_SLACK ? 'jammed' : null;
+  const outKind = ground || clinch ? null : d > rw(F, move).rangeMax + REACH_SLACK ? 'short' : d < rw(F, move).rangeMin - REACH_SLACK ? 'jammed' : null;
   if (outKind) {
     F.emit(X.WHIFF, { ...baseEvent(A, B, move), kind: outKind, power: 0, hitstop: 0 });
     act.recovery = Math.round(act.recovery * 1.15);
@@ -195,7 +197,7 @@ export function resolveStrike(F, A, B, act) {
     if (choice === 'slip') pOk = (0.22 + 0.4 * tecB * skill(B, 'headMovement')) * cB.defense - 0.15 * (move.accuracy - 0.5);
     else if (choice === 'parry') pOk = (0.3 + 0.45 * tecB) * defSk;
     else if (choice === 'block') pOk = (move.zone === 'legs' ? 0 : 0.6 + 0.2 * tecB) * defSk * (move.arc === 'hook' && move.zone === 'head' ? 0.85 : 1);
-    else if (choice === 'step') pOk = cornered(F, B) ? 0.05 : (0.35 + 0.3 * n(B, 'velocidad')) * cB.mobility * (move.rangeMax > 1.2 * U ? 0.8 : 1) * Math.sqrt(skill(B, 'headMovement'));
+    else if (choice === 'step') pOk = cornered(F, B) ? 0.05 : (0.35 + 0.3 * n(B, 'velocidad')) * cB.mobility * (rw(F, move).rangeMax > 1.2 * U ? 0.8 : 1) * Math.sqrt(skill(B, 'headMovement'));
     else if (choice === 'check') pOk = (0.4 + 0.35 * tecB) * Math.pow(skill(B, 'kick'), 1.6) * cB.defense; // chequear es técnica de pateador
     else if (choice === 'catch') pOk = (move.catchable ?? 0) * (0.6 + 0.8 * n(B, 'lucha')) * cB.defense * 1.6 * (1 - 0.4 * (A.style.rangeKick ?? 0));
     pOk = clamp(pOk, 0, 0.92);
@@ -388,7 +390,7 @@ export function resolveTakedown(F, A, B, act) {
   F.roundStat(A.id).tdAtt++;
   const ev0 = baseEvent(A, B, move);
   const fromClinch = F.phase === 'clinch';
-  if (!fromClinch && dist(F) > move.rangeMax + REACH_SLACK) {
+  if (!fromClinch && dist(F) > rw(F, move).rangeMax + REACH_SLACK) {
     F.emit(X.SPRAWL, { ...ev0, kind: 'short', power: 0, hitstop: 0 });
     act.recovery += 10;
     A.tdFails++;

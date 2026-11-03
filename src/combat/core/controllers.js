@@ -11,7 +11,7 @@
 // createReplayController(F.inputs, side) reproduce una pelea grabada.
 import * as AI from './ai.js';
 import { MOVES } from '../data/moves.js';
-import { dist, cornered } from './resolve.js';
+import { dist, cornered, rw } from './resolve.js';
 
 /** Controlador por defecto: la IA del núcleo. */
 export const AI_CONTROLLER = Object.freeze({
@@ -91,7 +91,7 @@ export function createHumanController({ source = null, assist = true } = {}) {
       if (move.kind === 'takedown') return 'sprawl';
       if (i.slip) {
         if (move.zone === 'head') return 'slip';
-        if (!cornered(F, def) && dist(F) > move.rangeMax - 25) return 'step';
+        if (!cornered(F, def) && dist(F) > rw(F, move).rangeMax - 25) return 'step';
       }
       return move.zone === 'legs' ? 'check' : 'block';
     },

@@ -3,7 +3,7 @@
 import { MOVES, STAND_STRIKES, CLINCH_MOVES, GROUND_MOVES, TAKEDOWNS, POSITION_VALUE, PX_PER_M as U } from '../data/moves.js';
 import { moveArea } from '../data/styles.js';
 import { condition } from './fighter.js';
-import { prowess, rel, subOffense, subDefense, dist, cornered, clamp, skill, reachable, stepInReach, STEP_BACK_PX, canUseMove } from './resolve.js';
+import { prowess, rel, subOffense, subDefense, dist, cornered, clamp, skill, reachable, stepInReach, STEP_BACK_PX, canUseMove, rw } from './resolve.js';
 
 const ln = (x) => Math.log(Math.max(1e-4, x));
 const moveWeight = (f, id) => (canUseMove(f, id) ? (f.style.moveW[id] ?? 0.3) : 0);
@@ -104,7 +104,7 @@ export function chooseDefense(F, def, att, move) {
   }
   const opts = [];
   const d = dist(F);
-  const canStep = !cornered(F, def) && d > move.rangeMax - 0.3 * U;
+  const canStep = !cornered(F, def) && d > rw(F, move).rangeMax - 0.3 * U;
   if (move.zone === 'legs') {
     opts.push({ k: 'check', w: 0.5 + 1.2 * (s.skill.kick - 0.6) });
     if (canStep) opts.push({ k: 'step', w: 0.6 + 1.6 * Math.max(0, s.counter - 0.45) }); // el contragolpeador lee la patada y sale
@@ -134,7 +134,7 @@ export function pickCounter(F, D, A, how) {
     const w = s.moveW[id] ?? 0;
     if (w < 0.1 || m.startup > 16) continue;
     if (!reachable(F, m, d)) continue; // sólo si la punta del clip llega a la zona
-    if (d < m.rangeMin && cornered(F, D)) continue; // contra la reja no hay paso atrás
+    if (d < rw(F, m).rangeMin && cornered(F, D)) continue; // contra la reja no hay paso atrás
     let u = ln(w) + m.damage * 0.12 - m.startup * 0.06;
     if ((how === 'slip' || how === 'parry') && (m.arc === 'hook' || m.arc === 'upper' || id === 'cross')) u += 0.6;
     if (how === 'check' && (id === 'cross' || id === 'teep' || m.zone === 'legs')) u += 0.5;
@@ -240,7 +240,7 @@ function decideStand(F, self, opp) {
   // Control de distancia con patadas (style.rangeKick 0..1): castiga al que entra y lo mantiene afuera.
   const rk = s.rangeKick ?? 0;
   const oppEntering = !opp.action && opp.intent?.dir > 0 && F.t < (opp.intent.until ?? 0);
-  const oppJab = MOVES.jab.rangeMax;
+  const oppJab = rw(F, MOVES.jab).rangeMax;
   const selfCornered = cornered(F, self);
   const oppCloseSpeed = oppEntering ? opp.attr.moveSpeed * condition(opp).mobility : 0;
   // Ritmo (tanteo / reset / ráfaga): tras un intercambio ambos se reacomodan (core.js fija calmUntil). En calma
@@ -258,15 +258,15 @@ function decideStand(F, self, opp) {
     const w = (s.moveW[id] ?? 0.3);
     if (w < 0.02) continue;
     if (!reachable(F, mv, d)) continue;               // ventana del clip (con paso adentro/atrás del startup)
-    if (selfCornered && d < (mv.startup >= 12 ? mv.rangeIdeal + 3 : mv.rangeMin)) continue; // contra la reja no hay paso atrás y el rival presiona: lo lento quedaría 'jammed'
+    if (selfCornered && d < (mv.startup >= 12 ? rw(F, mv).rangeIdeal + 3 : rw(F, mv).rangeMin)) continue; // contra la reja no hay paso atrás y el rival presiona: lo lento quedaría 'jammed'
     // rival entrando: la distancia en el impacto será menor (patadas lentas quedaban 'jammed'): exigir que también llegue ahí
     if (oppEntering && !reachable(F, mv, d - oppCloseSpeed * Math.min(mv.startup, opp.intent.until - F.t) * 0.7)) continue;
     if (self.stamina < mv.stamina * 1.2) continue;
     const area = moveArea(mv);
     const ev = mv.damage * mv.accuracy * zoneValue(F, self, opp, mv.zone) * (1 + mv.ko * (opp.rocked > 0 ? 2 : 0.4)) / 6;
     let u = ln(w * skill(self, area)) + 1.1 * ev;
-    if (d > mv.rangeMax) u -= ((d - mv.rangeMax) / stepInReach(mv)) * (mv.lunge ? 0.5 : 1.4); // hay que dar el paso: se ve venir
-    else if (d < mv.rangeMin) u -= ((mv.rangeMin - d) / STEP_BACK_PX) * 1.2;              // encima: hay que recular
+    if (d > rw(F, mv).rangeMax) u -= ((d - rw(F, mv).rangeMax) / stepInReach(mv)) * (mv.lunge ? 0.5 : 1.4); // hay que dar el paso: se ve venir
+    else if (d < rw(F, mv).rangeMin) u -= ((rw(F, mv).rangeMin - d) / STEP_BACK_PX) * 1.2;              // encima: hay que recular
     u -= mv.stamina / (2 + 10 * c.stamina);                 // gestión de stamina
     if (punishing) u += 0.9 - mv.startup * 0.03;
     if (exploitTell && mv.zone === 'head' && mv.kind === 'strike') u += 1.6;
