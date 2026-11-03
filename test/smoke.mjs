@@ -2,6 +2,10 @@
 import { spawn } from 'node:child_process';
 import puppeteer from 'puppeteer-core';
 import { createServer } from 'node:net';
+import { acquireSmokeLock } from './smokeLock.mjs';
+import { mkdirSync } from 'node:fs';
+mkdirSync('shots', { recursive: true });
+await acquireSmokeLock();
 // puerto libre (otro agente puede tener un preview colgado en 5190 y mediríamos SU build)
 const port = Number(process.env.PORT) || await new Promise((r) => { const s = createServer().listen(0, () => { const p = s.address().port; s.close(() => r(p)); }); });
 const srv = spawn('npx', ['vite', 'preview', '--port', String(port), '--strictPort'], { stdio: 'ignore', detached: true });

@@ -2,6 +2,10 @@
 // Env: R (radio en chunks, 4.5 ≈ 8x8), SECS (duración de la muestra), SHOT (png), SEEDN.
 import { spawn } from 'node:child_process';
 import puppeteer from 'puppeteer-core';
+import { acquireSmokeLock } from './smokeLock.mjs';
+import { mkdirSync } from 'node:fs';
+mkdirSync('shots', { recursive: true });
+await acquireSmokeLock();
 const port = 5191, R = process.env.R ?? '4.5', SECS = Number(process.env.SECS ?? 8);
 const srv = spawn('npx', ['vite', 'preview', '--port', String(port), '--strictPort'], { stdio: 'ignore', detached: true });
 await new Promise((r) => setTimeout(r, 2500));

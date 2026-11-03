@@ -8,13 +8,15 @@
 // SUAVIZAR el yaw solo para la pose visual, y NUNCA devuelve root motion a la sim.
 export const TICK_HZ = 60;
 export const BLOCK_M = 0.5;
-export const CONTRACTS_VERSION = '0.4';
+export const CONTRACTS_VERSION = '0.5';
 export const headingDir = (h) => [Math.cos(h), 0, -Math.sin(h)];
 export const CHUNK = Object.freeze({ SX: 16, SY: 64, SZ: 16 });
 
 // IDs de bloque (u8). 0 = aire. Mundo puede agregar al final, nunca renumerar.
 export const BLOCK = Object.freeze({ AIR: 0, GRASS: 1, DIRT: 2, STONE: 3, WOOD: 4, LEAVES: 5, WATER: 6, SAND: 7, ORE: 8,
-  IRON: 9, GRAVEL: 10, SNOW: 11, PLANKS: 12 }); // v0.4 aditivo (Mundo). ORE = carbón; nada se renumera
+  IRON: 9, GRAVEL: 10, SNOW: 11, PLANKS: 12,
+  PINE_LOG: 13, PINE_LEAVES: 14, BIRCH_LOG: 15, BIRCH_LEAVES: 16, LOG_CUT: 17, PINE_LOG_CUT: 18, BIRCH_LOG_CUT: 19 });
+// v0.4 aditivo (Mundo); v0.5 agrega especies y troncos cortados (13-19). ORE = carbón; nada se renumera
 
 /**
  * World (lo implementa Mundo en src/world/).
