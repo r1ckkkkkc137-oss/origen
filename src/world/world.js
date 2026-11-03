@@ -1,12 +1,13 @@
 // World: implementa la interfaz World de src/shared/contracts.js (seed, getBlock, setBlock, chunk, chunks, raycast) y agrega
 // edición de juego (dig/place), diff serializable, carga por radio y mallas.
-// Unidades (ver units.js): argumentos ENTEROS = bloques; reales (raycast, ensureChunks, AABBs de place) = metros.
+// Unidades (ver units.js): contrato v0.2 = mundo en BLOQUES (getBlock/setBlock/chunk/raycast). Helpers de la sim con reales en METROS:
+// ensureChunks, raycastM, AABBs de place, meshChunk (posiciones, por defecto).
 import { B, BLOCKS, IS_SOLID, IS_LIQUID, isValidBlock } from './blocks.js';
 import { CHUNK_Y, localIndex } from './chunk.js';
 import { generateChunk } from './generator.js';
 import { meshChunk } from './mesher.js';
 import { normalizeSeed } from './seed.js';
-import { raycast } from './physics.js';
+import { raycastBlocks, raycastMeters } from './physics.js';
 import { toBlocks } from './units.js';
 
 const keyOf = (cx, cz) => `${cx},${cz}`;
@@ -159,20 +160,22 @@ export class World {
     return { added, removed, pending };
   }
 
-  // ---------- raycast (contrato) ----------
+  // ---------- raycast ----------
   /**
-   * Contrato: raycast(origin:[x,y,z], dir:[x,y,z], maxDist) con origen y distancia en METROS. Devuelve
-   * { pos:[bx,by,bz] (bloque golpeado, enteros), normal:[nx,ny,nz] (cara golpeada), block:id, dist (m) } | null.
-   * Atraviesa aire y agua. Extras en el hit: place:[bx,by,bz] (celda previa, donde se colocaría un bloque). Ver physics.raycast para opts.
+   * CONTRATO v0.2 (mundo en BLOQUES): raycast(origin:[x,y,z], dir:[x,y,z], maxDist) con origen y maxDist en BLOQUES; hit.dist en bloques.
+   * Devuelve { pos:[bx,by,bz], normal, block, dist, place:[bx,by,bz] (celda previa: extra, donde se colocaría un bloque) } o null.
+   * Atraviesa aire y agua (opts.hitLiquid=true golpea agua). Ver physics.raycastBlocks.
    */
-  raycast(origin, dir, maxDist = 6, opts) { return raycast(this, origin, dir, maxDist, opts); }
+  raycast(origin, dir, maxDist = 6, opts) { return raycastBlocks(this, origin, dir, maxDist, opts); }
+  /** Igual pero con origin y maxDist en METROS (espacio de la sim) y hit.dist en METROS. */
+  raycastM(originM, dir, maxDistM = 3, opts) { return raycastMeters(this, originM, dir, maxDistM, opts); }
 
   // ---------- malla ----------
-  /** Malla greedy del chunk (carga los 4 vecinos para que los bordes sean correctos). Ver mesher.js. */
-  meshChunk(cx, cz) {
+  /** Malla greedy del chunk (carga los 4 vecinos para que los bordes sean correctos). opts.units: 'meters' (defecto) | 'blocks'. Ver mesher.js. */
+  meshChunk(cx, cz, opts) {
     const c = this.getChunk(cx, cz);
     const n = { px: this.getChunk(cx + 1, cz), nx: this.getChunk(cx - 1, cz), pz: this.getChunk(cx, cz + 1), nz: this.getChunk(cx, cz - 1) };
-    return meshChunk(c, n);
+    return meshChunk(c, n, opts);
   }
 
   // ---------- guardado ----------

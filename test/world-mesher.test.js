@@ -170,3 +170,18 @@ test('mesher: Uint16 hasta 65535 vértices, Uint32 si se supera (tablero de ajed
   const small = meshChunk(filledChunk(0, 0, B.STONE, 3), null);
   assert.ok(small.opaque.indices instanceof Uint16Array);
 });
+
+test('mesher: unidades — metros por defecto (bloque*BLOCK_SIZE_M), opts.units="blocks" deja bloques; uvs y tiles no cambian', () => {
+  const w = new World(1234);
+  const mm = w.meshChunk(2, -3), mb = w.meshChunk(2, -3, { units: 'blocks' });
+  assert.equal(mm.units, 'meters'); assert.equal(mb.units, 'blocks');
+  assert.deepEqual(mb.origin, [2 * 16, 0, -3 * 16]);
+  assert.deepEqual(mm.origin, [2 * 16 * S, 0, -3 * 16 * S]);
+  for (const l of LAYERS) {
+    assert.equal(mm[l].positions.length, mb[l].positions.length);
+    for (let i = 0; i < mm[l].positions.length; i++) assert.ok(Math.abs(mm[l].positions[i] - mb[l].positions[i] * S) < 1e-5);
+    assert.deepEqual(mm[l].uvs, mb[l].uvs); assert.deepEqual(mm[l].tiles, mb[l].tiles); assert.deepEqual(mm[l].indices, mb[l].indices);
+  }
+  const max = Math.max(...mm.opaque.positions.filter((_, i) => i % 3 === 0));
+  assert.ok(max <= 16 * S + 1e-6);
+});

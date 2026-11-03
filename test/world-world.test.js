@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { BLOCK_SIZE_M as S } from '../src/world/units.js';
 import { World } from '../src/world/world.js';
 import { B, BLOCKS } from '../src/world/blocks.js';
 import { hashBlocks, CHUNK_Y, SEA_LEVEL } from '../src/world/chunk.js';
@@ -59,7 +60,7 @@ test('place: solo adyacente a sólido, sobre aire/agua, nunca en aire flotante n
   assert.equal(w.place(g.x, g.y + 5, g.z + 1, B.PLANKS), false);
   assert.equal(w.place(g.x, g.y, g.z, B.AIR), false);                // no se "coloca" aire
   assert.equal(w.place(g.x, g.y + 3, g.z, 77), false);               // id inválido
-  assert.equal(w.place(g.x, g.y + 3, g.z, B.STONE, [{ minX: g.x + 0.2, maxX: g.x + 0.8, minY: g.y + 2.5, maxY: g.y + 4.3, minZ: g.z + 0.2, maxZ: g.z + 0.8 }]), false); // entidad dentro
+  assert.equal(w.place(g.x, g.y + 3, g.z, B.STONE, [{ minX: (g.x + 0.2) * S, maxX: (g.x + 0.8) * S, minY: (g.y + 2.5) * S, maxY: (g.y + 4.3) * S, minZ: (g.z + 0.2) * S, maxZ: (g.z + 0.8) * S }]), false); // entidad dentro
   assert.equal(w.place(g.x, g.y + 3, g.z, B.STONE, []), true);
   // agua: se puede reemplazar si toca sólido
   let wc = null;
@@ -105,15 +106,15 @@ test('revertir una edición la quita del diff', () => {
 
 test('ensureChunks: carga de cerca a lejos, respeta maxNew, descarga lejanos y conserva ediciones', () => {
   const w = new World(3);
-  let r = w.ensureChunks(8, 8, 3, { maxNew: 5 });
+  let r = w.ensureChunks(8 * S, 8 * S, 3, { maxNew: 5 });
   assert.equal(r.added.length, 5);
   assert.ok(r.pending > 0);
   assert.deepEqual(r.added[0], { cx: 0, cz: 0 });
-  while (w.ensureChunks(8, 8, 3, { maxNew: 5 }).pending > 0);
+  while (w.ensureChunks(8 * S, 8 * S, 3, { maxNew: 5 }).pending > 0);
   const n = [...w.chunks()].length;
   assert.ok(n >= 29 && n <= 37, `chunks ${n}`); // círculo de radio 3 ≈ 29 chunks
   w.setBlock(8, 60, 8, B.PLANKS);
-  r = w.ensureChunks(16 * 20, 8, 3);
+  r = w.ensureChunks(16 * 20 * S, 8 * S, 3);
   assert.ok(r.removed.some((c) => c.cx === 0 && c.cz === 0));
   assert.equal(w.peekChunk(0, 0), null);
   assert.equal(w.getBlock(8, 60, 8), B.PLANKS);

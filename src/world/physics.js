@@ -1,7 +1,7 @@
 // Colisión AABB contra vóxeles + raycast DDA.
 // API en METROS y segundos (espacio mundo). Cuerpo: { x, y, z (pies, centro XZ), vx, vy, vz (m/s), halfW (0.3 m), height (1.8 m),
 // onGround, inWater }. Internamente se convierte a bloques (units.js) y se resuelve en la grilla entera; al terminar se devuelve a metros.
-// Con BLOCK_SIZE_M=1 (contracts v0.2) la conversión es la identidad, pero el código no lo asume.
+// Con BLOCK_SIZE_M=0.5 (contrato v0.2b) 1 bloque = 0.5 m: un cuerpo humano (1.8 m) mide 3.6 bloques. La conversión es el único punto donde entra la constante.
 import { B, IS_SOLID, IS_LIQUID } from './blocks.js';
 import { CHUNK_Y } from './chunk.js';
 import { BLOCK_SIZE_M as S } from './units.js';
@@ -125,13 +125,18 @@ function stepBlocks(world, body, dt, o) {
 }
 
 /**
- * Raycast de bloques (Amanatides-Woo). origin y dir son [x,y,z]; origen y maxDist en METROS (dir no hace falta normalizarla).
- * Devuelve { pos:[bx,by,bz] (bloque golpeado), normal:[nx,ny,nz] (cara golpeada, apunta hacia el rayo), block:id, dist (m),
- * place:[bx,by,bz] (celda previa, para colocar) } o null. Mismo formato que RaycastHit del contrato (+ place).
- * Por defecto atraviesa aire y agua; opts.hitLiquid=true para golpear agua. Si el origen está dentro de un bloque golpeable devuelve ese
- * bloque con normal [0,0,0] y dist 0. Acepta también origin/dir como {x,y,z}.
+ * Raycast de bloques (Amanatides-Woo) en ESPACIO DE BLOQUES: origin [x,y,z] y maxDist en bloques (dir no hace falta normalizarla). Es el que
+ * implementa World.raycast del contrato v0.2 ("MUNDO en BLOQUES"). Devuelve { pos:[bx,by,bz] (bloque golpeado), normal:[nx,ny,nz] (cara golpeada,
+ * apunta hacia el rayo), block:id, dist (bloques), place:[bx,by,bz] (celda previa, para colocar) } o null: RaycastHit del contrato (+ place).
+ * Por defecto atraviesa aire y agua; opts.hitLiquid=true para golpear agua. Si el origen está dentro de un bloque golpeable devuelve ese bloque
+ * con normal [0,0,0] y dist 0. Acepta también origin/dir como {x,y,z}.
  */
-export function raycast(world, origin, dir, maxDist = 6, opts = {}) {
+export function raycastBlocks(world, origin, dir, maxDist = 6, opts = {}) { return rayCore(world, origin, dir, maxDist, opts, 1); }
+
+/** Igual que raycastBlocks pero con origin y maxDist en METROS (espacio de la sim) y dist en METROS. pos/normal/place siguen siendo enteros de bloque. */
+export function raycastMeters(world, origin, dir, maxDistM = 3, opts = {}) { return rayCore(world, origin, dir, maxDistM, opts, S); }
+
+function rayCore(world, origin, dir, maxDist, opts, S) {
   const O = Array.isArray(origin) ? origin : [origin.x, origin.y, origin.z];
   const D = Array.isArray(dir) ? dir : [dir.x, dir.y, dir.z];
   const len = Math.hypot(D[0], D[1], D[2]);

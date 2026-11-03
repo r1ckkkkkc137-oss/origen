@@ -1,7 +1,8 @@
 // Greedy meshing por chunk. Entrada: chunk + vecinos (px,nx,pz,nz). Salida: 3 capas { opaque, cutout, water }.
 //
-// FORMATO por capa. POSICIONES en METROS locales al chunk (bloque * BLOCK_SIZE_M: x,z en [0,16*S], y en [0,SY*S]); posicionar el mesh en
-// `origin` = (cx*16*S, 0, cz*16*S) (también en metros). El meshing en sí se hace en la grilla entera de bloques; solo se escala al emitir vértices.
+// FORMATO por capa. POSICIONES locales al chunk. Por defecto en METROS (bloque * BLOCK_SIZE_M: x,z en [0,16*S], y en [0,SY*S]) y `origin` =
+// (cx*16*S, 0, cz*16*S) también en metros. Con meshChunk(chunk, nb, { units: 'blocks' }) salen en BLOQUES (S=1; entonces el adaptador 3D
+// escala el mesh con BLOCK_SIZE_M). `mesh.units` dice cuál se usó. El meshing se hace en la grilla entera de bloques; solo se escala al emitir vértices.
 // UVs en unidades de BLOQUE (no de metro): un tile por bloque pase lo que pase BLOCK_SIZE_M.
 //   positions Float32Array (xyz), normals Float32Array (xyz), uvs Float32Array (st), tiles Uint8Array (1 por vértice), indices Uint16/32Array.
 //   uvs están en UNIDADES DE BLOQUE (un quad fusionado de w x h bloques va de 0..w, 0..h): el shader hace fract(uv) para REPETIR el tile.
@@ -18,6 +19,7 @@ const SY = PX * PZ, SZ = PX, SX = 1;
 const pad = new Uint8Array(PX * PZ * (CHUNK_Y + 2));
 const mask = new Int32Array(CHUNK_Y * 16 + 16);
 const AIR_VAL = 0, ABSENT = 255;
+let K = S; // escala vértices: S (metros, por defecto) o 1 (opts.units='blocks')
 
 /** Rellena `pad` (con borde de 1) a partir del chunk y sus vecinos. y=-1 -> 255 (oculto), y=SY -> aire. */
 function fillPad(chunk, nb) {
@@ -58,7 +60,7 @@ class LayerBuf {
   constructor() { this.pos = []; this.nor = []; this.uv = []; this.tile = []; this.idx = []; this.n = 0; }
   quad(p0, p1, p2, p3, nx, ny, nz, uvs, tile, front) {
     const n = this.n;
-    this.pos.push(p0[0] * S, p0[1] * S, p0[2] * S, p1[0] * S, p1[1] * S, p1[2] * S, p2[0] * S, p2[1] * S, p2[2] * S, p3[0] * S, p3[1] * S, p3[2] * S);
+    this.pos.push(p0[0] * K, p0[1] * K, p0[2] * K, p1[0] * K, p1[1] * K, p1[2] * K, p2[0] * K, p2[1] * K, p2[2] * K, p3[0] * K, p3[1] * K, p3[2] * K);
     for (let i = 0; i < 4; i++) this.nor.push(nx, ny, nz);
     this.uv.push(uvs[0], uvs[1], uvs[2], uvs[3], uvs[4], uvs[5], uvs[6], uvs[7]);
     this.tile.push(tile, tile, tile, tile);
@@ -84,7 +86,8 @@ const P0 = [0, 0, 0], P1 = [0, 0, 0], P2 = [0, 0, 0], P3 = [0, 0, 0];
  * @param {{px?:Chunk,nx?:Chunk,pz?:Chunk,nz?:Chunk}|null} neighbors
  * @returns {{cx,cz,origin:number[],opaque,cutout,water,triangles:number}}
  */
-export function meshChunk(chunk, neighbors = null) {
+export function meshChunk(chunk, neighbors = null, opts = {}) {
+  K = opts.units === 'blocks' ? 1 : S; // escala de salida de los vértices (único punto donde se aplica BLOCK_SIZE_M)
   fillPad(chunk, neighbors);
   const top = chunk.topY();
   const layers = [null, new LayerBuf(), new LayerBuf(), new LayerBuf()];
@@ -134,7 +137,7 @@ export function meshChunk(chunk, neighbors = null) {
   }
   const opaque = layers[1].finish(), cutout = layers[2].finish(), water = layers[3].finish();
   return {
-    cx: chunk.cx, cz: chunk.cz, origin: [chunk.cx * 16 * S, 0, chunk.cz * 16 * S],
+    cx: chunk.cx, cz: chunk.cz, origin: [chunk.cx * 16 * K, 0, chunk.cz * 16 * K], units: opts.units === 'blocks' ? 'blocks' : 'meters',
     opaque, cutout, water, triangles: opaque.triangleCount + cutout.triangleCount + water.triangleCount,
   };
 }
