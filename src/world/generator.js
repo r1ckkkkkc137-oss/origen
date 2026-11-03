@@ -2,10 +2,7 @@
 // no depende de qué chunks se generaron antes. Todo se deriva de funciones puras por columna (x,z) o por voxel (x,y,z).
 //
 // Capas, en orden: terreno (altura por fbm + clima) -> minerales/grava -> cuevas -> árboles.
-// Árboles: grilla de celdas de 7x7; cada celda tiene como mucho 1 árbol, con tronco en (celda*7 + jitter 0..2): dos troncos
-// de celdas vecinas distan >= 5 en algún eje y la copa llega a +-2, así que NUNCA se superponen. Si el árbol existe depende solo de
-// hash(celda) y de las columnas de su tronco (altura/bioma/pendiente, funciones puras), por eso cualquier chunk que toque la copa
-// dibuja exactamente los mismos bloques, sin importar el orden de generación.
+// Árboles: ver la sección «árboles» (candidato por celda + resolución de conflictos local y pura).
 import { B } from './blocks.js';
 import { Chunk, CHUNK_Y, SEA_LEVEL } from './chunk.js';
 import { createNoise, smoothstep } from './noise.js';
@@ -15,10 +12,7 @@ import { normalizeSeed } from './seed.js';
 export const BIOME = Object.freeze({ PLAINS: 0, FOREST: 1, DESERT: 2, SNOWY_MOUNTAIN: 3 });
 export const BIOME_NAMES = ['plains', 'forest', 'desert', 'snowy_mountain'];
 
-export const TREE_CELL = 7;        // tamaño de celda de la grilla de árboles
-export const TREE_JITTER = 3;      // el tronco se desplaza 0..2 dentro de la celda -> separación mínima 7-2 = 5
-export const TREE_CROWN_RADIUS = 2;
-const GRID_PAD = 4;                // padding de columnas alrededor del chunk (copa r=2 + vecino de pendiente 1 + margen)
+const GRID_PAD = 2;                // padding de columnas alrededor del chunk (solo el vecino de pendiente 1 + margen; los árboles tienen su propia consulta)
 const HEIGHT_MAX = CHUNK_Y - 2;
 const TREE_SALT = 0x7ee5;
 const MIN_CAVE_DEPTH = 4;
@@ -110,67 +104,209 @@ function surfaceOf(biome, h, steep) {
 }
 
 // ---------- árboles ----------
-/** ¿La columna (i,j) de la rejilla admite un árbol? Solo sobre pasto, fuera del agua y sin pendiente fuerte ni boca de cueva. */
-function treeColumnOk(S, g, i, j) {
-  const k = i + j * g.w, h = g.h[k], biome = g.biome[k];
-  if (biome !== BIOME.FOREST && biome !== BIOME.PLAINS) return false;
-  if (h < SEA_LEVEL + 2) return false;                       // agua/arena de orilla
-  const steep = steepAt(g, i, j);
-  if (steep > 2) return false;
-  if (surfaceOf(biome, h, steep).top !== B.GRASS) return false;
-  if (isMouth(S, g.minX + i, g.minZ + j, h)) return false;
-  return true;
+// Especies (forma, no textura: el atlas solo tiene un tile de tronco/hoja): roble ancho, pino/conífera alta y estrecha, abedul delgado.
+// Cada celda de TREE_CELL x TREE_CELL tiene como mucho UN candidato (posición, especie y altura salen de hash3 de la seed + celda;
+// clima/altura de las columnas son funciones puras). Un candidato se ACEPTA si ningún candidato válido vecino con mayor prioridad
+// queda a menos de rA + rB + 1 bloques (Chebyshev): ni copas ni troncos se superponen. Como "válido" y "prioridad" son puros, la
+// decisión no depende del chunk ni del orden de generación: todo chunk que toque un árbol dibuja exactamente los mismos bloques.
+export const SPECIES = Object.freeze({ OAK: 0, PINE: 1, BIRCH: 2 });
+export const SPECIES_NAMES = ['oak', 'pine', 'birch'];
+export const TREE_CELL = 6;
+export const TREE_REACH = Object.freeze([4, 3, 3]);   // radio horizontal máximo (copa+ramas) por especie
+export const TREE_MAX_REACH = 4;
+export const TREE_HEIGHT = Object.freeze([[10, 15], [13, 18], [10, 14]]);   // [min,max] bloques sobre el suelo, por especie (0,5 m/bloque: 5–9 m)
+const TREE_MARGIN = TREE_MAX_REACH + 1;              // + 1 por la base 2x2 (puede correrse un bloque)
+const TREE_SEP_PAD = 1;
+const NB = 2;                                        // celdas vecinas a revisar: (4+4+1) / 6 -> 2
+
+/** Altura y clima de una columna (sin caché de rejilla). */
+const _c = { t: 0, hum: 0 };
+function colInfo(S, x, z) { climate(S, x, z, _c); return terrainHeight(S, x, z, _c.t, _c.hum); }
+
+function chooseSpecies(biome, t, r) {
+  if (biome === BIOME.SNOWY_MOUNTAIN) return SPECIES.PINE;
+  if (biome === BIOME.PLAINS) return r < 0.6 ? SPECIES.OAK : SPECIES.BIRCH;
+  if (t < 0.42) return r < 0.6 ? SPECIES.PINE : r < 0.85 ? SPECIES.OAK : SPECIES.BIRCH;      // bosque frío: coníferas
+  return r < 0.5 ? SPECIES.OAK : r < 0.8 ? SPECIES.BIRCH : SPECIES.PINE;
 }
 
-/** Árboles cuyo TRONCO cae en [x0,x1]x[z0,z1] (inclusive). La rejilla g debe cubrir ese rectángulo +1 de margen. */
-function treesInRect(S, g, x0, z0, x1, z1) {
+/** Candidato de la celda (cx,cz) o null. Puro y cacheado por seed (el objeto devuelto es inmutable salvo memos internos). */
+function treeCell(S, cx, cz) {
+  const key = cx * 2097152 + cz;
+  let cache = S.treeCells;
+  if (!cache) cache = S.treeCells = new Map();
+  if (cache.has(key)) return cache.get(key);
+  if (cache.size > 60000) cache.clear();
+  const res = computeTreeCell(S, cx, cz);
+  cache.set(key, res);
+  return res;
+}
+
+function computeTreeCell(S, cx, cz) {
+  const ts = S.seed ^ TREE_SALT;
+  const x = cx * TREE_CELL + Math.floor(hash3(ts, cx, 1, cz) * TREE_CELL);
+  const z = cz * TREE_CELL + Math.floor(hash3(ts, cx, 2, cz) * TREE_CELL);
+  climate(S, x, z, _c);
+  const t = _c.t, biome = biomeFromClimate(_c.t, _c.hum);
+  const dens = biome === BIOME.FOREST ? 1.0 : biome === BIOME.PLAINS ? 0.14 : biome === BIOME.SNOWY_MOUNTAIN ? 0.3 : 0;
+  if (dens === 0 || hash3(ts, cx, 3, cz) >= dens) return null;
+  const ground = terrainHeight(S, x, z, _c.t, _c.hum);
+  if (ground < SEA_LEVEL + 2) return null;                                   // agua / arena de orilla
+  const hW = colInfo(S, x - 1, z), hE = colInfo(S, x + 1, z), hN = colInfo(S, x, z - 1), hS = colInfo(S, x, z + 1);
+  const steep = Math.max(Math.abs(ground - hW), Math.abs(ground - hE), Math.abs(ground - hN), Math.abs(ground - hS));
+  if (steep > 2) return null;
+  const top = surfaceOf(biome, ground, steep).top;
+  if (top !== B.GRASS && !(biome === BIOME.SNOWY_MOUNTAIN && top === B.SNOW)) return null;
+  if (isMouth(S, x, z, ground)) return null;
+  const species = chooseSpecies(biome, t, hash3(ts, cx, 7, cz));
+  const [hMin, hMax] = TREE_HEIGHT[species];
+  const height = hMin + Math.floor(hash3(ts, cx, 6, cz) * (hMax - hMin + 1));
+  if (ground + height > CHUNK_Y - 1) return null;                            // cabe en 64 bloques
+  const thick = species !== SPECIES.BIRCH && height >= 13;
+  const baseH = height >= 16 ? 3 : 2;                                         // alto de la base gruesa
+  let cols = [[0, 0, ground]];
+  if (thick) {
+    const sx = hash3(ts, cx, 8, cz) < 0.5 ? -1 : 0, sz = hash3(ts, cx, 9, cz) < 0.5 ? -1 : 0;   // dónde queda el 2x2 respecto al eje
+    cols = [[0, 0, ground]];
+    for (const [ox, oz] of [[sx, sz], [sx + 1, sz], [sx, sz + 1], [sx + 1, sz + 1]]) {
+      if (ox === 0 && oz === 0) continue;
+      const h2 = colInfo(S, x + ox, z + oz);
+      if (h2 < SEA_LEVEL + 2 || Math.abs(h2 - ground) > 2) return null;
+      cols.push([ox, oz, h2]);
+    }
+  }
+  return { cx, cz, x, z, ground, species, height, r: TREE_REACH[species], thick, baseH, cols, prio: hash3(ts, cx, 5, cz), biome, trunk: 0, _blocks: null, _ok: undefined };
+}
+
+/** ¿El candidato sobrevive a los vecinos de mayor prioridad (a distancia de conflicto)? */
+function treeAccepted(S, c) {
+  if (c._ok !== undefined) return c._ok;
+  let ok = true;
+  for (let dz = -NB; dz <= NB && ok; dz++) for (let dx = -NB; dx <= NB; dx++) {
+    if (dx === 0 && dz === 0) continue;
+    const o = treeCell(S, c.cx + dx, c.cz + dz);
+    if (!o) continue;
+    if (Math.max(Math.abs(o.x - c.x), Math.abs(o.z - c.z)) >= o.r + c.r + TREE_SEP_PAD) continue;
+    if (o.prio > c.prio || (o.prio === c.prio && (o.cz < c.cz || (o.cz === c.cz && o.cx < c.cx)))) { ok = false; break; }
+  }
+  c._ok = ok;
+  return ok;
+}
+
+/** Árboles aceptados cuyo TRONCO cae en [x0,x1]x[z0,z1] (inclusive). */
+function treesInRect(S, x0, z0, x1, z1) {
   const out = [];
-  const cx0 = Math.floor(x0 / TREE_CELL) - 1, cx1 = Math.floor(x1 / TREE_CELL);
-  const cz0 = Math.floor(z0 / TREE_CELL) - 1, cz1 = Math.floor(z1 / TREE_CELL);
-  for (let cz = cz0; cz <= cz1; cz++) for (let cx = cx0; cx <= cx1; cx++) {
-    const ts = S.seed ^ TREE_SALT; // hash3 del contrato: float [0,1) sin estado; el 2º eje (y) distingue cada decisión de la celda
-    const x = cx * TREE_CELL + Math.floor(hash3(ts, cx, 1, cz) * TREE_JITTER);
-    const z = cz * TREE_CELL + Math.floor(hash3(ts, cx, 2, cz) * TREE_JITTER);
-    if (x < x0 || x > x1 || z < z0 || z > z1) continue;
-    const i = x - g.minX, j = z - g.minZ;
-    const biome = g.biome[i + j * g.w];
-    const dens = biome === BIOME.FOREST ? 0.8 : biome === BIOME.PLAINS ? 0.06 : 0;
-    if (dens === 0 || hash3(ts, cx, 3, cz) >= dens) continue;
-    if (!treeColumnOk(S, g, i, j)) continue;
-    const ground = g.h[i + j * g.w];
-    const trunk = 4 + Math.floor(hash3(ts, cx, 4, cz) * 3);   // 4..6
-    if (ground + trunk + 1 >= CHUNK_Y) continue;
-    out.push({ x, z, ground, trunk });
+  for (let cz = Math.floor(z0 / TREE_CELL); cz <= Math.floor(z1 / TREE_CELL); cz++) for (let cx = Math.floor(x0 / TREE_CELL); cx <= Math.floor(x1 / TREE_CELL); cx++) {
+    const c = treeCell(S, cx, cz);
+    if (!c || c.x < x0 || c.x > x1 || c.z < z0 || c.z > z1) continue;
+    if (treeAccepted(S, c)) out.push(c);
   }
   return out;
 }
 
-/** Bloques de un árbol: lista de [x,y,z,id]. Puro. Copa dentro de |dx|,|dz| <= 2. */
+const dirs8 = [[1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1, -1]];
+const clampP = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
+
+/** Bloques de un árbol: lista de [x,y,z,id] (y absoluta). Puro; memoizado en el candidato. Sin hojas huérfanas (se podan por conectividad). */
 export function treeBlocks(seed, tree) {
-  const s = normalizeSeed(seed);
-  const { x, z, ground, trunk } = tree;
-  const res = [];
-  for (let y = 1; y <= trunk; y++) res.push([x, ground + y, z, B.LOG]);
-  const layers = [[trunk - 2, 2], [trunk - 1, 2], [trunk, 1], [trunk + 1, 1]];
-  for (const [ly, r] of layers) {
-    for (let dz = -r; dz <= r; dz++) for (let dx = -r; dx <= r; dx++) {
-      if (dx === 0 && dz === 0 && ly <= trunk) continue;     // tronco
-      const corner = Math.abs(dx) === r && Math.abs(dz) === r;
-      if (corner && (r === 1 ? ly === trunk + 1 : hash3(s ^ TREE_SALT, x + dx, ground + ly, z + dz) < 0.5)) continue;
-      res.push([x + dx, ground + ly, z + dz, B.LEAVES]);
+  if (tree._blocks) return tree._blocks;
+  const s = normalizeSeed(seed) ^ TREE_SALT;
+  const { x, z, ground, species, height: H } = tree;
+  const W = 17, OFF = 8, YOFF = 4;                                       // caja local: dx,dz en [-8,8]; dy en [-4, ...]
+  const kOf = (dx, dy, dz) => (dx + OFF) + W * ((dz + OFF) + W * (dy + YOFF));
+  const logs = new Map(), leaves = new Map();                            // key -> [dx,dy,dz]
+  const putLog = (dx, dy, dz) => { logs.set(kOf(dx, dy, dz), [dx, dy, dz]); leaves.delete(kOf(dx, dy, dz)); };
+  const putLeaf = (dx, dy, dz) => { const k = kOf(dx, dy, dz); if (!logs.has(k)) leaves.set(k, [dx, dy, dz]); };
+  const rnd = (a, b, c) => hash3(s, x * 31 + a, ground + b, z * 17 + c);   // ruido por bloque de este árbol
+  const rndT = (n) => hash3(s, x, n, z);                                    // decisiones por árbol
+  /** Elipsoide de hojas con borde ruidoso. */
+  const blob = (cx, cy, cz, rx, ry, rz, tag) => {
+    for (let dz = Math.ceil(-rz); dz <= rz; dz++) for (let dy = Math.ceil(-ry); dy <= ry; dy++) for (let dx = Math.ceil(-rx); dx <= rx; dx++) {
+      const d = (dx / rx) ** 2 + (dy / ry) ** 2 + (dz / rz) ** 2;
+      const p = clampP((1.12 - d) / 0.5);
+      if (p >= 1 || rnd(cx + dx + tag * 101, cy + dy, cz + dz) < p) putLeaf(cx + dx, cy + dy, cz + dz);
+    }
+  };
+  const branch = (dirIdx, y0, tipR) => {                                    // rama corta: 3 troncos conectados por caras + copa en la punta
+    const [sx, sz] = dirs8[dirIdx];
+    let tx, tz;
+    putLog(sx, y0, 0 * sz);
+    if (sx !== 0 && sz !== 0) { putLog(sx, y0, sz); tx = sx; tz = sz; }
+    else if (sx !== 0) { putLog(2 * sx, y0, 0); tx = 2 * sx; tz = 0; }
+    else { putLog(0, y0, sz); putLog(0, y0, 2 * sz); tx = 0; tz = 2 * sz; }
+    putLog(tx, y0 + 1, tz);
+    blob(tx, y0 + 1, tz, tipR, tipR * 0.85, tipR, 5 + dirIdx);
+  };
+
+  // base gruesa y fuste
+  const axisTop = species === SPECIES.PINE ? H - 1 : null;
+  let trunkTop;
+  if (species === SPECIES.OAK) {
+    const ry = Math.max(3, Math.round(H * 0.3)), cy = H - ry, rx = 3 + (rndT(10) < 0.5 ? 1 : 0), rz = 3 + (rndT(11) < 0.5 ? 1 : 0);
+    trunkTop = cy - 1;
+    blob(0, cy, 0, rx, ry, rz, 1);
+    const nb = 2 + (rndT(12) < 0.5 ? 1 : 0), d0 = Math.floor(rndT(13) * 8);
+    for (let i = 0; i < nb; i++) branch((d0 + i * 3 + (i > 0 && rndT(14 + i) < 0.5 ? 1 : 0)) % 8, cy - 3 + (rndT(20 + i) < 0.5 ? 1 : 0), 2);
+  } else if (species === SPECIES.BIRCH) {
+    const ry = H >= 12 ? 4 : 3, cy = H - ry;
+    trunkTop = cy;
+    blob(0, cy, 0, 2.5, ry, 2.5, 2);
+    if (rndT(12) < 0.5) branch(Math.floor(rndT(13) * 8), Math.max(2, cy - 2), 1.3);
+  } else {                                                                   // pino: copa cónica en pisos
+    trunkTop = axisTop;
+    const yb = Math.floor(H * 0.3) + 1;
+    for (let dy = yb; dy <= H; dy++) {
+      const t = (H - dy) / (H - yb);
+      let r = Math.floor(t * 3.4 + 0.5);
+      if ((dy - yb) % 2 === 1) r -= 1;                                       // pisos: capas alternas más estrechas
+      if (dy === H) continue;                                                // la punta es solo el bloque del eje
+      if (r < 1) r = 1;
+      for (let dz = -r; dz <= r; dz++) for (let dx = -r; dx <= r; dx++) {
+        if (dx === 0 && dz === 0) continue;
+        const d2 = dx * dx + dz * dz;
+        if (d2 > r * r + 1) continue;
+        if (d2 > r * r - 1 && rnd(dx, dy, dz) < 0.35) continue;              // borde irregular
+        putLeaf(dx, dy, dz);
+      }
     }
   }
+  for (let dy = 1; dy <= trunkTop; dy++) putLog(0, dy, 0);
+  for (let dy = trunkTop + 1; dy <= H; dy++) leaves.set(kOf(0, dy, 0), [0, dy, 0]);   // la punta siempre llega a la altura H
+  logs.forEach((_, k) => leaves.delete(k));
+  if (tree.thick) {                                                          // base 2x2: cada columna desde su propio suelo hasta ground+baseH
+    const top = Math.max(...tree.cols.map((c) => c[2])) + tree.baseH;       // si el suelo vecino está más alto, la base sube con él
+    for (const [ox, oz, h2] of tree.cols) for (let y = h2 + 1; y <= top; y++) putLog(ox, y - ground, oz);
+  }
+  tree.trunk = trunkTop;
+
+  // poda por conectividad: solo sobreviven hojas alcanzables desde un tronco pasando por hojas (caras)
+  const seen = new Set(), stack = [];
+  const nbrs = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
+  for (const l of logs.values()) stack.push(l);
+  while (stack.length) {
+    const [a, b, c] = stack.pop();
+    for (const [ex, ey, ez] of nbrs) {
+      const k = kOf(a + ex, b + ey, c + ez);
+      if (seen.has(k) || !leaves.has(k)) continue;
+      seen.add(k); stack.push(leaves.get(k));
+    }
+  }
+  const res = [];
+  for (const [dx, dy, dz] of logs.values()) res.push([x + dx, ground + dy, z + dz, B.LOG]);
+  for (const [k, [dx, dy, dz]] of leaves) if (seen.has(k)) res.push([x + dx, ground + dy, z + dz, B.LEAVES]);
+  tree._blocks = res;
   return res;
 }
 
 /**
  * Árboles cuyo tronco cae en el rectángulo [x0,x1]x[z0,z1]. Útil para tests y para IA/fauna.
- * Devuelve [{x,z,ground,trunk}] ordenados por (z,x).
+ * Devuelve [{x,z,ground,species,height,trunk,r,thick,baseH,cols,biome}] ordenados por (z,x); `height` = bloques entre el suelo y el tope.
  */
 export function listTrees(seed, x0, z0, x1, z1) {
   const S = getSampler(seed);
-  const g = buildGrid(S, x0 - 1, z0 - 1, x1 - x0 + 3, z1 - z0 + 3);
-  return treesInRect(S, g, x0, z0, x1, z1).sort((a, b) => a.z - b.z || a.x - b.x);
+  const out = treesInRect(S, x0, z0, x1, z1).sort((a, b) => a.z - b.z || a.x - b.x);
+  for (const t of out) treeBlocks(seed, t);                                   // fija t.trunk
+  return out;
 }
 
 // ---------- chunk ----------
@@ -236,8 +372,8 @@ export function generateChunk(seed, cx, cz) {
     }
   }
 
-  // 4) árboles: troncos en [x0-2, x0+17] (copa r=2); solo se escribe dentro del chunk y solo sobre aire.
-  const trees = treesInRect(S, g, x0 - TREE_CROWN_RADIUS, z0 - TREE_CROWN_RADIUS, x0 + 15 + TREE_CROWN_RADIUS, z0 + 15 + TREE_CROWN_RADIUS);
+  // 4) árboles: troncos a TREE_MARGIN del chunk; solo se escribe dentro del chunk y solo sobre aire.
+  const trees = treesInRect(S, x0 - TREE_MARGIN, z0 - TREE_MARGIN, x0 + 15 + TREE_MARGIN, z0 + 15 + TREE_MARGIN);
   for (const tree of trees) {
     for (const [bx, by, bz, id] of treeBlocks(S.seed, tree)) {
       const lx = bx - x0, lz = bz - z0;

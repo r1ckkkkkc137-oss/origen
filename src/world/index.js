@@ -1,7 +1,7 @@
 // Punto de entrada de src/world. Uso:  import { createWorld } from './world/index.js';  const world = createWorld(seed);
 import { World } from './world.js';
 export { World } from './world.js';
-export { generateChunk, columnInfo, listTrees, BIOME, BIOME_NAMES } from './generator.js';
+export { generateChunk, columnInfo, listTrees, treeBlocks, BIOME, BIOME_NAMES, SPECIES, SPECIES_NAMES, TREE_HEIGHT } from './generator.js';
 export { meshChunk } from './mesher.js';
 export { moveAndCollide, createBody, raycastBlocks, raycastMeters, collides, DEFAULTS as PHYSICS_DEFAULTS } from './physics.js';
 export { B, BLOCKS, LAYER } from './blocks.js';
