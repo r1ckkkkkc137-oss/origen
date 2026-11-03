@@ -1,0 +1,1023 @@
+{
+ "source": "KAGE f40b47d",
+ "styles": [
+  "boxer",
+  "muayThai",
+  "kickboxer",
+  "wrestler",
+  "bjj",
+  "brawler",
+  "counterpuncher",
+  "allRounder"
+ ],
+ "cases": [
+  {
+   "a": "boxer",
+   "b": "muayThai",
+   "level": 10,
+   "seed": 1000,
+   "digest": {
+    "winner": "b",
+    "method": "TKO",
+    "detail": "accumulated",
+    "round": 3,
+    "endTick": 13807,
+    "events": 411,
+    "ticks": 13928,
+    "eventsHash": "b7a47449f28159570833e9b1ddf222f7c689a79a",
+    "ticksHash": "4d775b9028fb95a867e3d1463ccdda17b3c2bda0",
+    "fullHash": "dbe5f2ece8d9ddbce38ff8e8554d76feaff0efaa"
+   }
+  },
+  {
+   "a": "boxer",
+   "b": "muayThai",
+   "level": 50,
+   "seed": 1001,
+   "digest": {
+    "winner": "a",
+    "method": "KO",
+    "detail": "flash",
+    "round": 3,
+    "endTick": 16017,
+    "events": 542,
+    "ticks": 16138,
+    "eventsHash": "7f4e2b03a095688d47bff53ee573ff2149336193",
+    "ticksHash": "6e174cf2fe4babf6fd548a90f5ad33c93b25636b",
+    "fullHash": "728f11771c41924d07722542883409e4acd1825d"
+   }
+  },
+  {
+   "a": "boxer",
+   "b": "kickboxer",
+   "level": 50,
+   "seed": 1002,
+   "digest": {
+    "winner": "b",
+    "method": "TKO",
+    "detail": "accumulated",
+    "round": 3,
+    "endTick": 14671,
+    "events": 562,
+    "ticks": 14792,
+    "eventsHash": "c450be5617c8faa94b67936601ffb4d279bdfe17",
+    "ticksHash": "bc907b7fe2fe5d9461b96667873988acb11fe789",
+    "fullHash": "6acc10a9e3968bf0151170553bfae8e76d23a93e"
+   }
+  },
+  {
+   "a": "boxer",
+   "b": "kickboxer",
+   "level": 85,
+   "seed": 1003,
+   "digest": {
+    "winner": "b",
+    "method": "TKO",
+    "detail": "unanswered",
+    "round": 2,
+    "endTick": 9433,
+    "events": 298,
+    "ticks": 9554,
+    "eventsHash": "82f001f44e9f018f9e5882be6cce01e09d2d4ad8",
+    "ticksHash": "93f97045b792c02a49997143c3943775cf4ca269",
+    "fullHash": "cc25cfed61564ac841fb7865d927a6cbd01fc7c9"
+   }
+  },
+  {
+   "a": "boxer",
+   "b": "wrestler",
+   "level": 85,
+   "seed": 1004,
+   "digest": {
+    "winner": "a",
+    "method": "DEC",
+    "detail": "SD",
+    "round": 3,
+    "endTick": 16559,
+    "events": 592,
+    "ticks": 16680,
+    "eventsHash": "1c599c92feec8bc333fc2c7fc75a8fe3f28e691d",
+    "ticksHash": "6f8eeb053e27be71217adee98477f2e63d757a18",
+    "fullHash": "84ed457dceed136a57fa46c8984ead6d4f4bceb2"
+   }
+  },
+  {
+   "a": "boxer",
+   "b": "wrestler",
+   "level": 10,
+   "seed": 1005,
+   "digest": {
+    "winner": "b",
+    "method": "KO",
+    "detail": "flash",
+    "round": 3,
+    "endTick": 12400,
+    "events": 392,
+    "ticks": 12521,
+    "eventsHash": "c2b2df9c63d83e0803f84c72d678526d45ddb5d1",
+    "ticksHash": "9a806f02a2079cfd21236679971b366853c026d2",
+    "fullHash": "afc11bbae59db41cb836df0afcda1b326f74e28b"
+   }
+  },
+  {
+   "a": "boxer",
+   "b": "bjj",
+   "level": 10,
+   "seed": 1006,
+   "digest": {
+    "winner": "b",
+    "method": "TKO",
+    "detail": "accumulated",
+    "round": 3,
+    "endTick": 15311,
+    "events": 558,
+    "ticks": 15432,
+    "eventsHash": "088c5c4b3e2ff32497d150ce9ddc0b8f9a04aeaa",
+    "ticksHash": "ab445e85311fda9b0f306628bdc9cff9e8b1c61b",
+    "fullHash": "a06a791d015a4ebb771a4f28db663b37553a34fb"
+   }
+  },
+  {
+   "a": "boxer",
+   "b": "bjj",
+   "level": 50,
+   "seed": 1007,
+   "digest": {
+    "winner": "b",
+    "method": "DEC",
+    "detail": "UD",
+    "round": 3,
+    "endTick": 16559,
+    "events": 716,
+    "ticks": 16680,
+    "eventsHash": "5082bb19480b3ad64d505b705942def3f195fa4a",
+    "ticksHash": "698d86567a44c2b5e1d6575e720b523003b45a21",
+    "fullHash": "c6242605f7f29c1fc3c793b71b902dcee443f7ee"
+   }
+  },
+  {
+   "a": "boxer",
+   "b": "brawler",
+   "level": 50,
+   "seed": 1008,
+   "digest": {
+    "winner": "b",
+    "method": "TKO",
+    "detail": "accumulated",
+    "round": 3,
+    "endTick": 11633,
+    "events": 438,
+    "ticks": 11754,
+    "eventsHash": "f1b2b06de1e7ea738cc8940ba7b5795ff922a085",
+    "ticksHash": "03dc74d8c17e6c17b8edc8e958bcf28e10123fbe",
+    "fullHash": "26881752dd4f025753f91f575448b03cd3073765"
+   }
+  },
+  {
+   "a": "boxer",
+   "b": "brawler",
+   "level": 85,
+   "seed": 1009,
+   "digest": {
+    "winner": "b",
+    "method": "TKO",
+    "detail": "accumulated",
+    "round": 3,
+    "endTick": 12903,
+    "events": 505,
+    "ticks": 13024,
+    "eventsHash": "a6e1c7e857928c816ba98e96ed84fc98ace2ca14",
+    "ticksHash": "c98034f8ecf2b636626fb6cccd6b74d39e6a57a4",
+    "fullHash": "368acf02c29ddfa0fc6b78586d84958748ef4b8c"
+   }
+  },
+  {
+   "a": "boxer",
+   "b": "counterpuncher",
+   "level": 85,
+   "seed": 1010,
+   "digest": {
+    "winner": "b",
+    "method": "KO",
+    "detail": "flash",
+    "round": 2,
+    "endTick": 6820,
+    "events": 161,
+    "ticks": 6941,
+    "eventsHash": "294d59cc9b6a56b9a5e99b436f62ce1cda922765",
+    "ticksHash": "e4a3b4f7c5859b6dc6e15c8f69f97040e62fbb79",
+    "fullHash": "f616a4741ced49d0dc5750d51c9364c5eb5ad280"
+   }
+  },
+  {
+   "a": "boxer",
+   "b": "counterpuncher",
+   "level": 10,
+   "seed": 1011,
+   "digest": {
+    "winner": "b",
+    "method": "TKO",
+    "detail": "unanswered",
+    "round": 3,
+    "endTick": 11586,
+    "events": 305,
+    "ticks": 11707,
+    "eventsHash": "46dd8945b98f42d354a134b39d9a67d0aa1c458c",
+    "ticksHash": "9dbd74fdb5a7841d67ada637c801eb69e6b87b3c",
+    "fullHash": "cd2275d4bd3e5df388ccca013eedea39d9783ff8"
+   }
+  },
+  {
+   "a": "boxer",
+   "b": "allRounder",
+   "level": 10,
+   "seed": 1012,
+   "digest": {
+    "winner": "a",
+    "method": "TKO",
+    "detail": "accumulated",
+    "round": 3,
+    "endTick": 12473,
+    "events": 429,
+    "ticks": 12594,
+    "eventsHash": "44bff918f47e908b4c86131dd2176b81b72c2f9c",
+    "ticksHash": "f2ab64bba0109eefdeb884c5b6f5992468619241",
+    "fullHash": "69bf21e410d097d4fca5cc5e37701ac65a0dab77"
+   }
+  },
+  {
+   "a": "boxer",
+   "b": "allRounder",
+   "level": 50,
+   "seed": 1013,
+   "digest": {
+    "winner": "b",
+    "method": "DEC",
+    "detail": "MD",
+    "round": 3,
+    "endTick": 16559,
+    "events": 605,
+    "ticks": 16680,
+    "eventsHash": "c076cbb0890c62ca46def66163cf57036cd528a7",
+    "ticksHash": "af8f7dbeaf2a8c23edd05ca0ee526871e2443cab",
+    "fullHash": "c242f62b3bb0f6baa29a39652cd64ca330761498"
+   }
+  },
+  {
+   "a": "muayThai",
+   "b": "kickboxer",
+   "level": 50,
+   "seed": 1014,
+   "digest": {
+    "winner": "b",
+    "method": "TKO",
+    "detail": "unanswered",
+    "round": 3,
+    "endTick": 12364,
+    "events": 413,
+    "ticks": 12485,
+    "eventsHash": "113c62f90a32007b94193b79132150c3ad12ffba",
+    "ticksHash": "f29b163e5892f829df2a84491358ee1fd07b7fe1",
+    "fullHash": "10b0737d8ae28edef5a26268d7074c4d63fdde17"
+   }
+  },
+  {
+   "a": "muayThai",
+   "b": "kickboxer",
+   "level": 85,
+   "seed": 1015,
+   "digest": {
+    "winner": "a",
+    "method": "DEC",
+    "detail": "UD",
+    "round": 3,
+    "endTick": 16559,
+    "events": 591,
+    "ticks": 16680,
+    "eventsHash": "061deb39a0c029758364cb3ce39ee91313707338",
+    "ticksHash": "91284c21f9c1c196a69742b2b2cea48e291042f2",
+    "fullHash": "bbc410850008585b2e8ddf005f5b8511566637de"
+   }
+  },
+  {
+   "a": "muayThai",
+   "b": "wrestler",
+   "level": 85,
+   "seed": 1016,
+   "digest": {
+    "winner": "a",
+    "method": "TKO",
+    "detail": "doctor",
+    "round": 3,
+    "endTick": 14665,
+    "events": 529,
+    "ticks": 14786,
+    "eventsHash": "1d0393603b697bb7c948cf35a706a7cca6f0ab6d",
+    "ticksHash": "24ac1be13f9acb2c564e9dbaa4090ad566d1907f",
+    "fullHash": "f35af45e8a71016e960c9f1ea4ebc48f1cd14cdf"
+   }
+  },
+  {
+   "a": "muayThai",
+   "b": "wrestler",
+   "level": 10,
+   "seed": 1017,
+   "digest": {
+    "winner": "b",
+    "method": "KO",
+    "detail": "flash",
+    "round": 3,
+    "endTick": 15195,
+    "events": 579,
+    "ticks": 15316,
+    "eventsHash": "c2e997ac994ddc4a7dc168cfdb1fd7e04be42fbb",
+    "ticksHash": "e3d1cd808b90c1b3bc9dce56c93a431c5f692a11",
+    "fullHash": "41c13072b1fad2634a2d8c4d82997275c3b516a3"
+   }
+  },
+  {
+   "a": "muayThai",
+   "b": "bjj",
+   "level": 10,
+   "seed": 1018,
+   "digest": {
+    "winner": "a",
+    "method": "DEC",
+    "detail": "SD",
+    "round": 3,
+    "endTick": 16559,
+    "events": 610,
+    "ticks": 16680,
+    "eventsHash": "db4f7fa5e93a90ed77a35e9523e329ff2aa259e5",
+    "ticksHash": "06bfe424736ecd4e585f407e2a30bb952211654c",
+    "fullHash": "02de699e7496cb63d0835eaafa55e85d6e3f7b33"
+   }
+  },
+  {
+   "a": "muayThai",
+   "b": "bjj",
+   "level": 50,
+   "seed": 1019,
+   "digest": {
+    "winner": "a",
+    "method": "TKO",
+    "detail": "accumulated",
+    "round": 3,
+    "endTick": 15516,
+    "events": 557,
+    "ticks": 15637,
+    "eventsHash": "a32fc58fa423121d1894d18d353d6d5f5d58c964",
+    "ticksHash": "e1b54a04f376ac25bd5ae6cd7e2b68c1660ec7d6",
+    "fullHash": "46760550bf972b39510c92d928294bbab2b3a598"
+   }
+  },
+  {
+   "a": "muayThai",
+   "b": "brawler",
+   "level": 50,
+   "seed": 1020,
+   "digest": {
+    "winner": "a",
+    "method": "TKO",
+    "detail": "accumulated",
+    "round": 3,
+    "endTick": 13434,
+    "events": 569,
+    "ticks": 13555,
+    "eventsHash": "27ea67b518f3e437e020358f014a008c5d820844",
+    "ticksHash": "27449c8ccd4c472ca8b6fa939a3589973829b86c",
+    "fullHash": "4d578da2b46a227f4c8da8763f98c6ff00619715"
+   }
+  },
+  {
+   "a": "muayThai",
+   "b": "brawler",
+   "level": 85,
+   "seed": 1021,
+   "digest": {
+    "winner": "a",
+    "method": "TKO",
+    "detail": "accumulated",
+    "round": 3,
+    "endTick": 15161,
+    "events": 669,
+    "ticks": 15282,
+    "eventsHash": "a1d480fbecf39038f02824b64d05403f65fdc447",
+    "ticksHash": "44a8bc115187c69b639fca733d75463fd0e2df5e",
+    "fullHash": "5215f7cffc484de12432c3ddce6f5705f2568885"
+   }
+  },
+  {
+   "a": "muayThai",
+   "b": "counterpuncher",
+   "level": 85,
+   "seed": 1022,
+   "digest": {
+    "winner": "a",
+    "method": "DEC",
+    "detail": "UD",
+    "round": 3,
+    "endTick": 16559,
+    "events": 542,
+    "ticks": 16680,
+    "eventsHash": "bec147b1e6941525a3fb7c86c75cd2b6d3c265ad",
+    "ticksHash": "14d0798cbc9950c530fb28e5f39fcef7562f29d6",
+    "fullHash": "f821472ae215f39bb739a77a7018adf2c21d4cd1"
+   }
+  },
+  {
+   "a": "muayThai",
+   "b": "counterpuncher",
+   "level": 10,
+   "seed": 1023,
+   "digest": {
+    "winner": "b",
+    "method": "TKO",
+    "detail": "accumulated",
+    "round": 3,
+    "endTick": 15253,
+    "events": 428,
+    "ticks": 15374,
+    "eventsHash": "af01c549dbd050d4f1710ede4963b9eb2f1d0908",
+    "ticksHash": "fd9b80159ff0aa34fb9796a639218411e56515ba",
+    "fullHash": "babf1d3e65f25f1b9e1ac20a98d46cf5b097431a"
+   }
+  },
+  {
+   "a": "muayThai",
+   "b": "allRounder",
+   "level": 10,
+   "seed": 1024,
+   "digest": {
+    "winner": "b",
+    "method": "DEC",
+    "detail": "UD",
+    "round": 3,
+    "endTick": 16559,
+    "events": 574,
+    "ticks": 16680,
+    "eventsHash": "9792bd791448c8af505523961790b7158266bb09",
+    "ticksHash": "c57d0eed3f92af0adf7f0f4694f1066c3a14cc06",
+    "fullHash": "b3e6c7e1773b3db6efb31549153247296604c35e"
+   }
+  },
+  {
+   "a": "muayThai",
+   "b": "allRounder",
+   "level": 50,
+   "seed": 1025,
+   "digest": {
+    "winner": "a",
+    "method": "DEC",
+    "detail": "UD",
+    "round": 3,
+    "endTick": 16559,
+    "events": 526,
+    "ticks": 16680,
+    "eventsHash": "b2591be2220c880d90923efada8030993e44a30e",
+    "ticksHash": "7dfe9b80220e6df020e9f412b4d062c6f2222b75",
+    "fullHash": "6e274ebf9a24757b9ac33e08af469b4c89a0685b"
+   }
+  },
+  {
+   "a": "kickboxer",
+   "b": "wrestler",
+   "level": 50,
+   "seed": 1026,
+   "digest": {
+    "winner": "b",
+    "method": "DEC",
+    "detail": "UD",
+    "round": 3,
+    "endTick": 16559,
+    "events": 594,
+    "ticks": 16680,
+    "eventsHash": "c454d6943f11ac426f7df6f8e7f0dabbd4876fc7",
+    "ticksHash": "f283050c274d4bf0b6c13e721ad3851d12bd6d42",
+    "fullHash": "be8d4d19babb4ac91aa223a1ce6132ed33c179b8"
+   }
+  },
+  {
+   "a": "kickboxer",
+   "b": "wrestler",
+   "level": 85,
+   "seed": 1027,
+   "digest": {
+    "winner": "a",
+    "method": "DEC",
+    "detail": "UD",
+    "round": 3,
+    "endTick": 16559,
+    "events": 596,
+    "ticks": 16680,
+    "eventsHash": "e2685d30e53de47ed203e6b7fe67b22fd730c7f7",
+    "ticksHash": "0e090a3f79e9cdb8a1fbbf1022b28e461ac01c3f",
+    "fullHash": "78469341e2b4d7e01d43624e5b1687156e1eb584"
+   }
+  },
+  {
+   "a": "kickboxer",
+   "b": "bjj",
+   "level": 85,
+   "seed": 1028,
+   "digest": {
+    "winner": "a",
+    "method": "DEC",
+    "detail": "UD",
+    "round": 3,
+    "endTick": 16559,
+    "events": 629,
+    "ticks": 16680,
+    "eventsHash": "fe0f9f2a0e739bec226e906a85d33a29e7b6e846",
+    "ticksHash": "fcec6834646a6aaa485915d1bc623475ad491009",
+    "fullHash": "a4bead8efe2ae2f21bad4475300fc36f7bdb49c8"
+   }
+  },
+  {
+   "a": "kickboxer",
+   "b": "bjj",
+   "level": 10,
+   "seed": 1029,
+   "digest": {
+    "winner": "a",
+    "method": "DEC",
+    "detail": "UD",
+    "round": 3,
+    "endTick": 16559,
+    "events": 622,
+    "ticks": 16680,
+    "eventsHash": "131a24c7aeae3a5cf2b89a90f21f5a08e6f358d7",
+    "ticksHash": "f05549f0f62523dea8d45c98e67e99d0f000f24b",
+    "fullHash": "d8efb5d0e159ffde7e4e8b00a767ee32baf6a4a2"
+   }
+  },
+  {
+   "a": "kickboxer",
+   "b": "brawler",
+   "level": 10,
+   "seed": 1030,
+   "digest": {
+    "winner": "a",
+    "method": "KO",
+    "detail": "flash",
+    "round": 1,
+    "endTick": 3753,
+    "events": 158,
+    "ticks": 3874,
+    "eventsHash": "28dd74aa7367415417c8da3605069711998b09e3",
+    "ticksHash": "5cafe4594f5d24802008a4f61b5fa2f3b2827686",
+    "fullHash": "09a998bc52424f29238ea3a6dda09a08acb61d04"
+   }
+  },
+  {
+   "a": "kickboxer",
+   "b": "brawler",
+   "level": 50,
+   "seed": 1031,
+   "digest": {
+    "winner": "b",
+    "method": "TKO",
+    "detail": "accumulated",
+    "round": 3,
+    "endTick": 13804,
+    "events": 623,
+    "ticks": 13925,
+    "eventsHash": "751fe1df7526137d1d8100361758950b08624cbb",
+    "ticksHash": "c58c5824593a5de418d9d06d353fe824832b903e",
+    "fullHash": "9040d163cc85728437bd8427f5db9af1250b1194"
+   }
+  },
+  {
+   "a": "kickboxer",
+   "b": "counterpuncher",
+   "level": 50,
+   "seed": 1032,
+   "digest": {
+    "winner": "b",
+    "method": "DEC",
+    "detail": "SD",
+    "round": 3,
+    "endTick": 16559,
+    "events": 520,
+    "ticks": 16680,
+    "eventsHash": "fc11cccdd41fd7a611abd1d8a0864ec06a6ed5fa",
+    "ticksHash": "75fecec196decdb882b0e4ea2b2411c8400c8478",
+    "fullHash": "b166fa69794c02e04cfcfc09376ed21ca5f7f2d9"
+   }
+  },
+  {
+   "a": "kickboxer",
+   "b": "counterpuncher",
+   "level": 85,
+   "seed": 1033,
+   "digest": {
+    "winner": "b",
+    "method": "TKO",
+    "detail": "accumulated",
+    "round": 3,
+    "endTick": 13516,
+    "events": 430,
+    "ticks": 13637,
+    "eventsHash": "ee9caf2a97ad3351060d6301760af46605de2c20",
+    "ticksHash": "3efd41d62b5fd16344a08d7e2d6ef2b3f7b8dd8f",
+    "fullHash": "4eb3b8c1314f8701617bc058d6357126d0c514c8"
+   }
+  },
+  {
+   "a": "kickboxer",
+   "b": "allRounder",
+   "level": 85,
+   "seed": 1034,
+   "digest": {
+    "winner": "a",
+    "method": "DEC",
+    "detail": "UD",
+    "round": 3,
+    "endTick": 16559,
+    "events": 595,
+    "ticks": 16680,
+    "eventsHash": "acefc65640e7d59bbeeb3669d436c4209c70718a",
+    "ticksHash": "dc88998de53788ac657a5d894f983dbbe2fe6b0e",
+    "fullHash": "7f9915f4b5b459e1b6455ac4fe46018662df992a"
+   }
+  },
+  {
+   "a": "kickboxer",
+   "b": "allRounder",
+   "level": 10,
+   "seed": 1035,
+   "digest": {
+    "winner": "a",
+    "method": "DEC",
+    "detail": "SD",
+    "round": 3,
+    "endTick": 16559,
+    "events": 617,
+    "ticks": 16680,
+    "eventsHash": "5fcd7baf4f7f411dd16f229129977cf5b219fd4b",
+    "ticksHash": "e00a802f3fbb15e155b8d48cbac3dc2e31118295",
+    "fullHash": "dcf59b36293d2120a706adbd5a1cfbfc66c736a0"
+   }
+  },
+  {
+   "a": "wrestler",
+   "b": "bjj",
+   "level": 10,
+   "seed": 1036,
+   "digest": {
+    "winner": "b",
+    "method": "DEC",
+    "detail": "UD",
+    "round": 3,
+    "endTick": 16559,
+    "events": 633,
+    "ticks": 16680,
+    "eventsHash": "8ca57ab54dc647a9fba76ae4f4c0f87e7aa0eb14",
+    "ticksHash": "879c1371e7ef5ac38fbd53efed4b67273b1c3307",
+    "fullHash": "88ed5e4e9757ce6de210af7d5bdc9177cf9eedc7"
+   }
+  },
+  {
+   "a": "wrestler",
+   "b": "bjj",
+   "level": 50,
+   "seed": 1037,
+   "digest": {
+    "winner": "b",
+    "method": "DEC",
+    "detail": "UD",
+    "round": 3,
+    "endTick": 16559,
+    "events": 608,
+    "ticks": 16680,
+    "eventsHash": "3ceabb6abf31629381f084838f77f02d3eb40ce5",
+    "ticksHash": "7a6ff0d0ae6b4cf9dbe414a3c9b74fb1141fee87",
+    "fullHash": "9dd09b898212413e9ca4fc26429b21f94ca21aee"
+   }
+  },
+  {
+   "a": "wrestler",
+   "b": "brawler",
+   "level": 50,
+   "seed": 1038,
+   "digest": {
+    "winner": "b",
+    "method": "TKO",
+    "detail": "unanswered",
+    "round": 1,
+    "endTick": 4302,
+    "events": 201,
+    "ticks": 4423,
+    "eventsHash": "781c33683d12e3b02da4e68072969a9c0d649433",
+    "ticksHash": "09d946e5d997f8b142cdab91baabc0682b642efd",
+    "fullHash": "6f5a63ad9b87570680afa26c7ca5257a9e678ccd"
+   }
+  },
+  {
+   "a": "wrestler",
+   "b": "brawler",
+   "level": 85,
+   "seed": 1039,
+   "digest": {
+    "winner": "a",
+    "method": "TKO",
+    "detail": "unanswered",
+    "round": 1,
+    "endTick": 1922,
+    "events": 98,
+    "ticks": 2043,
+    "eventsHash": "b92dc51f85245298552a4568ebb5f143441ee6b1",
+    "ticksHash": "611a05fe7734730faf6ba768510bcd70d44ab93a",
+    "fullHash": "bd18014c22a199a64161454eb96c20b9e3f6443d"
+   }
+  },
+  {
+   "a": "wrestler",
+   "b": "counterpuncher",
+   "level": 85,
+   "seed": 1040,
+   "digest": {
+    "winner": "b",
+    "method": "KO",
+    "detail": "flash",
+    "round": 3,
+    "endTick": 12070,
+    "events": 322,
+    "ticks": 12191,
+    "eventsHash": "1f08993df1b89977b93e4adaf25fec438561d819",
+    "ticksHash": "f67e4d663ebc0274c27761c6bf5cead875ff7479",
+    "fullHash": "4fd2b84840c3d67b23fdd6bab92548261697bc37"
+   }
+  },
+  {
+   "a": "wrestler",
+   "b": "counterpuncher",
+   "level": 10,
+   "seed": 1041,
+   "digest": {
+    "winner": "a",
+    "method": "TKO",
+    "detail": "groundAndPound",
+    "round": 2,
+    "endTick": 9498,
+    "events": 357,
+    "ticks": 9619,
+    "eventsHash": "4f74baa9a6e80ed1a801089ed9127e15a133a78d",
+    "ticksHash": "f2be49083777849d4b2d818e1eb8250c25730d06",
+    "fullHash": "f8bcd3c587bfc75aae510eb328f79358def79e0e"
+   }
+  },
+  {
+   "a": "wrestler",
+   "b": "allRounder",
+   "level": 10,
+   "seed": 1042,
+   "digest": {
+    "winner": "b",
+    "method": "TKO",
+    "detail": "accumulated",
+    "round": 3,
+    "endTick": 16539,
+    "events": 607,
+    "ticks": 16660,
+    "eventsHash": "0cf0fe48e62ed92aa1a53da9f0d5a1009d1ef699",
+    "ticksHash": "ef1848ccda1e9095fbf96b6c7eb2f3b6753e7754",
+    "fullHash": "b8c602454892af73655b3af15d3e99d44d448fc6"
+   }
+  },
+  {
+   "a": "wrestler",
+   "b": "allRounder",
+   "level": 50,
+   "seed": 1043,
+   "digest": {
+    "winner": "a",
+    "method": "TKO",
+    "detail": "body",
+    "round": 3,
+    "endTick": 15064,
+    "events": 508,
+    "ticks": 15185,
+    "eventsHash": "bf2e030408d4584b10e1515bc27c298a49fedfad",
+    "ticksHash": "95bc5c4f565afac91b5b29bd977693741b476e49",
+    "fullHash": "6b04a897521f10d980f99de881b0c2a07b84679c"
+   }
+  },
+  {
+   "a": "bjj",
+   "b": "brawler",
+   "level": 50,
+   "seed": 1044,
+   "digest": {
+    "winner": "a",
+    "method": "SUB",
+    "detail": "kimura",
+    "round": 1,
+    "endTick": 2359,
+    "events": 112,
+    "ticks": 2480,
+    "eventsHash": "e819240e617f1ceb0909c78896c562489cd16b38",
+    "ticksHash": "a097452251fa5a93e0a06c8a23f799c265e8ae5e",
+    "fullHash": "b700ee0a9d86743172821d80dab78ba187ba447a"
+   }
+  },
+  {
+   "a": "bjj",
+   "b": "brawler",
+   "level": 85,
+   "seed": 1045,
+   "digest": {
+    "winner": "b",
+    "method": "DEC",
+    "detail": "UD",
+    "round": 3,
+    "endTick": 16559,
+    "events": 685,
+    "ticks": 16680,
+    "eventsHash": "11860ddbb24a7de3f3db22ba189cfe67db11dadc",
+    "ticksHash": "2af7542615734dfc327d60c4f12d0f6dc9e8b0d9",
+    "fullHash": "9d7d808434747a7be0a6119e970e5d247bc91bf5"
+   }
+  },
+  {
+   "a": "bjj",
+   "b": "counterpuncher",
+   "level": 85,
+   "seed": 1046,
+   "digest": {
+    "winner": "a",
+    "method": "SUB",
+    "detail": "armTriangle",
+    "round": 3,
+    "endTick": 14506,
+    "events": 455,
+    "ticks": 14627,
+    "eventsHash": "6d3fcb4ecbfb0b04ef206d11f37397d2d3a7360f",
+    "ticksHash": "085dcab840ae8686281fef5da54670ac18dd0695",
+    "fullHash": "a4219c31225c40dc7e3ac9f5256ed0bbc09b90e0"
+   }
+  },
+  {
+   "a": "bjj",
+   "b": "counterpuncher",
+   "level": 10,
+   "seed": 1047,
+   "digest": {
+    "winner": "b",
+    "method": "DEC",
+    "detail": "UD",
+    "round": 3,
+    "endTick": 16559,
+    "events": 584,
+    "ticks": 16680,
+    "eventsHash": "e1efef1f8f6ec938bfe7aa3120c521060c343d4f",
+    "ticksHash": "313ee3c8e544d8173e57062f47c368f8421b556b",
+    "fullHash": "0637a520f37456d87d49527c025b3f8ac9b88da5"
+   }
+  },
+  {
+   "a": "bjj",
+   "b": "allRounder",
+   "level": 10,
+   "seed": 1048,
+   "digest": {
+    "winner": "b",
+    "method": "DEC",
+    "detail": "UD",
+    "round": 3,
+    "endTick": 16559,
+    "events": 561,
+    "ticks": 16680,
+    "eventsHash": "5da149d7d508cf84d92d854b97786fd4ae3859c6",
+    "ticksHash": "1418f7c3a7420fc434d5e4e05ac67a9873391c66",
+    "fullHash": "9b29588cc207bf4c5d9938ec57a805160fc564bb"
+   }
+  },
+  {
+   "a": "bjj",
+   "b": "allRounder",
+   "level": 50,
+   "seed": 1049,
+   "digest": {
+    "winner": "b",
+    "method": "DEC",
+    "detail": "SD",
+    "round": 3,
+    "endTick": 16559,
+    "events": 551,
+    "ticks": 16680,
+    "eventsHash": "60101fa3f381c78a85e2f708c3b3f307cea97ac5",
+    "ticksHash": "13766d4bec9a5efdda547462dd4a0f3813221765",
+    "fullHash": "7d7ba19b0b42ee71d86d270ddd7dbd2038fec98d"
+   }
+  },
+  {
+   "a": "brawler",
+   "b": "counterpuncher",
+   "level": 50,
+   "seed": 1050,
+   "digest": {
+    "winner": "a",
+    "method": "TKO",
+    "detail": "accumulated",
+    "round": 3,
+    "endTick": 13871,
+    "events": 500,
+    "ticks": 13992,
+    "eventsHash": "ef2652c63f1946a05216d2ad02c74e1d9dd341aa",
+    "ticksHash": "a6dcb1250848adb3cc21a237d6cb5d36755c1817",
+    "fullHash": "90a216164d039c31321dd1046d473bcd41949e85"
+   }
+  },
+  {
+   "a": "brawler",
+   "b": "counterpuncher",
+   "level": 85,
+   "seed": 1051,
+   "digest": {
+    "winner": "a",
+    "method": "TKO",
+    "detail": "unanswered",
+    "round": 2,
+    "endTick": 10410,
+    "events": 339,
+    "ticks": 10531,
+    "eventsHash": "f97f9c4fdd4e673c17dc668cebf015c716fc70e7",
+    "ticksHash": "f8e5e4d1c306e6d71770f056c8cc046a84c9375a",
+    "fullHash": "59146c75124cdc03402c098b84f45956221bc8c3"
+   }
+  },
+  {
+   "a": "brawler",
+   "b": "allRounder",
+   "level": 85,
+   "seed": 1052,
+   "digest": {
+    "winner": "a",
+    "method": "TKO",
+    "detail": "accumulated",
+    "round": 3,
+    "endTick": 16031,
+    "events": 625,
+    "ticks": 16152,
+    "eventsHash": "f2cc420af02f55706a8ce1b6b7ff4befc8cfc445",
+    "ticksHash": "96305381583d61319e63239c207d1ff7af60c3db",
+    "fullHash": "7a83c09f951c9f957b2323692b0971ff70648252"
+   }
+  },
+  {
+   "a": "brawler",
+   "b": "allRounder",
+   "level": 10,
+   "seed": 1053,
+   "digest": {
+    "winner": "b",
+    "method": "SUB",
+    "detail": "kimura",
+    "round": 2,
+    "endTick": 7171,
+    "events": 264,
+    "ticks": 7292,
+    "eventsHash": "5aee21f332e0ac3d8c1d59f835b1b12061cbbaa2",
+    "ticksHash": "daef9ea482f53b83a9bac66491fe676bc2500c08",
+    "fullHash": "0013185bdfb5a17221305dbd26bc02847fa53a50"
+   }
+  },
+  {
+   "a": "counterpuncher",
+   "b": "allRounder",
+   "level": 10,
+   "seed": 1054,
+   "digest": {
+    "winner": "a",
+    "method": "TKO",
+    "detail": "accumulated",
+    "round": 3,
+    "endTick": 12899,
+    "events": 417,
+    "ticks": 13020,
+    "eventsHash": "4cbe919df64b175064a57d78256e9af1213b6991",
+    "ticksHash": "a505a68dcfa46ed2ef90843ffe7852fbbd01acae",
+    "fullHash": "9e7103b12f7d32517cd821e9db8702d2eee59f94"
+   }
+  },
+  {
+   "a": "counterpuncher",
+   "b": "allRounder",
+   "level": 50,
+   "seed": 1055,
+   "digest": {
+    "winner": "b",
+    "method": "KO",
+    "detail": "flash",
+    "round": 1,
+    "endTick": 1067,
+    "events": 30,
+    "ticks": 1188,
+    "eventsHash": "409fa9246f33434e747652dd4df69404c12c6915",
+    "ticksHash": "36971b07fbf5130ffeb0d607d6fc4bad9d65e8c7",
+    "fullHash": "ec8cba3e751eb5c056f8330e16359f1a3525dfca"
+   }
+  }
+ ]
+}
