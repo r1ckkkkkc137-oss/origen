@@ -2,10 +2,10 @@
 //
 // Convención (coordinada con contracts v0.1/v0.2 de Motor; ver README):
 //   - Esqueleto = Skeleton3D del contrato: { bones:string[] (HUMAN_BONES), parent:{hueso:padre|null}, root:{pos:[x,y,z], yaw}, pose:{hueso:[x,y,z]} }
-//     con pose en MUNDO y en unidades de mundo (1 unidad = 1 bloque = BLOCK_M metros).
+//     con root.pos y pose en MUNDO y en METROS (el mundo/CombatEvent.point van en bloques; ver geometry3d.js).
 //   - La pose PROCEDURAL por defecto se define en el marco LOCAL del peleador, en METROS: origen = pelvis proyectada al suelo (root),
-//     +x = adelante (yaw), +y = ARRIBA, +z = lateral derecha. geometry3d.js la lleva a mundo (rota por yaw y divide por BLOCK_M).
-//   - yaw: convención de Three.js (rotation.y): el +x local apunta a (cos yaw, 0, -sin yaw) en (x,y,z) de mundo.
+//     +x = adelante (yaw), +y = ARRIBA, +z = lateral derecha. geometry3d.js la lleva a mundo (rota por heading y suma la raíz).
+//   - yaw: contracts headingDir(yaw) = (cos yaw, 0, -sin yaw) (= rotation.y de Three): hacia donde apunta el +x local.
 //   - Los 16 joints de KAGE existen con el MISMO nombre en HUMAN_BONES; HUMAN_BONES agrega 'chest' (sin joint KAGE): la pose
 //     procedural lo deriva (punto medio spine–neck) y los hurtboxes lo usan como segmento propio.
 import { HUMAN_BONES } from '../shared/contracts.js';
