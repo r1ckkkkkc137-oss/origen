@@ -148,14 +148,15 @@ test('mesher: tiles distintos / capas no se fusionan; transparentes iguales no d
   assert.equal(mdn.water.triangleCount, 10);                      // los vecinos no cambian el agua interior
 });
 
-test('mesher: hojas van a la capa cutout, tronco con tile de corte arriba/abajo y de corteza a los lados', () => {
+test('mesher: hojas van a la capa cutout, tronco cortado con tile de anillos arriba/abajo y de corteza a los lados', () => {
   const c = new Chunk(0, 0);
   for (let x = 0; x < 16; x++) for (let z = 0; z < 16; z++) c.set(x, 0, z, B.GRASS);
-  c.set(3, 1, 3, B.LOG); c.set(3, 2, 3, B.LOG); c.set(3, 3, 3, B.LEAVES);
+  c.set(3, 1, 3, B.LOG_CUT); c.set(3, 2, 3, B.LOG_CUT); c.set(3, 3, 3, B.LEAVES);
   const m = meshChunk(c, null);
   const logTiles = new Set(m.opaque.tiles);
-  assert.ok(logTiles.has(TILE_OF[B.LOG * 6 + 0]) && logTiles.has(TILE_OF[B.LOG * 6 + 2]));
-  assert.notEqual(TILE_OF[B.LOG * 6 + 0], TILE_OF[B.LOG * 6 + 2]);
+  assert.ok(logTiles.has(TILE_OF[B.LOG_CUT * 6 + 0]) && logTiles.has(TILE_OF[B.LOG_CUT * 6 + 2]));
+  assert.notEqual(TILE_OF[B.LOG_CUT * 6 + 0], TILE_OF[B.LOG_CUT * 6 + 2]);
+  assert.equal(TILE_OF[B.LOG * 6 + 2], TILE_OF[B.LOG * 6 + 0]);   // tronco natural: corteza también arriba
   assert.equal(m.cutout.vertexCount / 4, 5); // hoja sobre tronco: 5 caras (la de abajo la oculta... el tronco es opaco)
   assert.equal(m.water.triangleCount, 0);
 });

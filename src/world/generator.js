@@ -3,7 +3,7 @@
 //
 // Capas, en orden: terreno (altura por fbm + clima) -> minerales/grava -> cuevas -> árboles.
 // Árboles: ver la sección «árboles» (candidato por celda + resolución de conflictos local y pura).
-import { B } from './blocks.js';
+import { B, NATURAL_LOG, LEAF_OF } from './blocks.js';
 import { Chunk, CHUNK_Y, SEA_LEVEL } from './chunk.js';
 import { createNoise, smoothstep } from './noise.js';
 import { hash3 } from '../shared/rng.js';
@@ -163,8 +163,8 @@ function computeTreeCell(S, cx, cz) {
   const height = hMin + Math.floor(hash3(ts, cx, 6, cz) * (hMax - hMin + 1));
   if (ground + height > CHUNK_Y - 1) return null;                            // cabe en 64 bloques
   const thick = species !== SPECIES.BIRCH && height >= 13;
-  const baseH = height >= 16 ? 3 : 2;                                         // alto de la base gruesa
-  let cols = [[0, 0, ground]];
+  const baseH = Math.ceil(height / 3);                                        // niveles de base 2x2 COMPLETA: al menos 1/3 de la altura (luego se afina 4→3→2→1 bloques)
+  let cols = [[0, 0, ground]], roots = [];
   if (thick) {
     const sx = hash3(ts, cx, 8, cz) < 0.5 ? -1 : 0, sz = hash3(ts, cx, 9, cz) < 0.5 ? -1 : 0;   // dónde queda el 2x2 respecto al eje
     cols = [[0, 0, ground]];
@@ -174,8 +174,21 @@ function computeTreeCell(S, cx, cz) {
       if (h2 < SEA_LEVEL + 2 || Math.abs(h2 - ground) > 2) return null;
       cols.push([ox, oz, h2]);
     }
+    if (height >= 15) {                                                        // raíces de 1 bloque pegadas al 2x2 (árboles grandes): 2-3 de las 8 celdas del perímetro
+      const per = [];
+      for (const oz of [sz, sz + 1]) { per.push([sx - 1, oz, sx, oz]); per.push([sx + 2, oz, sx + 1, oz]); }
+      for (const ox of [sx, sx + 1]) { per.push([ox, sz - 1, ox, sz]); per.push([ox, sz + 2, ox, sz + 1]); }
+      const order = per.map((p, i) => [hash3(ts, cx, 20 + i, cz), p]).sort((a, b) => a[0] - b[0]);
+      const want = 2 + (hash3(ts, cx, 19, cz) < 0.5 ? 1 : 0);
+      for (const [, [rx, rz, tx, tz]] of order) {
+        if (roots.length >= want) break;
+        const hr = colInfo(S, x + rx, z + rz), ht = cols.find((c) => c[0] === tx && c[1] === tz)[2];
+        if (hr < SEA_LEVEL + 2 || hr < ht || hr > ht + 1 || isMouth(S, x + rx, z + rz, hr)) continue;     // sobre suelo sólido, pegada a un tronco al mismo nivel
+        roots.push([rx, rz, hr]);
+      }
+    }
   }
-  return { cx, cz, x, z, ground, species, height, r: TREE_REACH[species], thick, baseH, cols, prio: hash3(ts, cx, 5, cz), biome, trunk: 0, _blocks: null, _ok: undefined };
+  return { cx, cz, x, z, ground, species, height, r: TREE_REACH[species], thick, baseH, cols, roots, prio: hash3(ts, cx, 5, cz), biome, trunk: 0, _blocks: null, _ok: undefined };
 }
 
 /** ¿El candidato sobrevive a los vecinos de mayor prioridad (a distancia de conflicto)? */
@@ -273,9 +286,15 @@ export function treeBlocks(seed, tree) {
   for (let dy = 1; dy <= trunkTop; dy++) putLog(0, dy, 0);
   for (let dy = trunkTop + 1; dy <= H; dy++) leaves.set(kOf(0, dy, 0), [0, dy, 0]);   // la punta siempre llega a la altura H
   logs.forEach((_, k) => leaves.delete(k));
-  if (tree.thick) {                                                          // base 2x2: cada columna desde su propio suelo hasta ground+baseH
-    const top = Math.max(...tree.cols.map((c) => c[2])) + tree.baseH;       // si el suelo vecino está más alto, la base sube con él
+  if (tree.thick) {                                                          // base 2x2: cada columna desde su propio suelo hasta `top`
+    const top = Math.max(...tree.cols.map((c) => c[2])) + tree.baseH;       // 2x2 completa ≥ 1/3 de la altura; si el suelo vecino está más alto, la base sube con él
     for (const [ox, oz, h2] of tree.cols) for (let y = h2 + 1; y <= top; y++) putLog(ox, y - ground, oz);
+    // afinado 4→3→2→1: nivel top+1 sin la columna diagonal al eje; nivel top+2 solo el eje + un vecino ortogonal (elegido por hash)
+    const diag = tree.cols.find((c) => c[0] !== 0 && c[1] !== 0), orth = tree.cols.filter((c) => c !== diag && !(c[0] === 0 && c[1] === 0));
+    const keep = orth[rndT(30) < 0.5 ? 0 : 1];
+    for (const [ox, oz] of orth) if (top + 1 - ground <= trunkTop) putLog(ox, top + 1 - ground, oz);
+    if (top + 2 - ground <= trunkTop) putLog(keep[0], top + 2 - ground, keep[1]);
+    for (const [rx, rz, hr] of tree.roots) putLog(rx, hr + 1 - ground, rz);   // raíces: 1 bloque sobre el suelo, cara a cara con el tronco
   }
   tree.trunk = trunkTop;
 
@@ -292,8 +311,9 @@ export function treeBlocks(seed, tree) {
     }
   }
   const res = [];
-  for (const [dx, dy, dz] of logs.values()) res.push([x + dx, ground + dy, z + dz, B.LOG]);
-  for (const [k, [dx, dy, dz]] of leaves) if (seen.has(k)) res.push([x + dx, ground + dy, z + dz, B.LEAVES]);
+  const logId = NATURAL_LOG[species], leafId = LEAF_OF[species];
+  for (const [dx, dy, dz] of logs.values()) res.push([x + dx, ground + dy, z + dz, logId]);
+  for (const [k, [dx, dy, dz]] of leaves) if (seen.has(k)) res.push([x + dx, ground + dy, z + dz, leafId]);
   tree._blocks = res;
   return res;
 }

@@ -76,7 +76,9 @@ test('threeAdapter: buildTileMap usa sustitutos para tiles que el atlas no tiene
   const { buildTileMap } = await import('../src/world/threeAdapter.js');
   const arte = ['grass_top', 'grass_side', 'dirt', 'stone', 'log_side', 'log_top', 'planks', 'leaves'];
   const { map, missing } = buildTileMap(arte);
-  assert.deepEqual(missing, ['sand', 'snow', 'gravel', 'coal_ore', 'iron_ore', 'water']);
+  assert.deepEqual(missing, ['sand', 'snow', 'gravel', 'coal_ore', 'iron_ore', 'water', 'pine_log_side', 'pine_log_top', 'pine_leaves', 'birch_log_side', 'birch_log_top', 'birch_leaves']);
+  const L = (n) => arte.indexOf(n);
+  for (const [n, f] of [['pine_log_side', 'log_side'], ['pine_log_top', 'log_top'], ['pine_leaves', 'leaves'], ['birch_log_side', 'log_side'], ['birch_log_top', 'log_top'], ['birch_leaves', 'leaves']]) assert.equal(map[TILE_NAMES.indexOf(n)], L(f), `${n} debe caer a ${f}`);
   for (let i = 0; i < 8; i++) assert.equal(map[i], i);
   for (let i = 8; i < TILE_NAMES.length; i++) assert.ok(map[i] < 8);
   const full = buildTileMap(TILE_NAMES); assert.deepEqual(full.missing, []); assert.deepEqual([...full.map], TILE_NAMES.map((_, i) => i));
@@ -97,7 +99,7 @@ test('threeAdapter: createWorldView carga, malla por presupuesto, descarga y lib
   const scene = new Obj(), world = new World(1234);
   const view = createWorldView(THREE, scene, world, { texture: {}, canvas: { width: 64, height: 32 } }, { radius: 2, maxMeshPerFrame: 3, tileNames: ['grass_top', 'grass_side', 'dirt', 'stone', 'log_side', 'log_top', 'planks', 'leaves'] });
   assert.deepEqual(view.grid, { cols: 4, rows: 2 });
-  assert.ok(view.missingTiles.length === 6);
+  assert.ok(view.missingTiles.length === 12);
   let frames = 0; while (view.stats().chunks < 13 && frames++ < 100) view.update(4, 4);   // radio 2 en chunks ≈ 13 chunks
   const st = view.stats();
   assert.ok(st.chunks >= 12 && st.chunks <= 13 && st.pendingMesh === 0 && st.triangles > 0, JSON.stringify(st));

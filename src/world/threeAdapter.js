@@ -7,7 +7,8 @@ import { ATLAS_COLS, ATLAS_ROWS, TILE_NAMES } from './tilemap.js';
 import { BLOCK_SIZE_M } from './units.js';
 
 /** Tabla tile-del-mundo -> tile-del-atlas. Los nombres que el atlas aún no tiene caen a un sustituto (FALLBACK) hasta que Arte los agregue. */
-export const TILE_FALLBACK = Object.freeze({ sand: 'dirt', snow: 'stone', gravel: 'stone', coal_ore: 'stone', iron_ore: 'stone', water: 'dirt' });
+export const TILE_FALLBACK = Object.freeze({ sand: 'dirt', snow: 'stone', gravel: 'stone', coal_ore: 'stone', iron_ore: 'stone', water: 'dirt',
+  pine_log_side: 'log_side', pine_log_top: 'log_top', pine_leaves: 'leaves', birch_log_side: 'log_side', birch_log_top: 'log_top', birch_leaves: 'leaves' });
 export function buildTileMap(atlasNames) {
   const map = new Uint8Array(TILE_NAMES.length), missing = [];
   TILE_NAMES.forEach((n, i) => {
