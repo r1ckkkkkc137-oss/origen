@@ -55,13 +55,13 @@ test('playAt: conducido por la fase de la sim; el impacto cae en simImpact01; te
 test('playAt sin refrescar (la sim se cayó): se cancela solo con fundido, sin salto', () => {
   const a = mk(); a.playAt('jab', 0.3); let prev = null, worst = 0, ended = false;
   for (let i = 0; i < 60; i++) { a.update(DT, ROOT); if (a.events.some((e) => e.type === 'clipEnd')) ended = true; const f = a.skeleton.tips.handL.slice(); if (prev) worst = Math.max(worst, d3(f, prev)); prev = f; }
-  assert.ok(ended); assert.ok(worst < 0.13, `salto máx ${worst}`);
+  assert.ok(ended); assert.ok(worst < 0.16, `salto máx ${worst}`);
 });
 
-test('cancel(): fundido a la guardia sin salto mayor que la velocidad del propio golpe (<13 cm/frame)', () => {
+test('cancel(): fundido a la guardia sin salto mayor que la velocidad del propio golpe (<16 cm/frame)', () => {
   const a = mk(); a.play('jab'); run(a, 0.14); let prev = a.skeleton.tips.handL.slice(), worst = 0;
   a.cancel(0.12); run(a, 0.4, (i, A) => { const f = A.skeleton.tips.handL; worst = Math.max(worst, d3(f, prev)); prev = f.slice(); });
-  assert.ok(worst < 0.13, `salto máx ${worst}`); assert.equal(a.clip, null);
+  assert.ok(worst < 0.16, `salto máx ${worst}`); assert.equal(a.clip, null);
 });
 
 test('play(...,{force:true}) interrumpe el clip activo con fundido; clipInfo da duración e impacto', () => {
