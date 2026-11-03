@@ -21,3 +21,9 @@ export function applyLook(scene, renderer, { fogNear = 18, fogFar = 60 } = {}) {
   }
   return { sun, hemi, setTime };
 }
+
+/** Niebla que tapa el borde del mundo cargado. radiusChunks en chunks; chunk de 16 bloques de BLOCK_M m. */
+export function fogForRadius(radiusChunks, blockM = 0.5, chunk = 16) {
+  const edge = radiusChunks * chunk * blockM; // metros hasta el borde
+  return { fogNear: edge * 0.35, fogFar: edge * 0.92 };
+}
