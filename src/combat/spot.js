@@ -65,7 +65,7 @@ export function findFightSpot(world, x, z, radius = 6, opts = {}) {
       const a = (2 * Math.PI * k) / K;
       done = consider(x0 + Math.round(r * Math.cos(a)), z0 + Math.round(r * Math.sin(a)));
     }
-    if (best && best.ok && r >= step * 2) break;   // ya hay un sitio aceptable cerca
+    if (best && best.ok && r >= search / 2) break;   // sitio aceptable (desnivel <= maxSpread) y ya se miró la mitad del radio: no seguir lejos
   }
   if (!best) return { origin: [x0 + 0.5, 0, z0 + 0.5], spread: Infinity, ok: false, tried };
   return { origin: [best.cx + 0.5, best.e.y, best.cz + 0.5], spread: best.e.spread, ok: best.ok, tried };

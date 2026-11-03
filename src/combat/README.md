@@ -70,19 +70,22 @@ Manual: `node src/combat/scripts/parity-full.mjs` (1008 peleas vs referencia), `
 
 `createLiveAnimation(live, {createAnimator3D, getBlock, blockM, seed})` (fábrica inyectada: `combat` no importa `src/anim`) crea un animador por lado, les pasa `{pos,yaw}` de la sim y dispara `play('jab')` desde `actionStart` con adelanto para que el impacto del clip (0.152 s) coincida con el fin del windup KAGE. `la.update(dt)→{frame,skeletons}`, `la.anims.{a,b}`. Mapeo `CLIP_MAP` (hoy: todo `strike`→`jab`, aproximado). Huecos para Animador: `ANIM_GAPS` (otros golpes/patadas/rodillas/codos, reacciones por zona, block/dodge, rocked/knockdown/KO/getUp/victoria, clinch/derribo/suelo, `play(name,{speed})`/`playAt`, guardia según `state.guard`).
 
-### Integración en main.js (reemplaza el guion de prueba; ~12 líneas)
+### Integración en main.js (sobre afc0110: mundo real o `?floor=flat`; reemplaza `fighters`+`simStep`)
 
 ```js
-import { createLiveFight, createLiveAnimation } from './combat/index.js';   // + quitar simStep y su createAnimator3D por humano
-const live = createLiveFight({ seed: SEED, origin: [0, 0, 0], ground: floor.getBlock });
-// con el mundo: ground: world.solidAt, origin: findFightSpot(world, 0, 0, 6).origin  (y getBlock del animador = world.solidAt)
-const la = createLiveAnimation(live, { createAnimator3D, getBlock: floor.getBlock, blockM: BLOCK_M, seed: SEED });
+import { createLiveFight, createLiveAnimation, findFightSpot } from './combat/index.js';
+// 1) en lugar del bloque "Dos humanos de prueba" (después de calcular spawn/getBlock/groundY):
+const spot = world ? findFightSpot(world, Math.floor(spawn[0] / BLOCK_M), Math.floor(spawn[1] / BLOCK_M), 6) : { origin: [0, 0, 0] };
+const live = createLiveFight({ seed: SEED, origin: spot.origin, ground: getBlock });   // getBlock = world.solidAt | floor.getBlock
+const la = createLiveAnimation(live, { createAnimator3D, getBlock, blockM: BLOCK_M, seed: SEED });
+groundY = spot.origin[1] * BLOCK_M;
 const fighters = [[0xd8d2c4, 'a'], [0x9a3b34, 'b']].map(([color, side]) => {
   const view = createHumanView(color); scene.add(view.group);
   return { root: live.frame.fighters[side], color, anim: la.anims[side], view };   // render sigue usando f.anim.skeleton
 });
-// en loop.update(dt) (reemplaza simStep + f.anim.update):
+// 2) borrar simStep(); en loop.update(dt) reemplazar simStep + f.anim.update por:
 const { frame } = la.update(dt);
-fighters.forEach((f, i) => { f.root = frame.list[i]; });   // mid/cámara leen f.root.pos como hasta ahora
-// opcional: live.on('hit', (e) => sfx/partículas en e.point); live.restart(SEED + 1) al terminar (live.done)
+fighters.forEach((f, i) => { f.root = frame.list[i]; });
+// mid.set(..., fighters[0].root.pos[1] + 1.0, ...)  (la y ya sigue el terreno);  cámara inicial: pos de live.frame.fighters.a
+// opcional: live.on('hit', (e) => sfx/partículas en e.point (bloques)); al terminar (live.done) live.restart(SEED + 1)
 ```
