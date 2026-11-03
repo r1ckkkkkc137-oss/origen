@@ -1,0 +1,14 @@
+{
+  "name": "origen",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0 --port 5180",
+    "build": "vite build --base ./",
+    "test": "node --test test/*.test.js",
+    "smoke": "node test/smoke.mjs"
+  },
+  "dependencies": { "three": "^0.170.0" },
+  "devDependencies": { "vite": "^5.4.21", "puppeteer-core": "^23.0.0" }
+}
