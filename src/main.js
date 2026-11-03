@@ -12,6 +12,7 @@ import { createWorld } from './world/index.js';
 import { createWorldView } from './world/threeAdapter.js';
 import { createAnimator3D } from './anim/index.js';
 import { BLOCK_M } from './shared/contracts.js';
+import { createLiveFight, createLiveAnimation, findFightSpot } from './combat/index.js';
 
 const params = new URLSearchParams(location.search);
 export const SEED = Number(params.get('seed') ?? 1);
@@ -47,39 +48,30 @@ if (params.get('floor') === 'flat') {
   getBlock = (x, y, z) => world.solidAt(x, y, z);               // agua no es sólida para los pies
 }
 
-// Dos humanos de prueba: la "sim" (aquí un guion determinista por tick) es dueña de root.pos/yaw.
-const fighters = [
-  { root: { pos: [spawn[0] - 0.7, groundY, spawn[1]], yaw: 0 }, base: spawn[0] - 0.7, color: 0xd8d2c4 },
-  { root: { pos: [spawn[0] + 0.7, groundY, spawn[1]], yaw: Math.PI }, base: spawn[0] + 0.7, color: 0x9a3b34 },
-].map((f, i) => {
-  const anim = createAnimator3D({ seed: SEED * 31 + i, getBlock, blockM: BLOCK_M });
-  const view = createHumanView(f.color); scene.add(view.group);
-  return { ...f, anim, view };
+// Pelea en vivo: la sim de Combate (KAGE a 60 Hz fijos) es dueña de root.pos/yaw; Animador solo viste el esqueleto.
+const spot = world ? findFightSpot(world, Math.floor(spawn[0] / BLOCK_M), Math.floor(spawn[1] / BLOCK_M), 6) : { origin: [0, 0, 0] };
+let fightSeed = SEED;
+const live = createLiveFight({ seed: fightSeed, origin: spot.origin, ground: getBlock });
+const la = createLiveAnimation(live, { createAnimator3D, getBlock, blockM: BLOCK_M, seed: SEED });
+groundY = spot.origin[1] * BLOCK_M;
+const fighters = [[0xd8d2c4, 'a'], [0x9a3b34, 'b']].map(([color, side]) => {
+  const view = createHumanView(color); scene.add(view.group);
+  return { root: live.frame.fighters[side], color, anim: la.anims[side], view };
 });
+const p0 = live.frame.fighters.a.pos;
 
 const input = createInput(renderer.domElement);
-const rig = createCameraRig(camera, input, { mode: 'third', pos: [spawn[0], groundY + 2.2, spawn[1] + 5], speed: 5 });
+const rig = createCameraRig(camera, input, { mode: 'third', pos: [p0[0], groundY + 2.2, p0[2] + 5], speed: 5 });
 const fps = createFpsMeter(document.getElementById('fps'));
 const mid = new THREE.Vector3();
 addEventListener('resize', () => { renderer.setSize(innerWidth, innerHeight); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); });
 
-function simStep(tick) {
-  fighters.forEach((f, i) => {
-    const t = tick / 60, dir = i === 0 ? 1 : -1;
-    f.root.pos[0] = f.base + dir * 0.18 * Math.sin(t * 1.3 + i * 1.7); // entran y salen de distancia
-    f.root.pos[2] = spawn[1] + 0.25 * Math.sin(t * 0.7 + i);                      // y circulan
-    if ((tick + i * 45) % 90 === 0) f.anim.play('jab');
-  });
-  const [a, b] = fighters; // se miran
-  a.root.yaw = Math.atan2(-(b.root.pos[2] - a.root.pos[2]), b.root.pos[0] - a.root.pos[0]);
-  b.root.yaw = Math.atan2(-(a.root.pos[2] - b.root.pos[2]), a.root.pos[0] - b.root.pos[0]);
-}
-
 const loop = createLoop({
   update(dt, tick) {
-    simStep(tick);
-    for (const f of fighters) f.anim.update(dt, f.root);
-    mid.set((fighters[0].root.pos[0] + fighters[1].root.pos[0]) / 2, groundY + 1.0, (fighters[0].root.pos[2] + fighters[1].root.pos[2]) / 2);
+    const { frame } = la.update(dt);
+    fighters.forEach((f, i) => { f.root = frame.list[i]; });
+    if (live.done) live.restart(++fightSeed);                 // pelea siguiente, determinista
+    mid.set((fighters[0].root.pos[0] + fighters[1].root.pos[0]) / 2, (fighters[0].root.pos[1] + fighters[1].root.pos[1]) / 2 + 1.0, (fighters[0].root.pos[2] + fighters[1].root.pos[2]) / 2);
     rig.setTarget(mid);
     rig.update(dt);
     if (view) view.update(camera.position.x, camera.position.z);
@@ -87,4 +79,4 @@ const loop = createLoop({
   render() { for (const f of fighters) f.view.update(f.anim.skeleton); renderer.render(scene, camera); fps.frame(); },
 });
 loop.start();
-window.__ORIGEN__ = { scene, camera, rig, loop, fps, fighters, SEED, world, view, look, renderer, ready: true };
+window.__ORIGEN__ = { scene, camera, rig, loop, fps, fighters, live, SEED, world, view, look, renderer, ready: true };
