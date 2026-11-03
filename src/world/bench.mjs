@@ -58,3 +58,17 @@ console.log(`  vértices/chunk media ${f(v.mean, 0)} · memoria de malla/chunk m
   console.log(`\ngetBlock en mundo cargado (${grid}×${grid} chunks, ${cols} columnas por repetición, ${n1} llamadas/repetición, N=7 repeticiones; sink ${sink})`);
   console.log(`  solidAt  mediana ${f(1e6 * s1.median / n1, 1)} ns/llamada · getBlock mediana ${f(1e6 * s2.median / n1, 1)} ns/llamada`);
 }
+
+// stepPlayer (jugador de Motor): µs por llamada con dt=1/60 (= 2 subpasos de 1/120) sobre el mundo real cargado, caminando+saltando+sprint (input determinista, sin azar).
+{
+  const { World } = await import('./world.js');
+  const { createPlayerBody, stepPlayer } = await import('./physics.js');
+  const w = new World(seeds[0]); for (let cz = -2; cz < grid; cz++) for (let cx = -2; cx < grid; cx++) w.getChunk(cx, cz);
+  const b = createPlayerBody({ x: 8, y: 100 * 0.5, z: 8 });
+  const stepN = (n, t0i) => { for (let i = 0; i < n; i++) { const k = t0i + i; stepPlayer(w, b, { moveX: 0, moveZ: 1, jump: (k % 90) < 4, yaw: Math.floor(k / 120) * 0.9, sprint: true }, 1 / 60); } };
+  stepN(600, 0);                                    // calentamiento
+  const ts = [];
+  for (let r = 0; r < 20; r++) { const t0 = now(); stepN(1000, 600 + r * 1000); ts.push((now() - t0) / 1000 * 1000); }   // µs por step
+  const s = stats(ts);
+  console.log(`\nstepPlayer (dt=1/60 → 2 subpasos; 20 lotes de 1000 steps, caminando+saltando+sprint sobre mundo real): µs/step  media ${f(s.mean, 1)}  mediana ${f(s.median, 1)}  p95 ${f(s.p95, 1)}  min ${f(s.min, 1)}  max ${f(s.max, 1)}`);
+}

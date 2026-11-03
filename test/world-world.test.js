@@ -120,6 +120,36 @@ test('ensureChunks: carga de cerca a lejos, respeta maxNew, descarga lejanos y c
   assert.equal(w.getBlock(8, 60, 8), B.PLANKS);
 });
 
+test('ensureChunks: radio fraccionario (4.5) → coords de chunk enteras, sin duplicados, círculo exacto; radio entero igual que antes', () => {
+  const count = (r) => { let n = 0; for (let dz = -6; dz <= 6; dz++) for (let dx = -6; dx <= 6; dx++) if (dx * dx + dz * dz <= r * r) n++; return n; };
+  for (const [px, pz] of [[8 * S, 8 * S], [-100 * S, 37 * S], [0, 0]]) {
+    const w = new World(1), pcx = Math.floor(px / S) >> 4, pcz = Math.floor(pz / S) >> 4;
+    const res = w.ensureChunks(px, pz, 4.5);
+    const all = [...w.chunks()];
+    assert.equal(count(4.5), 69);
+    assert.equal(all.length, 69);
+    assert.equal(res.added.length, 69);
+    assert.equal(new Set(all.map((c) => c.cx + ',' + c.cz)).size, all.length, 'sin duplicados');
+    for (const c of all) {
+      assert.ok(Number.isInteger(c.cx) && Number.isInteger(c.cz), `coord no entera ${c.cx},${c.cz}`);
+      assert.ok((c.cx - pcx) ** 2 + (c.cz - pcz) ** 2 <= 4.5 * 4.5);
+    }
+    assert.deepEqual(res.added[0], { cx: pcx, cz: pcz });                                   // de cerca a lejos
+    for (const k of w.edits.keys()) assert.ok(/^-?\d+,-?\d+$/.test(k));
+    assert.equal(w.ensureChunks(px, pz, 4.5).added.length, 0);                              // idempotente
+  }
+  // radio entero: mismo conjunto que antes (todo (dx,dz) entero con dx²+dz² <= r²); 3 → 29, 4 → 49
+  for (const [r, n] of [[0, 1], [1, 5], [3, 29], [4, 49]]) { const w = new World(1); w.ensureChunks(0, 0, r); assert.equal([...w.chunks()].length, n); assert.equal(n, count(r)); }
+  // radio fraccionario menor que 1: solo el chunk central; 1.5 → 9 (incluye diagonales: 2 <= 2.25)
+  { const w = new World(1); w.ensureChunks(0, 0, 0.5); assert.equal([...w.chunks()].length, 1); }
+  { const w = new World(1); w.ensureChunks(0, 0, 1.5); assert.equal([...w.chunks()].length, 9); }
+  // descarga con radio fraccionario: se mide con r + margen, claves siguen siendo enteras
+  const w = new World(1); w.ensureChunks(0, 0, 4.5);
+  const r2 = w.ensureChunks(16 * 3 * S, 0, 4.5, { unloadMargin: 1.5 });
+  for (const c of [...w.chunks(), ...r2.removed, ...r2.added]) assert.ok(Number.isInteger(c.cx) && Number.isInteger(c.cz));
+  for (const c of w.chunks()) assert.ok((c.cx - 3) ** 2 + c.cz ** 2 <= 6 * 6);
+});
+
 test('dirty: editar en el borde marca también al chunk vecino', () => {
   const w = new World(3);
   w.getChunk(0, 0); w.getChunk(-1, 0); w.getChunk(1, 0); w.consumeDirty();
