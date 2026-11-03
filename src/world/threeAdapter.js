@@ -1,6 +1,6 @@
 // Adaptador OPCIONAL a Three.js. No importa three: recibe el namespace THREE por parámetro.
 //   const geo = createGeometry(THREE, mesh.opaque);  mesh3d.position.set(...mesh.origin)
-// Los shaders de abajo son una BASE para el atlas de Arte (repetir tile con fract(uv)); Arte es dueño del look final.
+// Los shaders de abajo son una BASE para el atlas de Arte (repetir tile con fract(uv); el muestreo usa textureGrad con dFdx(vUv) para que los mipmaps por tile no dejen costuras); Arte es dueño del look final.
 // Soportan la niebla de THREE (scene.fog) y la salida sRGB/tone mapping del renderer (look.js de Arte).
 // NOTA: sin GPU real en el box. Se validó solo con Chrome headless + SwiftShader (smoke:world); el test unitario usa un THREE falso.
 import { ATLAS_COLS, ATLAS_ROWS, TILE_NAMES } from './tilemap.js';
@@ -62,7 +62,9 @@ void main() {
   vec2 inset = vec2(0.5 / (16.0 * uGrid.x), 0.5 / (16.0 * uGrid.y)); // medio texel: evita sangrado entre tiles
   vec2 tuv = vec2((col + f.x) / uGrid.x, 1.0 - (row + 1.0 - f.y) / uGrid.y);
   tuv = clamp(tuv, vec2(col / uGrid.x, 1.0 - (row + 1.0) / uGrid.y) + inset, vec2((col + 1.0) / uGrid.x, 1.0 - row / uGrid.y) - inset);
-  vec4 c = texture2D(uAtlas, tuv);
+  // gradientes explícitos en unidades de atlas: fract(vUv) tiene saltos en los bordes de tile y el mip automático dejaba costuras.
+  // dFdx(vUv) (sin fract) es continuo; /uGrid lo pasa de «tiles» a uv del atlas. Requiere WebGL2 (GLSL ES 3.00; three lo traduce solo).
+  vec4 c = textureGrad(uAtlas, tuv, dFdx(vUv) / uGrid, dFdy(vUv) / uGrid);
   if (c.a < uAlphaTest) discard;
   float shade = vNormal.y > 0.5 ? 1.0 : vNormal.y < -0.5 ? 0.55 : abs(vNormal.x) > 0.5 ? 0.8 : 0.7;
   gl_FragColor = vec4(c.rgb * shade, c.a * uOpacity);

@@ -69,7 +69,7 @@ test('threeAdapter: createGeometry/createVoxelMaterial con THREE falso (sin GPU)
   const mat = createVoxelMaterial(THREE, {}, 'cutout');
   assert.equal(mat.uniforms.uAlphaTest.value, 0.5); assert.equal(createVoxelMaterial(THREE, {}, 'water').transparent, true);
   assert.equal(mat.uniforms.uGrid.value.x, ATLAS_COLS);
-  assert.ok(VERTEX_SHADER.includes('attribute float tile') && FRAGMENT_SHADER.includes('fract(vUv)'));
+  assert.ok(VERTEX_SHADER.includes('attribute float tile') && FRAGMENT_SHADER.includes('fract(vUv)') && FRAGMENT_SHADER.includes('textureGrad(uAtlas, tuv, dFdx(vUv) / uGrid, dFdy(vUv) / uGrid)') && !FRAGMENT_SHADER.includes('texture2D'));
 });
 
 test('threeAdapter: buildTileMap usa sustitutos para tiles que el atlas no tiene y respeta los que sí', async () => {
