@@ -6,7 +6,10 @@ import { createCameraRig } from './engine/camera.js';
 import { createTestFloor } from './engine/testFloor.js';
 import { createHumanView } from './engine/humanView.js';
 import { createAtlas } from './render/atlas.js';
-import { applyLook } from './render/look.js';
+import { applyLook, fogForRadius } from './render/look.js';
+import { TILES } from './render/atlas.js';
+import { createWorld } from './world/index.js';
+import { createWorldView } from './world/threeAdapter.js';
 import { createAnimator3D } from './anim/index.js';
 import { BLOCK_M } from './shared/contracts.js';
 
@@ -20,25 +23,42 @@ document.body.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.05, 200);
-const look = applyLook(scene, renderer, { fogNear: 10, fogFar: 40 });
+const RADIUS = Number(params.get('r') ?? 4.5);              // radio de carga en chunks
+const look = applyLook(scene, renderer, fogForRadius(RADIUS)); // niebla tapa el borde del mundo
 look.setTime(0.08);
-
 const atlas = createAtlas(SEED);
-const floor = createTestFloor(atlas, 32); // TODO: reemplazar por el mundo de Mundo
-scene.add(floor.mesh);
+
+// Mundo real (src/world) por defecto; ?floor=flat usa el piso plano de prueba (depuración de animación).
+let getBlock, world = null, view = null, groundY = 0;
+const spawn = [0, 0];
+if (params.get('floor') === 'flat') {
+  const floor = createTestFloor(atlas, 32); scene.add(floor.mesh); getBlock = floor.getBlock;
+} else {
+  world = createWorld(Number(params.get('wseed') ?? SEED));
+  view = createWorldView(THREE, scene, world, atlas, { tileNames: TILES, radius: RADIUS });
+  world.ensureChunks(0, 0, 2);                                // carga síncrona cerca del origen para ubicar el spawn
+  // spawn determinista: primera columna (espiral cuadrada) con 4 bloques planos en X, sin agua encima
+  const flatAt = (x, z) => { const y = world.surfaceY(x, z); if (y < 0 || world.getBlock(x, y + 1, z) !== 0) return -1;
+    for (let dx = -2; dx <= 2; dx++) if (world.surfaceY(x + dx, z) !== y || world.getBlock(x + dx, y + 1, z) !== 0) return -1; return y; };
+  search: for (let r = 0; r < 24; r++) for (let x = -r; x <= r; x++) for (let z = -r; z <= r; z++) {
+    if (Math.max(Math.abs(x), Math.abs(z)) !== r) continue;
+    const y = flatAt(x, z); if (y >= 0) { spawn[0] = (x + 0.5) * BLOCK_M; spawn[1] = (z + 0.5) * BLOCK_M; groundY = (y + 1) * BLOCK_M; break search; }
+  }
+  getBlock = (x, y, z) => world.solidAt(x, y, z);               // agua no es sólida para los pies
+}
 
 // Dos humanos de prueba: la "sim" (aquí un guion determinista por tick) es dueña de root.pos/yaw.
 const fighters = [
-  { root: { pos: [-0.7, 0, 0], yaw: 0 }, base: -0.7, color: 0xd8d2c4 },
-  { root: { pos: [0.7, 0, 0], yaw: Math.PI }, base: 0.7, color: 0x9a3b34 },
+  { root: { pos: [spawn[0] - 0.7, groundY, spawn[1]], yaw: 0 }, base: spawn[0] - 0.7, color: 0xd8d2c4 },
+  { root: { pos: [spawn[0] + 0.7, groundY, spawn[1]], yaw: Math.PI }, base: spawn[0] + 0.7, color: 0x9a3b34 },
 ].map((f, i) => {
-  const anim = createAnimator3D({ seed: SEED * 31 + i, getBlock: floor.getBlock, blockM: BLOCK_M });
+  const anim = createAnimator3D({ seed: SEED * 31 + i, getBlock, blockM: BLOCK_M });
   const view = createHumanView(f.color); scene.add(view.group);
   return { ...f, anim, view };
 });
 
 const input = createInput(renderer.domElement);
-const rig = createCameraRig(camera, input, { mode: 'third', pos: [0, 2.2, 5], speed: 5 });
+const rig = createCameraRig(camera, input, { mode: 'third', pos: [spawn[0], groundY + 2.2, spawn[1] + 5], speed: 5 });
 const fps = createFpsMeter(document.getElementById('fps'));
 const mid = new THREE.Vector3();
 addEventListener('resize', () => { renderer.setSize(innerWidth, innerHeight); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); });
@@ -47,7 +67,7 @@ function simStep(tick) {
   fighters.forEach((f, i) => {
     const t = tick / 60, dir = i === 0 ? 1 : -1;
     f.root.pos[0] = f.base + dir * 0.18 * Math.sin(t * 1.3 + i * 1.7); // entran y salen de distancia
-    f.root.pos[2] = 0.25 * Math.sin(t * 0.7 + i);                      // y circulan
+    f.root.pos[2] = spawn[1] + 0.25 * Math.sin(t * 0.7 + i);                      // y circulan
     if ((tick + i * 45) % 90 === 0) f.anim.play('jab');
   });
   const [a, b] = fighters; // se miran
@@ -59,11 +79,12 @@ const loop = createLoop({
   update(dt, tick) {
     simStep(tick);
     for (const f of fighters) f.anim.update(dt, f.root);
-    mid.set((fighters[0].root.pos[0] + fighters[1].root.pos[0]) / 2, 1.0, (fighters[0].root.pos[2] + fighters[1].root.pos[2]) / 2);
+    mid.set((fighters[0].root.pos[0] + fighters[1].root.pos[0]) / 2, groundY + 1.0, (fighters[0].root.pos[2] + fighters[1].root.pos[2]) / 2);
     rig.setTarget(mid);
     rig.update(dt);
+    if (view) view.update(camera.position.x, camera.position.z);
   },
   render() { for (const f of fighters) f.view.update(f.anim.skeleton); renderer.render(scene, camera); fps.frame(); },
 });
 loop.start();
-window.__ORIGEN__ = { scene, camera, rig, loop, fps, fighters, SEED, ready: true };
+window.__ORIGEN__ = { scene, camera, rig, loop, fps, fighters, SEED, world, view, look, renderer, ready: true };

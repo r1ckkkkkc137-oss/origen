@@ -13,20 +13,21 @@ export const headingDir = (h) => [Math.cos(h), 0, -Math.sin(h)];
 export const CHUNK = Object.freeze({ SX: 16, SY: 64, SZ: 16 });
 
 // IDs de bloque (u8). 0 = aire. Mundo puede agregar al final, nunca renumerar.
-export const BLOCK = Object.freeze({ AIR: 0, GRASS: 1, DIRT: 2, STONE: 3, WOOD: 4, LEAVES: 5, WATER: 6, SAND: 7, ORE: 8 });
+export const BLOCK = Object.freeze({ AIR: 0, GRASS: 1, DIRT: 2, STONE: 3, WOOD: 4, LEAVES: 5, WATER: 6, SAND: 7, ORE: 8,
+  IRON: 9, GRAVEL: 10, SNOW: 11, PLANKS: 12 }); // v0.4 aditivo (Mundo). ORE = carbón; nada se renumera
 
 /**
  * World (lo implementa Mundo en src/world/).
  * @typedef {Object} World
  * @property {number} seed
  * @property {(x:number,y:number,z:number)=>number} getBlock   coords mundo enteras; fuera de rango => AIR
- * @property {(x:number,y:number,z:number,id:number)=>boolean} setBlock  true si cambió; marca chunk sucio
+ * @property {(x:number,y:number,z:number,id:number)=>boolean} setBlock  true si cambió; marca sucio el chunk y, si el bloque está en el borde, el vecino cargado
  * @property {(cx:number,cz:number)=>Chunk} chunk   genera o devuelve el chunk
  * @property {()=>Iterable<Chunk>} chunks
  * @property {(origin:[number,number,number],dir:[number,number,number],maxDist:number)=>RaycastHit|null} raycast
  */
 /** @typedef {{cx:number,cz:number,blocks:Uint8Array,dirty:boolean}} Chunk  index = x + SX*(z + SZ*y); bloque (x,y,z) ocupa [x,x+1)×[y,y+1)×[z,z+1) en bloques */
-/** @typedef {{pos:[number,number,number],normal:[number,number,number],block:number,dist:number}} RaycastHit */
+/** @typedef {{pos:[number,number,number],normal:[number,number,number],block:number,dist:number,place:[number,number,number]}} RaycastHit  place = celda vacía adyacente (pos+normal) para poner bloque; todo en BLOQUES */
 export const chunkIndex = (x, y, z) => x + CHUNK.SX * (z + CHUNK.SZ * y);
 
 // UNIDADES v0.4: Skeleton3D (pose, root), hurtboxes y tickExtras van en METROS; CombatEvent.point en BLOQUES.
