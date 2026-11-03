@@ -49,7 +49,7 @@ Los 16 joints KAGE coinciden por nombre con 16 de los 17 `HUMAN_BONES` (`KAGE_TO
 `chest` existe sólo en el contrato (`HUMAN_ONLY = ['chest']`): se deriva como punto medio spine–neck. Hombros cuelgan de `chest`, neck de `chest`.
 
 ## Eventos
-`createCombatTranslator({ids}) → {translate(ev, F) → CombatEvent[], translateAll}`. Llamarlo justo después de cada `stepFight` con `F = fight.core` (el `point` de hit/block sale de la pose actual). Los 22 tipos de `COMBAT_EVENT` tienen origen; **ningún tipo KAGE se descarta** (`UNMAPPED = []`). Mapeo en `events.js` (`KAGE_TO_COMBAT`): strike/action/feint→actionStart, hit→hit(+injury), block/parry/check/catch→block, dodge, whiff→miss, knockdown/takedown→knockdown, getUp, submission/subAttempt/tap→submission, ko, y clinch, break(result=reason), sprawl, rocked, position(attacker=arriba,target=abajo,action=pos), sweep, subEscape, stoppage(result=reason), roundStart, roundEnd, decision(attacker=ganador,result=UD|SD|MD|DRAW), fightEnd(attacker=ganador,result=método). Campos del contrato: `src`, `result`, `point` (3D, bloques). No hay campo `round` en el contrato: roundStart/roundEnd no lo llevan.
+`createCombatTranslator({ids}) → {translate(ev, F) → CombatEvent[], translateAll}`. Llamarlo justo después de cada `stepFight` con `F = fight.core` (el `point` de hit/block sale de la pose actual). Los 22 tipos de `COMBAT_EVENT` tienen origen; **ningún tipo KAGE se descarta** (`UNMAPPED = []`). Mapeo en `events.js` (`KAGE_TO_COMBAT`): strike/action/feint→actionStart, hit→hit(+injury), block/parry/check/catch→block, dodge, whiff→miss, knockdown/takedown→knockdown, getUp, submission/subAttempt/tap→submission, ko, y clinch, break(result=reason), sprawl, rocked, position(attacker=arriba,target=abajo,action=pos), sweep, subEscape, stoppage(result=reason), roundStart, roundEnd, decision(attacker=ganador,result=UD|SD|MD|DRAW), fightEnd(attacker=ganador,result=método). Campos del contrato: `src`, `result`, `point` (3D, bloques). `round` (1-based, contrato v0.4) va poblado en TODOS los eventos traducidos.
 
 ## RNG
 `core/rng.js` = sfc32 de KAGE, sembrado, sin Math.random. El mulberry32 de `src/shared/rng.js` NO reemplaza al sfc32 (rompería la paridad bit a bit); de `shared/rng.js` sólo se usa `hash3`/`hashSeed` para derivar la seed (`seed.js`).
@@ -58,3 +58,31 @@ Los 16 joints KAGE coinciden por nombre con 16 de los 17 `HUMAN_BONES` (`KAGE_TO
 `npm test` (incluye `src/combat/**/*.test.js`): parity 56 seeds vs golden (y vs referencia viva si existe `/tmp/origen-combat-ref`), geometry3d, events, seed, purity (sin Math.random / Date.now en la sim), tests del núcleo KAGE.
 Manual: `node src/combat/scripts/parity-full.mjs` (1008 peleas vs referencia), `node src/combat/scripts/dist-3d-vs-2d.mjs` (200 peleas 3D vs 2D).
 `support/` son archivos de KAGE sólo para tests de `core/sim.test.js`.
+
+
+## Pelea en vivo (`live.js`, `liveAnim.js`, `spot.js`) — para main.js
+
+`createLiveFight({a,b,seed|{worldSeed,x,y,z},origin,styles,ground,ids,fightOpts})` envuelve el núcleo con un **acumulador de paso fijo a 60 Hz**: `update(dt)` avanza ticks enteros, así que *misma seed ⇒ misma pelea sea cual sea el patrón de dt* (test: 30/60/144 fps, dt irregular con 0 y picos ⇒ digest idéntico a `simulateFight`). El resto de `dt` queda en `frame.alpha` y pos/yaw se interpolan entre el tick anterior y el actual. `a`/`b` = FighterSpec (por defecto dos boxeadores de prueba); `seed` numérico crudo sigue siendo el camino KAGE bit a bit.
+
+`update(dt, input?)` devuelve (y reutiliza) `frame`: `{tick,time,alpha,steps,round,phase,over,done,result, events:CombatEvent[] (este frame, con round y point en bloques), rawEvents, fighters:{a,b}, list:[a,b]}`; cada peleador `{id,side,pos:[x,y,z] METROS,yaw,state}` con `state` = `{move,clip,animSeq,display,stance(stand|clinch|groundTop|groundBottom|down|ko|victory),phase(windup|active|recovery|null),progress,phaseProgress,moveSeconds,windupSeconds,kind,limb,guard,onGround,position,groundPos,hurt{zone,age},rocked,down,ko,victory,hp,stamina,fatigue,damage,sub,subProgress,loco{mode,speed}}`. Además `on(type|'*', fn)→off`, `restart(seed)`, `step(n)`, `over/done/result/tick/origin/seed/fight`.
+
+`ground` (opcional) = `world.solidAt`-like en BLOQUES (nunca `getBlock` crudo: el agua es truthy). Con `ground`, `pos[1]` sigue el terreno (sólo presentación; la sim es plana ⇒ no cambia el digest). `findFightSpot(world, x, z, radius, {search,step,maxSpread})→{origin:[x,y,z] bloques, spread, ok}` es determinista (espiral fija, sin azar), elige un disco llano (`spread`=desnivel) y descarta agua si recibe un objeto con `getBlock`. Para sacar el origen del mundo: `origin: findFightSpot(world, x, z, 6).origin`.
+
+`createLiveAnimation(live, {createAnimator3D, getBlock, blockM, seed})` (fábrica inyectada: `combat` no importa `src/anim`) crea un animador por lado, les pasa `{pos,yaw}` de la sim y dispara `play('jab')` desde `actionStart` con adelanto para que el impacto del clip (0.152 s) coincida con el fin del windup KAGE. `la.update(dt)→{frame,skeletons}`, `la.anims.{a,b}`. Mapeo `CLIP_MAP` (hoy: todo `strike`→`jab`, aproximado). Huecos para Animador: `ANIM_GAPS` (otros golpes/patadas/rodillas/codos, reacciones por zona, block/dodge, rocked/knockdown/KO/getUp/victoria, clinch/derribo/suelo, `play(name,{speed})`/`playAt`, guardia según `state.guard`).
+
+### Integración en main.js (reemplaza el guion de prueba; ~12 líneas)
+
+```js
+import { createLiveFight, createLiveAnimation } from './combat/index.js';   // + quitar simStep y su createAnimator3D por humano
+const live = createLiveFight({ seed: SEED, origin: [0, 0, 0], ground: floor.getBlock });
+// con el mundo: ground: world.solidAt, origin: findFightSpot(world, 0, 0, 6).origin  (y getBlock del animador = world.solidAt)
+const la = createLiveAnimation(live, { createAnimator3D, getBlock: floor.getBlock, blockM: BLOCK_M, seed: SEED });
+const fighters = [[0xd8d2c4, 'a'], [0x9a3b34, 'b']].map(([color, side]) => {
+  const view = createHumanView(color); scene.add(view.group);
+  return { root: live.frame.fighters[side], color, anim: la.anims[side], view };   // render sigue usando f.anim.skeleton
+});
+// en loop.update(dt) (reemplaza simStep + f.anim.update):
+const { frame } = la.update(dt);
+fighters.forEach((f, i) => { f.root = frame.list[i]; });   // mid/cámara leen f.root.pos como hasta ahora
+// opcional: live.on('hit', (e) => sfx/partículas en e.point); live.restart(SEED + 1) al terminar (live.done)
+```
