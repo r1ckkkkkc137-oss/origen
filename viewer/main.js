@@ -71,9 +71,9 @@ function buildTerrain(sc, x0 = -2, x1 = 8) {
 }
 
 const CAMS = {
-  front: (t) => ({ pos: [t[0] + 4.3, t[1] + 1.1, t[2]], look: [t[0], t[1] + 0.9, t[2]], fov: 28 }),
-  side: (t) => ({ pos: [t[0], t[1] + 1.0, t[2] - 4.4], look: [t[0], t[1] + 0.9, t[2]], fov: 28 }),     // cámara en -Z (lado IZQUIERDO del personaje, el del pie/mano rojos de guardia): el personaje (+X adelante) mira a la IZQUIERDA de la pantalla
-  top34: (t) => ({ pos: [t[0] + 2.2, t[1] + 2.7, t[2] + 2.9], look: [t[0], t[1] + 0.75, t[2]], fov: 28 }),
+  front: (t) => ({ pos: [t[0] + 3.5, t[1] + 1.0, t[2]], look: [t[0], t[1] + 0.9, t[2]], fov: 28 }),
+  side: (t) => ({ pos: [t[0], t[1] + 1.0, t[2] - 3.5], look: [t[0], t[1] + 0.9, t[2]], fov: 28 }),     // cámara en -Z (lado IZQUIERDO del personaje, el del pie/mano rojos de guardia): el personaje (+X adelante) mira a la IZQUIERDA de la pantalla
+  top34: (t) => ({ pos: [t[0] + 1.9, t[1] + 2.2, t[2] + 2.4], look: [t[0], t[1] + 0.75, t[2]], fov: 28 }),
 };
 function setCam(name, target) { const c = CAMS[name](target); cam.fov = c.fov; cam.position.set(...c.pos); cam.lookAt(...c.look); cam.aspect = canvas.width / canvas.height; cam.updateProjectionMatrix(); }
 function size(w, h) { renderer.setSize(w, h, false); canvas.width = w; canvas.height = h; }

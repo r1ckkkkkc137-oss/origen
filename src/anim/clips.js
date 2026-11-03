@@ -15,9 +15,9 @@ export const CHANNELS = [
 
 // Guardia MMA ortodoxa (izquierda adelante): cuerpo en ~30° de blade, mentón bajo, manos altas, codos pegados.
 export const GUARD = Object.freeze({
-  dy: 0, px: 0, pz: 0, hipYaw: -0.50, hipRoll: 0, hipPitch: 0.04, spYaw: 0.12, spPitch: 0.10, spRoll: 0, hdYaw: 0.34, hdPitch: 0.12, hdRoll: 0,
-  shrugL: 0.06, shrugR: 0.06, protL: 0.05, protR: 0.0,
-  hLx: -0.06, hLy: 0.07, hLz: 0.30, hRx: 0.07, hRy: 0.10, hRz: 0.17, elbL: 0.0, elbR: 0.0,
+  dy: 0, px: 0, pz: 0, hipYaw: -0.50, hipRoll: 0, hipPitch: 0.12, spYaw: 0.12, spPitch: 0.16, spRoll: 0, hdYaw: 0.34, hdPitch: 0.10, hdRoll: 0,
+  shrugL: 0.10, shrugR: 0.14, protL: 0.08, protR: 0.04,
+  hLx: 0.00, hLy: 0.03, hLz: 0.17, hRx: 0.14, hRy: 0.04, hRz: 0.15, elbL: -0.18, elbR: -0.18,
 });
 
 export const makeChannels = (src = null) => { const o = {}; for (const c of CHANNELS) o[c] = src ? src[c] : 0; return o; };

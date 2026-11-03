@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { simulate } from '../src/anim/scenarios.js';
 
-const OUT = process.argv[2] || '/workspace/origen-shots/anim-r1';
+const OUT = process.argv[2] || '/workspace/origen-shots/anim-r2';
 fs.mkdirSync(OUT, { recursive: true });
 const CAMS = ['front', 'side', 'top34'];
 const W = 440, H = 400;
@@ -41,7 +41,9 @@ const save = (name, dataUrl) => fs.writeFileSync(path.join(OUT, name), Buffer.fr
 const sheetPage = await browser.newPage();
 await sheetPage.goto('about:blank');
 
+const ONLY = process.argv[3] ? process.argv[3].split(',') : null;   // p.ej. node scripts/anim-capture.mjs out guard,jab
 for (const p of plan()) {
+  if (ONLY && !ONLY.includes(p.label)) continue;
   const allTimes = [...new Set([...p.times, ...p.keys])];
   const res = await page.evaluate((sc, times, cams, w, h) => window.CAP.run(sc, times, cams, w, h), p.sc, allTimes, CAMS, W, H);
   // PNG individuales

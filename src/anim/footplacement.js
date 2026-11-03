@@ -7,12 +7,18 @@ import { clamp, smoothstep, smin, lerp } from './math3.js';
 // celdas de `blockM` metros (BLOCK_M del contrato; 0.5 m por defecto). El motor de animación trabaja en un marco interno
 // (+Z adelante, +X izquierda), así que aquí se convierte: x_mundo = z_int, z_mundo = -x_int.
 // top(xi, zi, yHint) -> altura (m) del tope del primer bloque bajo yHint+maxUp.
+const CEIL_EPS = 0.05;
 export function makeTopSampler(getBlock, blockM = 0.5) {
   const maxUp = blockM * 1.2 + 0.1, maxDown = 6;
   return (xi, zi, yHint) => {
     const bx = Math.floor(zi / blockM), bz = Math.floor(-xi / blockM);
     const yTop = Math.floor((yHint + maxUp) / blockM), yMin = Math.floor((yHint - maxDown) / blockM);
-    for (let y = yTop; y >= yMin; y--) if (getBlock(bx, y, bz)) return (y + 1) * blockM;
+    for (let y = yTop; y >= yMin; y--) {
+      if (!getBlock(bx, y, bz)) continue;
+      // Un bloque con aire debajo y cuya base queda sobre el pie es techo/voladizo, no suelo: se ignora.
+      if (y * blockM > yHint + CEIL_EPS && !getBlock(bx, y - 1, bz)) continue;
+      return (y + 1) * blockM;
+    }
     return yMin * blockM;
   };
 }
@@ -42,7 +48,7 @@ export function relaxFoot(top, x, z, yaw, yHint, out = { x: 0, z: 0, y: 0 }) {
 
 // Pose de pie "home" (relativa al root, mirando +Z): estancia de guardia ortodoxa (izquierda adelante) y la de marcha natural.
 export const FEET_HOME = Object.freeze({
-  guard: { L: { x: 0.17, z: 0.26, yaw: -0.25 }, R: { x: -0.15, z: -0.20, yaw: -0.70 } },
+  guard: { L: { x: 0.21, z: 0.30, yaw: -0.20 }, R: { x: -0.19, z: -0.22, yaw: -0.78 } },   // ancho de hombros (0.40 m), escalonada 0.52 m, pie trasero ~45°
   walk:  { L: { x: 0.12, z: 0.0, yaw: -0.15 }, R: { x: -0.12, z: 0.0, yaw: -0.25 } },
 });
 export function homeLocal(side, walkAmt, out = { x: 0, z: 0, yaw: 0 }) {
@@ -87,6 +93,79 @@ export function homeWorld(side, walkAmt, root, yaw, out) {
   out.x = root[0] + h.x * c + h.z * s; out.z = root[2] - h.x * s + h.z * c; out.yaw = yaw + h.yaw; return out;
 }
 
+
+// ---------------------------------------------------------------- vuelo del pie con colisión contra caras laterales de bloques
+// Huella inflada del pie (talón..punta+margen, ±8 cm): el pie en el aire nunca atraviesa la cara lateral de un bloque.
+export const FOOT_CLEAR = 0.03;
+// infl in [0,1]: 1 = huella con margen (camino), 0 = huella exacta (el aterrizaje).
+export function footprintTop(top, x, z, yaw, hint, infl = 1) {
+  const fx = Math.sin(yaw), fz = Math.cos(yaw); let m = -1e9;
+  const L = [-0.06 - 0.02 * infl, 0.05, 0.14, 0.22 + 0.04 * infl], W = [-0.05 - 0.03 * infl, 0, 0.05 + 0.03 * infl];
+  for (const l of L) for (const w of W) { const v = top(x + fx * l + fz * w, z + fz * l - fx * w, hint); if (v > m) m = v; }
+  return m;
+}
+const NPROF = 24, WU = 0.22;
+// Planea un vuelo: si algo en el camino (huella inflada) es más alto que el pie, el vuelo es "vertical primero":
+// sube recto hasta hTop (> tope más alto + holgura), avanza a esa altura y baja al final sin cortar el borde.
+export function startSwing(f, top, to, yaw1, o = {}) {
+  const from = f.pos.slice(), y0 = f.sole, y1 = to[1];
+  const dist = Math.hypot(to[0] - from[0], to[2] - from[2]);
+  const hint = Math.max(y0, y1), prof = new Array(NPROF + 1);
+  let hMax = -1e9;
+  for (let i = 0; i <= NPROF; i++) {
+    const u = i / NPROF, yw = f.yaw + wrapPi(yaw1 - f.yaw) * u;
+    const r = footprintTop(top, from[0] + (to[0] - from[0]) * u, from[2] + (to[2] - from[2]) * u, yw, hint, 1 - smoothstep(clamp((u - 0.75) / 0.25, 0, 1)));
+    prof[i] = r; if (r > hMax) hMax = r;
+  }
+  const wall = hMax > Math.max(y0, y1) + 0.02 || (y1 > y0 + 0.02) || o.hTop != null;
+  const sw = { s: 0, dur: 0.34, from, to: [to[0], y1, to[2]], y0, y1, yaw0: f.yaw, yaw1, lift: 0, hTop: 0, sv: 0, tail: 0.3, prof, vertT: 0 };
+  if (wall) {
+    sw.hTop = o.hTop != null ? o.hTop : hMax + FOOT_CLEAR;
+    const vertT = o.vertT ?? clamp((sw.hTop - y0) / 1.4, 0.16, 1.0);
+    const horT = o.horT ?? clamp(dist / 1.3, 0.2, 0.5);
+    sw.vertT = vertT; sw.dur = vertT + horT; sw.sv = vertT / sw.dur; sw.tail = o.tail ?? 0.35;
+    sw.lift = 0;
+  } else {
+    const travel = Math.hypot(dist, 2 * Math.abs(y1 - y0));
+    sw.dur = clamp(travel / STEP.maxFootSpeed, STEP.dur, 0.6);
+    sw.lift = clamp(STEP.lift + 0.06 * dist, STEP.lift, STEP.liftMax);
+  }
+  if (o.dur) sw.dur = o.dur;
+  f.planted = false; f.stepCount++; f.swing = sw;
+  return sw;
+}
+// Evalúa el vuelo en w.s: escribe f.pos (x,z), f.sole (altura), f.yaw, f.pitch.
+export function swingPose(f, w, top) {
+  const s = w.s, rise = w.y1 - w.y0;
+  let eH, h;
+  if (w.hTop > 0) {
+    const sh = clamp((s - w.sv) / (1 - w.sv), 0, 1);
+    eH = 0.35 * sh + 0.65 * smoothstep(sh);
+    if (s < w.sv) h = w.y0 + (w.hTop - w.y0) * smoothstep(s / w.sv);
+    else {
+      const sd = 1 - w.tail;
+      h = s <= sd ? w.hTop : w.hTop + (w.y1 - w.hTop) * smoothstep((s - sd) / w.tail);
+      // envolvente: nunca por debajo del tope bajo la huella (con holgura y suavizado horizontal), salvo el tope de aterrizaje
+      let env = -1e9;
+      for (let i = 0; i <= NPROF; i++) {
+        const r = w.prof[i]; if (r <= w.y1 + 0.01) continue;
+        const d = Math.abs(eH - i / NPROF) / WU; if (d >= 1) continue;
+        const k = 0.5 + 0.5 * Math.cos(Math.PI * d); const v = (r + FOOT_CLEAR) * k + w.y1 * (1 - k); if (v > env) env = v;
+      }
+      if (env > h) h = env;
+    }
+  } else {
+    const eV = rise > 0 ? 1 - Math.pow(1 - s, 2) : s;
+    const hDelay = clamp(rise / 1.0, 0, 1) * 0.30, sh = clamp((s - hDelay) / (1 - hDelay), 0, 1);
+    eH = 0.35 * sh + 0.65 * smoothstep(sh);
+    h = w.y0 + rise * (rise > 0 ? eV : smoothstep(s)) + (w.lift + 0.25 * Math.abs(rise)) * Math.sin(Math.PI * s);
+  }
+  f.pos[0] = w.from[0] + (w.to[0] - w.from[0]) * eH; f.pos[2] = w.from[2] + (w.to[2] - w.from[2]) * eH;
+  f.sole = h; f.pos[1] = h;
+  f.yaw = w.yaw0 + wrapPi(w.yaw1 - w.yaw0) * smoothstep(s);
+  f.pitch = -0.5 * Math.sin(Math.PI * clamp(s * 4, 0, 1)) + 0.3 * Math.sin(Math.PI * clamp((s - 0.4) / 0.6, 0, 1));
+}
+
 // Un tick del controlador de pasos. st = { t, vel:[vx,vz] mundo, speed, walkAmt, idleT }. Devuelve eventos.
 export function updateFeet(feet, top, root, yaw, st, dt, events) {
   const hw = [{ x: 0, z: 0, yaw: 0 }, { x: 0, z: 0, yaw: 0 }];
@@ -100,21 +179,10 @@ export function updateFeet(feet, top, root, yaw, st, dt, events) {
     if (w.s >= 1) {
       f.planted = true; f.pos[0] = w.to[0]; f.pos[2] = w.to[2]; f.yaw = w.yaw1; f.sole = w.y1; f.pos[1] = f.sole; f.pitch = 0; f.swing = null;
       events.push({ type: 'plant', foot: f.side, pos: f.pos.slice() });
-    } else {
-      const s = w.s, rise = w.y1 - w.y0;
-      const eV = rise > 0 ? 1 - Math.pow(1 - s, 2) : s;                          // sube rápido si el destino es más alto
-      const hDelay = clamp(rise / 1.0, 0, 1) * 0.30;                                // y retrasa el avance horizontal
-      const sh = clamp((s - hDelay) / (1 - hDelay), 0, 1);
-      const eH = 0.35 * sh + 0.65 * smoothstep(sh);                                // mezcla lineal/smoothstep: pico de velocidad ~1.3x
-      f.pos[0] = w.from[0] + (w.to[0] - w.from[0]) * eH; f.pos[2] = w.from[2] + (w.to[2] - w.from[2]) * eH;
-      const clearance = w.lift + 0.25 * Math.abs(rise);
-      f.sole = w.y0 + rise * (rise > 0 ? eV : smoothstep(s)) + clearance * Math.sin(Math.PI * s);
-      f.pos[1] = f.sole;
-      f.yaw = w.yaw0 + wrapPi(w.yaw1 - w.yaw0) * smoothstep(s);
-      f.pitch = -0.5 * Math.sin(Math.PI * clamp(s * 4, 0, 1)) + 0.3 * Math.sin(Math.PI * clamp((s - 0.4) / 0.6, 0, 1));
-    }
+    } else swingPose(f, w, top);
   }
   // 2) ¿disparar un paso?
+  if (st.freeze) return;
   const anySwing = feet.some((f) => !f.planted);
   const moving = st.speed > 0.08;
   let best = -1, bestU = 0, bestTarget = null;
@@ -148,12 +216,9 @@ export function updateFeet(feet, top, root, yaw, st, dt, events) {
     let tz = h.z + (moving ? st.vel[1] / st.speed : 0) * lead;
     const yaw1 = h.yaw;
     const rf = relaxFoot(top, tx, tz, yaw1, f.sole); tx = rf.x; tz = rf.z; const y1 = rf.y;
-    const dist = Math.hypot(tx - f.pos[0], tz - f.pos[2]);
-    f.planted = false; f.lastStepT = st.t; f.stepCount++;
-    const travel = Math.hypot(dist, 2 * Math.abs(y1 - f.sole));
-    f.swing = { s: 0, dur: clamp(travel / STEP.maxFootSpeed, STEP.dur, 0.6), from: f.pos.slice(), to: [tx, y1, tz], y0: f.sole, y1, yaw0: f.yaw, yaw1,
-      lift: clamp(STEP.lift + 0.06 * dist, STEP.lift, STEP.liftMax) };
-    events.push({ type: 'liftoff', foot: f.side, from: f.pos.slice(), to: [tx, y1, tz] });
+    f.lastStepT = st.t;
+    startSwing(f, top, [tx, y1, tz], yaw1);
+    events.push({ type: 'liftoff', foot: f.side, from: f.swing.from.slice(), to: [tx, y1, tz] });
   }
 }
 

@@ -19,7 +19,7 @@ export const BLOCK_M_DEFAULT = 0.5;
 export const yawToDir = (yaw, out = [0, 0, 0]) => { out[0] = Math.cos(yaw); out[1] = 0; out[2] = -Math.sin(yaw); return out; };
 export const dirToYaw = (x, z) => Math.atan2(-z, x);
 const toW = (p, o) => { o[0] = p[2]; o[1] = p[1]; o[2] = -p[0]; return o; };           // interno -> mundo
-const HIP_GUARD = 0.77, HIP_WALK = 0.80;                                                  // altura cadera sobre tobillo
+const HIP_GUARD = 0.72, HIP_WALK = 0.79;                                                  // altura cadera sobre tobillo
 
 export function createAnimator3D(opts = {}) {
   const blockM = opts.blockM || BLOCK_M_DEFAULT;
