@@ -4,7 +4,8 @@ import { PALETTE } from './palette.js';
 
 export const TILE = 16;
 export const TILES = ['grass_top', 'grass_side', 'dirt', 'stone', 'log_side', 'log_top', 'planks', 'leaves',
-  'sand', 'snow', 'gravel', 'coal_ore', 'iron_ore', 'water']; // orden fijo: solo se agrega al final
+  'sand', 'snow', 'gravel', 'coal_ore', 'iron_ore', 'water',
+  'pine_log_side', 'pine_log_top', 'pine_leaves', 'birch_log_side', 'birch_log_top', 'birch_leaves']; // orden fijo: solo se agrega al final
 const COLS = 4;
 
 function rng(seed) { let s = seed >>> 0; return () => { s = (s + 0x6D2B79F5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
@@ -27,7 +28,16 @@ const PAINT = {
   coal_ore(g, r) { PAINT.stone(g, r); ore(g, r, PALETTE.coal, 5); },
   iron_ore(g, r) { PAINT.stone(g, r); ore(g, r, PALETTE.iron, 4); },
   water(g, r) { for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) { const w = Math.sin((x + y * 0.5) * 0.9 + r() * 0.6) > 0.7; px(g, x, y, shade(pick(r, PALETTE.water), w ? 1.25 : 0.9 + r() * 0.1)); } },
+  // Pino: corteza casi negra en placas verticales; aguja oscura y densa (pocos huecos).
+  pine_log_side(g, r) { for (let x = 0; x < TILE; x++) { const c = pick(r, PALETTE.pineBark); for (let y = 0; y < TILE; y++) px(g, x, y, shade(c, ((x + ((y >> 2) & 1) * 2) % 5 === 0 ? 0.6 : 0.9) + r() * 0.15)); } },
+  pine_log_top(g, r) { ringTop(g, r, PALETTE.pineBark[0], ['#7a5a38', '#6a4c2e']); },
+  pine_leaves(g, r) { for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) { if (r() < 0.06) { g.clearRect(x, y, 1, 1); continue; } px(g, x, y, shade(pick(r, PALETTE.pineLeaves), (y + x) % 3 === 0 ? 0.75 : 0.95 + r() * 0.2)); } },
+  // Abedul: corteza clara con marcas horizontales oscuras; hoja más clara y amarillenta.
+  birch_log_side(g, r) { for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) px(g, x, y, shade(pick(r, PALETTE.birchBark), 0.9 + r() * 0.12)); for (let i = 0; i < 5; i++) { const y = (r() * TILE) | 0, x0 = (r() * 12) | 0, w = 2 + ((r() * 4) | 0); for (let x = x0; x < x0 + w; x++) px(g, x & 15, y, shade(PALETTE.birchMark, 0.9 + r() * 0.3)); } },
+  birch_log_top(g, r) { ringTop(g, r, PALETTE.birchBark[0], ['#c8b48a', '#b8a27a']); },
+  birch_leaves(g, r) { for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) { if (r() < 0.14) { g.clearRect(x, y, 1, 1); continue; } px(g, x, y, shade(pick(r, PALETTE.birchLeaves), 0.8 + r() * 0.3)); } },
 };
+function ringTop(g, r, bark, rings) { for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) { const d = Math.hypot(x - 7.5, y - 7.5); px(g, x, y, shade(d > 6.8 ? bark : rings[(d | 0) % 2], 0.85 + r() * 0.15)); } }
 // Vetas de mineral: grumos de 2-4 px con borde oscuro, legibles a distancia.
 function ore(g, r, cols, n) { for (let i = 0; i < n; i++) { const x0 = 1 + ((r() * 11) | 0), y0 = 1 + ((r() * 11) | 0); for (let dy = 0; dy < 3; dy++) for (let dx = 0; dx < 3; dx++) { if ((dx + dy === 4 || dx + dy === 0) && r() < 0.6) continue; px(g, x0 + dx, y0 + dy, shade(pick(r, cols), 0.85 + r() * 0.25)); } px(g, x0 + 1, y0, shade(cols[cols.length - 1], 1.6)); } }
 

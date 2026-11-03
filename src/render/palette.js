@@ -14,5 +14,10 @@ export const PALETTE = Object.freeze({
   coal: ['#1a1a1c', '#232326'],
   iron: ['#a07a5c', '#b58c6a', '#8a6650'],
   water: ['#1d3a4a', '#21445a', '#183242', '#27506a'],
+  pineBark: ['#2a1d14', '#33241a', '#241811', '#3b2a1e'],
+  pineLeaves: ['#1d3324', '#22392a', '#182c1f', '#284232'],
+  birchBark: ['#bdb8ab', '#c9c4b8', '#aea99c', '#d4d0c5'],
+  birchMark: '#2a2622',
+  birchLeaves: ['#4f6b2f', '#5a7735', '#465f2a', '#66833c'],
   blood: '#7a0e0e', bloodFresh: '#a3141a',
 });
