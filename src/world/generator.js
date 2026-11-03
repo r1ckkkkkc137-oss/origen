@@ -107,17 +107,17 @@ function surfaceOf(biome, h, steep) {
 // Especies (forma, no textura: el atlas solo tiene un tile de tronco/hoja): roble ancho, pino/conífera alta y estrecha, abedul delgado.
 // Cada celda de TREE_CELL x TREE_CELL tiene como mucho UN candidato (posición, especie y altura salen de hash3 de la seed + celda;
 // clima/altura de las columnas son funciones puras). Un candidato se ACEPTA si ningún candidato válido vecino con mayor prioridad
-// queda a menos de rA + rB + 2 bloques (Chebyshev): ni copas ni troncos se superponen. Como "válido" y "prioridad" son puros, la
+// queda a menos de rA + rB + 1 bloques (Chebyshev): ni copas ni troncos se superponen. Como "válido" y "prioridad" son puros, la
 // decisión no depende del chunk ni del orden de generación: todo chunk que toque un árbol dibuja exactamente los mismos bloques.
 export const SPECIES = Object.freeze({ OAK: 0, PINE: 1, BIRCH: 2 });
 export const SPECIES_NAMES = ['oak', 'pine', 'birch'];
-export const TREE_CELL = 8;
+export const TREE_CELL = 6;
 export const TREE_REACH = Object.freeze([4, 3, 3]);   // radio horizontal máximo (copa+ramas) por especie
 export const TREE_MAX_REACH = 4;
 export const TREE_HEIGHT = Object.freeze([[10, 15], [13, 18], [10, 14]]);   // [min,max] bloques sobre el suelo, por especie (0,5 m/bloque: 5–9 m)
 const TREE_MARGIN = TREE_MAX_REACH + 1;              // + 1 por la base 2x2 (puede correrse un bloque)
-const TREE_SEP_PAD = 2;
-const NB = 2;                                        // celdas vecinas a revisar: (4+4+2) / 8 -> 2
+const TREE_SEP_PAD = 1;
+const NB = 2;                                        // celdas vecinas a revisar: (4+4+1) / 6 -> 2
 
 /** Altura y clima de una columna (sin caché de rejilla). */
 const _c = { t: 0, hum: 0 };
@@ -148,7 +148,7 @@ function computeTreeCell(S, cx, cz) {
   const z = cz * TREE_CELL + Math.floor(hash3(ts, cx, 2, cz) * TREE_CELL);
   climate(S, x, z, _c);
   const t = _c.t, biome = biomeFromClimate(_c.t, _c.hum);
-  const dens = biome === BIOME.FOREST ? 0.9 : biome === BIOME.PLAINS ? 0.14 : biome === BIOME.SNOWY_MOUNTAIN ? 0.3 : 0;
+  const dens = biome === BIOME.FOREST ? 1.0 : biome === BIOME.PLAINS ? 0.14 : biome === BIOME.SNOWY_MOUNTAIN ? 0.3 : 0;
   if (dens === 0 || hash3(ts, cx, 3, cz) >= dens) return null;
   const ground = terrainHeight(S, x, z, _c.t, _c.hum);
   if (ground < SEA_LEVEL + 2) return null;                                   // agua / arena de orilla

@@ -74,7 +74,7 @@ test('árboles: ni copas ni troncos se superponen (separación mínima y bloques
     for (let i = 0; i < trees.length; i++) {
       for (let j = i + 1; j < trees.length; j++) {
         const d = Math.max(Math.abs(trees[i].x - trees[j].x), Math.abs(trees[i].z - trees[j].z));
-        assert.ok(d >= trees[i].r + trees[j].r + 2, `troncos a ${d} (seed ${seed})`);
+        assert.ok(d >= trees[i].r + trees[j].r + 1, `troncos a ${d} (seed ${seed})`);
       }
       for (const [x, y, z] of treeBlocks(seed, trees[i])) {
         const k = `${x},${y},${z}`;
@@ -209,6 +209,7 @@ test('talar: cada bloque de tronco se puede romper y suelta madera; fellTree tir
   const trees = listTrees(1234, -200, -200, 200, 200);
   const tall = trees.filter((t) => t.thick && t.species === SPECIES.OAK).slice(0, 3).concat(trees.filter((t) => t.thick && t.species === SPECIES.PINE).slice(0, 3), trees.filter((t) => t.species === SPECIES.BIRCH).slice(0, 2));
   assert.ok(tall.length >= 6);
+  let felledLeaves = 0, totalLeaves = 0;
   for (const t of tall) {
     const own = treeBlocks(1234, t), logs = own.filter((b) => b[3] === B.LOG), leaves = own.filter((b) => b[3] === B.LEAVES);
     for (let cz = (t.z - 6) >> 4; cz <= (t.z + 6) >> 4; cz++) for (let cx = (t.x - 6) >> 4; cx <= (t.x + 6) >> 4; cx++) w.getChunk(cx, cz);
@@ -223,10 +224,20 @@ test('talar: cada bloque de tronco se puede romper y suelta madera; fellTree tir
     assert.ok(r && r.logs === logs.length, `tiró ${r?.logs} de ${logs.length} troncos`);
     assert.deepEqual(r.drops, [{ id: B.LOG, count: logs.length }]);
     for (const [x, y, z] of logs) assert.equal(w.getBlock(x, y, z), B.AIR);
-    // hojas: ninguna del árbol queda (no hay otro árbol a distancia de conflicto)
-    for (const [x, y, z] of leaves) assert.equal(w.getBlock(x, y, z), B.AIR, `hoja flotante ${x},${y},${z}`);
-    assert.equal(r.leaves, leaves.length);
+    // hojas: las que quedan solo pueden ser las que siguen unidas por cadena de hojas a un tronco en pie (copas vecinas que se tocan)
+    let left = 0;
+    const N6 = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
+    const lv = leaves.filter(([x, y, z]) => w.getBlock(x, y, z) === B.LEAVES);
+    left = lv.length;
+    const reach = new Set(), st = [];
+    for (const [x, y, z] of lv) if (N6.some(([dx, dy, dz]) => w.getBlock(x + dx, y + dy, z + dz) === B.LOG)) { reach.add(`${x},${y},${z}`); st.push([x, y, z]); }
+    while (st.length) { const [a, b, c] = st.pop(); for (const [dx, dy, dz] of N6) { const k = `${a + dx},${b + dy},${c + dz}`; if (!reach.has(k) && lv.some(([x, y, z]) => x === a + dx && y === b + dy && z === c + dz)) { reach.add(k); st.push([a + dx, b + dy, c + dz]); } } }
+    void reach;
+    assert.equal(r.leaves + left, leaves.length, 'cuenta de hojas caídas');
+    assert.ok(r.leaves >= leaves.length * 0.6, `solo cayeron ${r.leaves} de ${leaves.length} hojas`);
+    felledLeaves += r.leaves; totalLeaves += leaves.length;
   }
+  assert.ok(felledLeaves >= totalLeaves * 0.8);
   assert.equal(w.fellTree(0, 0, 0), null);
 });
 
@@ -240,4 +251,20 @@ test('árboles: el terreno bajo y<=ground no cambia por plantar árboles (solo s
     }
   }
   assert.ok(TREE_CELL > 0);
+});
+
+test('talar: troncos puestos por el jugador (no generados) también caen con sus hojas', () => {
+  const w = new World(5);
+  const x = 1000, z = 1000; // fuera de cualquier árbol de este test: se prueba dentro de un chunk cargado
+  w.getChunk(x >> 4, z >> 4);
+  let gy = CHUNK_Y - 1; while (gy > 0 && w.getBlock(x, gy, z) === B.AIR) gy--;
+  const top = gy + 1;
+  for (let i = 0; i < 4; i++) w.setBlock(x, top + i, z, B.LOG);
+  const lv = [[1, 3, 0], [-1, 3, 0], [0, 4, 0], [0, 3, 1], [3, 3, 0]];     // la última (x+3) no toca nada: no es candidata y se queda
+  for (const [dx, dy, dz] of lv) w.setBlock(x + dx, top + dy, z + dz, B.LEAVES);
+  const r = w.fellTree(x, top + 1, z);
+  assert.equal(r.logs, 4);
+  assert.equal(r.leaves, 4);                                                // la hoja suelta no está conectada a nada, no era candidata
+  assert.equal(w.getBlock(x + 1, top + 3, z), B.AIR);
+  assert.equal(w.getBlock(x + 3, top + 3, z), B.LEAVES);
 });

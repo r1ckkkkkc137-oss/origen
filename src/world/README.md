@@ -85,20 +85,21 @@ Notas para la interfaz `World` (aclaraciones, no cambios): `raycast` devuelve ad
 
 ## Decisiones de diseño
 
-* **Pureza**: todo sale de funciones puras por columna `(x,z)` y por voxel `(x,y,z)`; el orden de generación no importa (test con procesos hijos en distinto orden). Cuadrícula de columnas con relleno de 4 para pendientes y árboles en bordes.
+* **Pureza**: todo sale de funciones puras por columna `(x,z)` y por voxel `(x,y,z)`; el orden de generación no importa (test con procesos hijos en distinto orden). Cuadrícula de columnas con relleno de 2 para pendientes y árboles en bordes.
 * **Mundo**: `CHUNK` 16×64×16, nivel del mar `SEA_LEVEL=20`, altura máxima 62. Mar/lagos por debajo del nivel del mar; no hay agua flotante (los huecos de cueva no se llenan).
 * **Biomas** (temperatura × humedad, escala ~400 bloques): `plains`, `forest`, `desert`, `snowy_mountain` (+ montañas por ruido ridged, nieve en altura). Superficie: pasto/tierra, arena (desierto/orillas), grava (fondos profundos), nieve; piedra en pendientes ≥3.
 * **Cuevas**: espaguetis (dos ruidos cerca de 0) + cavernas; profundidad mínima 4 bajo la superficie salvo «bocas» raras. Menas: carbón e hierro (hierro solo y≤28) por ruido 3D.
-* **Regla de árboles**: grilla de 7×7; tronco = celda·7 + jitter 0..2 ⇒ troncos ≥5 separados y copas (radio 2) nunca solapan. Existe si `hash3` pasa (bosque 0,8; llanura 0,06) y la columna es válida (bosque/llanura, suelo ≥ SEA+2, pendiente ≤2, pasto, no boca de cueva). Tronco 4..6 bloques; hojas/troncos solo reemplazan aire. **Con 0,5 m por bloque eso son 2–3 m de árbol**: si Rick quiere árboles más altos hay que subir la línea `trunk = 4 + floor(hash3(ts,cx,4,cz)*3)` de `generator.js` (pendiente de decisión, no se cambió).
+* **Árboles** (`generator.js`, `treeBlocks`, `World.fellTree`): 3 especies, 10–18 bloques (5–9 m con BLOCK_M=0,5), todo por `hash3(seed, celda)`: roble 10–15 (copa ancha de elipsoides con ruido + ramas cortas), pino 13–18 (tronco hasta la punta, copa en pisos, estrecho), abedul 10–14 (delgado, copa ovalada). Bioma → especie: nieve = solo pino; llanura 60 % roble / 40 % abedul; bosque frío (temperatura < 0,42) 60 % pino, resto del bosque 50 % roble / 30 % abedul / 20 % pino; desierto sin árboles. Densidad de candidatos: bosque 1,0 · nieve 0,3 · llanura 0,14 por celda de 6×6. Un candidato por celda; se ACEPTA si ningún candidato válido de mayor prioridad (hash) queda a menos de `rA + rB + 1` bloques (Chebyshev, `r` = alcance máximo de copa por especie, `TREE_REACH`): ni troncos ni copas comparten bloque. Como validez y prioridad son funciones puras de la semilla, un chunk reconstruye los árboles de los chunks vecinos (margen 5) y los bordes coinciden bit a bit sin importar el orden. Válido = suelo pasto/nieve a ≥ SEA+2, pendiente ≤ 2 contra los 4 vecinos (y contra las 4 columnas de la base 2×2), sin boca de cueva, cabe en 64. Troncos altos (roble/pino ≥ 13): base 2×2 (3 bloques si ≥ 16, sube con el suelo más alto) y 1×1 arriba; abedul 1×1. Hojas solo reemplazan aire y se podan por BFS: ninguna hoja queda sin camino de hojas hasta un tronco (comprobado también sobre el mundo real).
+* **Tala**: `world.dig` rompe un bloque (suelta `LOG`). `world.fellTree(x,y,z)` quita todos los troncos conectados por cara (sirve con 2×2 y ramas) y las hojas del árbol dueño (exacto vía `treeBlocks`: no toca copas vecinas); troncos puestos por el jugador usan un decay genérico (hojas a ≤4 de cadena de un tronco en pie sobreviven). Devuelve `{ logs, leaves, drops:[{id,count}] }`; no hay caída animada ni drops de hoja/palo.
 * **Edición**: el diff guarda por chunk el valor original; revertir una edición la descarta.
 
 ## Rendimiento (medido, `node src/world/bench.mjs`, Node v24, Xeon virtual ×8, grilla 8×8, semillas 1234 y 7)
 
 ```
-generateChunk   N=128  media 1.595 ms  mediana 1.480  p95 2.358  (máx 7.341)
-meshChunk       N=72   media 0.256 ms  mediana 0.237  p95 0.416  (con 4 vecinos)
-triángulos/chunk (N=72): greedy media 218 (mediana 126, p95 636) · ingenua con culling media 993 · sin culling media 70185
-greedy = 22,0 % de la ingenua con culling · 0,31 % de la malla sin culling · malla ≈ 15,3 KiB/chunk (p95 44,7)
+generateChunk   N=128  media ≈1,5–1,75 ms  (referencia anterior: media 1.595, mediana 1.480, p95 2.358)
+meshChunk       N=72   media ≈0,26–0,29 ms (con 4 vecinos; referencia anterior 0.256)
+triángulos/chunk (N=72): greedy media 231 (mediana 142, p95 708) — antes 218 / 126 / 636 · vértices 462/chunk (antes 437) · malla ≈ 16,2 KiB/chunk (antes 15,3; p95 49,8 vs 44,7)
+(el recuento «ingenua con culling» y «sin culling» está en la salida de `bench.mjs`)
 getBlock/solidAt (patrón de muestreador de suelo, mundo 8×8 cargado, 781 561 llamadas × 7 repeticiones): mediana ≈ 9 ns/llamada
 ```
 
@@ -106,13 +107,15 @@ getBlock/solidAt (patrón de muestreador de suelo, mundo 8×8 cargado, 781 561 l
 
 Cifras de una sola máquina/corrida; la variación entre corridas es visible (p.ej. la media de `generateChunk` de la semilla 1234 fue 1,76 y 2,20 ms en dos corridas).
 
+**Árboles** (A/B en la misma máquina, 3 corridas intercaladas de `bench.mjs` en master `afc0110` vs `world-trees`; el ruido entre corridas es mayor que la diferencia: generateChunk 1,5–1,8 vs 1,5–1,75 ms, meshChunk 0,25–0,35 vs 0,26–0,29 ms). La ventana por defecto del bench (chunks 0..7 de las semillas 1234 y 7) tiene pocos árboles, así que se midió aparte una ventana de bosque (semilla 1234, chunks -40..-33 × -28..-21, 8×8, script ad hoc, no en el repo): bloques LOG+LEAVES por chunk 259 (árboles viejos de 4–6 bloques) → 178 (árboles nuevos, ≈1,3 árboles/chunk); generateChunk 1,65–1,84 → 1,69–1,98 ms; meshChunk 0,48–0,64 → 0,40–0,59 ms; triángulos greedy 767 (mediana 744, p95 1274) → 740 (678, 1404). Distribución real de alturas (4 semillas, región de 720×720 bloques cada una, 5153 árboles): roble N=1302 min 10 / mediana 12 / máx 15 · pino N=2841 13 / 15 / 18 · abedul N=1010 10 / 12 / 14 bloques (todos 5–9 m).
+
 ## Pendiente / limitaciones conocidas
 
 * **Sin GPU real**: shader y vista se ejecutan en Chrome headless con SwiftShader (render por software) vía `npm run smoke:world`; los fps de abajo NO representan un GPU ni un celular. Los tests unitarios usan un THREE falso.
 * Periodo del ruido: 256 celdas (se repite el patrón; imperceptible a esta escala).
 * Ediciones cargadas desde disco no se pueden descartar automáticamente al revertirlas (se desconoce el original).
 * Filtraciones de agua hacia cuevas solo verificadas dentro de un chunk; sin simulación de fluidos.
-* Falta: caída de árboles/tala, AO y teñido por bioma, fauna/spawns, flujo de agua, decoraciones (flores, hierba alta).
+* Falta: caída animada de árboles, drops de hojas/palos/manzanas, AO y teñido por bioma, fauna/spawns, flujo de agua, decoraciones (flores, hierba alta). Las 3 especies comparten el mismo tile de tronco/hoja (el atlas no tiene corteza de abedul ni agujas): se distinguen solo por forma. Un roble de 15 bloques tiene ~7,5 m de altura pero copa de radio ≤4 bloques (2 m).
 * Cifras de afinado del terreno (porcentajes de biomas, 17 % bajo el mar) son de una muestra informal, no del bench.
 
 ## Tests
