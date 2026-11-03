@@ -16,6 +16,7 @@ const W = 480, H = 400;
 const SCENES = {
   guard: { times: [1.0, 1.7, 2.4, 3.1], actions: [] },
   jab: { times: [1.40, 1.50, 1.58, 1.65, 1.75, 1.90, 2.10, 2.40], actions: [{ t: 1.5, who: 0, play: 'jab' }] },
+  jabsync: { times: [1.50, 1.56, 1.60, 1.64, 1.70, 1.76, 1.82, 1.95], actions: [{ t: 1.5, who: 0, play: 'jab', opts: { impactIn: 0.10, duration: 0.32 } }, { t: 1.5, who: 1, play: 'jab', opts: { speed: 0.6 } }] },   // KAGE: impacto a 0.10 s, total 0.32 s
   cross: { times: [1.40, 1.55, 1.65, 1.72, 1.80, 1.95, 2.20, 2.60], actions: [{ t: 1.5, who: 0, play: 'cross' }] },
   hook: { times: [1.40, 1.55, 1.65, 1.72, 1.80, 1.95, 2.20, 2.60], actions: [{ t: 1.5, who: 0, play: 'hook' }] },
   lowkick: { times: [1.40, 1.60, 1.75, 1.88, 2.0, 2.15, 2.4, 2.8], actions: [{ t: 1.5, who: 0, play: 'lowkick' }] },

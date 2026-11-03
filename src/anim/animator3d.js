@@ -42,13 +42,57 @@ export function createAnimator3D(opts = {}) {
     feet: [createFoot('L'), createFoot('R')],
     ch: makeChannels(GUARD),
     visYaw: 0, yawSp: spring(0), vel: [0, 0], lastRoot: [0, 0], walkAmt: 0, idleT: 0, pelvisY: 0, pelvisSp: spring(0), gate: spring(0),
-    clip: null, clipT: 0, strike: { active: false, phase: 'none', t: 0, impactT: 0, fist: [0, 0, 0] },
+    clip: null, clipT: 0, strike: { active: false, phase: 'none', t: 0, impactT: 0, fist: [0, 0, 0], name: '', phase01: 0, tip: 'L' },
     diag: { maxFootErr: 0, clamped: 0 },
   };
   const _root = [0, 0, 0];
   const swingEnv = (f) => (f.planted ? 0 : Math.sin(Math.PI * clamp(f.swing.s, 0, 1)));
 
-  A.play = (name) => { if (A.clip) return false; A.clip = CLIPS[name]; A.clipT = 0; return !!A.clip; };
+  // ---- reloj de clips (sincronía con la sim).  A.clip = clip activo; A.clipT = tiempo DEL CLIP (s de clip, no de pared).
+  //   play(name)                           tiempo real, 1x (compatible).  Devuelve false si ya hay un clip activo (salvo opts.force).
+  //   play(name,{speed})                   speed>1 = más rápido.
+  //   play(name,{duration})                el clip entero dura `duration` s (velocidad uniforme).
+  //   play(name,{impactIn, duration})      deformación del tiempo: el IMPACTO del clip cae a `impactIn` s y el clip termina a `duration` s
+  //                                        (típico: impactIn = windupSeconds de la sim, duration = windup+active+recovery).
+  //   play(name,{phase:0..1})              arranca desde esa fase del clip.
+  //   playAt(name, phase01 [, simImpact01]) modo CONDUCIDO: la sim da la fase cada frame (0..1 del movimiento de la sim);
+  //                                        con simImpact01 (fracción de la sim donde cae el impacto) la fase se deforma para que el
+  //                                        impacto del clip coincida. Al llegar a 1 el clip termina solo. Si la sim interrumpe: cancel().
+  //   cancel(fade=0.12)                    corta el clip con fundido (reacciones/stun).   clipInfo(name?) -> duración, impacto, fases.
+  A.fade = null;
+  A.clipMode = { name: '', speed: 1, map: null, driven: false, cutAt: 0 };
+  const startClip = (name, o) => {
+    const clip = CLIPS[name]; if (!clip) return false;
+    if (A.clip && !o.force) return false;
+    if (A.clip && o.force) A.fade = { clip: A.clip, t: A.clipT, w: 1, rate: 1 / 0.08 };
+    A.clip = clip; A.clipT = clamp(o.phase ?? 0, 0, 1) * clip.duration;
+    const m = A.clipMode; m.name = name; m.driven = !!o.driven; m.map = null; m.speed = o.speed > 0 ? o.speed : 1;
+    if (o.duration > 0) {
+      if (o.impactIn > 0 && o.impactIn < o.duration) m.map = { ti: o.impactIn, tt: o.duration };
+      else m.speed *= clip.duration / o.duration;
+    }
+    m.stale = 0; m.prev = A.clipT;
+    return true;
+  };
+  A.play = (name, opts = {}) => startClip(name, opts);
+  A.playAt = (name, phase01, simImpact01) => {
+    const clip = CLIPS[name]; if (!clip) return false;
+    const m = A.clipMode;
+    if (!A.clip || m.name !== name || !m.driven) { if (!startClip(name, { driven: true, force: true })) return false; }
+    let p = clamp(phase01, 0, 1);
+    if (simImpact01 > 0 && simImpact01 < 1) {
+      const pi = clip.impactT / clip.duration;
+      p = p <= simImpact01 ? (p / simImpact01) * pi : pi + ((p - simImpact01) / (1 - simImpact01)) * (1 - pi);
+    }
+    A.clipT = p * clip.duration; m.cutAt = p >= 1 ? 1 : 0; m.stale = 0;
+    return true;
+  };
+  A.cancel = (fade = 0.15) => { if (!A.clip) return false; A.fade = { clip: A.clip, t: A.clipT, w: 1, rate: 1 / Math.max(fade, 1e-3) }; A.clip = null; return true; };
+  A.clipInfo = (name) => {
+    const clip = CLIPS[name ?? A.clipMode.name]; if (!clip) return null;
+    const d = clip.duration, a = clip.phases.find((q) => q.name === 'strike') || clip.phases[1];
+    return { name: clip.name, duration: d, impactT: clip.impactT, impact01: clip.impactT / d, active01: [a.t0 / d, a.t1 / d], tip: clip.tip || 'L' };
+  };
 
   function reset(rootW) {
     _root[0] = -rootW.pos[2]; _root[1] = rootW.pos[1]; _root[2] = rootW.pos[0];
@@ -91,13 +135,24 @@ export function createAnimator3D(opts = {}) {
     const fwdSpeed = A.vel[0] * Math.sin(yaw) + A.vel[1] * Math.cos(yaw);
     walkLayer(A.gate.x, A.walkAmt, fwdSpeed, c);
     const S = A.strike; S.active = false; S.phase = 'none';
+    if (A.fade) {
+      A.fade.w -= dt * A.fade.rate; if (A.fade.w <= 0) A.fade = null; else addClip(A.fade.clip, A.fade.t, A.fade.w * A.fade.w * (3 - 2 * A.fade.w), c);
+    }
     if (A.clip) {
-      A.clipT += dt;
-      if (A.clipT >= A.clip.duration) { addClip(A.clip, A.clip.duration, 1, c); A.clip = null; }
+      const m = A.clipMode, clip = A.clip, tPrev = m.prev;
+      if (m.driven) { if ((m.stale += dt) > 0.25) { A.cancel(0.12); ev.push({ type: 'clipEnd', name: m.name, stale: true }); } }   // la sim dejó de conducirlo
       else {
-        addClip(A.clip, A.clipT, 1, c);
-        S.phase = phaseAt(A.clip, A.clipT); S.t = A.clipT; S.impactT = A.clip.impactT;
-        S.active = A.clipT >= A.clip.phases[1].t0 && A.clipT <= A.clip.phases[1].t1;
+        let rate = m.speed;
+        if (m.map) rate = m.speed * (A.clipT < clip.impactT ? clip.impactT / m.map.ti : (clip.duration - clip.impactT) / (m.map.tt - m.map.ti));
+        A.clipT += dt * rate;
+      }
+      m.prev = A.clipT;
+      if (tPrev < clip.impactT && A.clipT >= clip.impactT) ev.push({ type: 'impact', name: m.name, tip: clip.tip || 'L' });
+      if (A.clipT >= clip.duration || (m.driven && m.cutAt)) { addClip(clip, clip.duration, 1, c); A.clip = null; ev.push({ type: 'clipEnd', name: m.name }); }
+      else {
+        addClip(clip, A.clipT, 1, c);
+        S.phase = phaseAt(clip, A.clipT); S.t = A.clipT; S.impactT = clip.impactT; S.name = m.name; S.phase01 = A.clipT / clip.duration; S.tip = clip.tip || 'L';
+        S.active = A.clipT >= clip.phases[1].t0 && A.clipT <= clip.phases[1].t1;
       }
     }
     // ---- altura de pelvis
@@ -148,7 +203,7 @@ export function createAnimator3D(opts = {}) {
     }
     toW(P.head.t, skeleton.tips.headTop);
     { const hc = qRot(P.head.q, [0, DIM.head * 0.55, 0.11]); toW([P.head.p[0] + hc[0], P.head.p[1] + hc[1], P.head.p[2] + hc[2]], skeleton.tips.face); }
-    toW(P.handL.t, S.fist);
+    toW(P['hand' + (S.tip || 'L')].t, S.fist);
     A.diag.clamped = (rig.diag.legReachedL && rig.diag.legReachedR) ? 0 : 1;
     return skeleton;
   };
