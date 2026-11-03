@@ -9,7 +9,8 @@ import { createAtlas } from './render/atlas.js';
 import { applyLook, fogForRadius } from './render/look.js';
 import { TILES } from './render/atlas.js';
 import { createWorld } from './world/index.js';
-import { createWorldView } from './world/threeAdapter.js';
+import { createRegionView } from './engine/regionView.js';
+import { createAdaptiveRadius } from './engine/adaptive.js';
 import { createAnimator3D } from './anim/index.js';
 import { BLOCK_M } from './shared/contracts.js';
 import { createLiveFight, createLiveAnimation, findFightSpot } from './combat/index.js';
@@ -36,7 +37,7 @@ if (params.get('floor') === 'flat') {
   const floor = createTestFloor(atlas, 32); scene.add(floor.mesh); getBlock = floor.getBlock;
 } else {
   world = createWorld(Number(params.get('wseed') ?? SEED));
-  view = createWorldView(THREE, scene, world, atlas, { tileNames: TILES, radius: RADIUS });
+  view = createRegionView(THREE, scene, world, atlas, { tileNames: TILES, radius: RADIUS, region: 2 });
   world.ensureChunks(0, 0, 2);                                // carga síncrona cerca del origen para ubicar el spawn
   // spawn determinista: primera columna (espiral cuadrada) con 4 bloques planos en X, sin agua encima
   const flatAt = (x, z) => { const y = world.surfaceY(x, z); if (y < 0 || world.getBlock(x, y + 1, z) !== 0) return -1;
@@ -66,6 +67,9 @@ const fps = createFpsMeter(document.getElementById('fps'));
 const mid = new THREE.Vector3();
 addEventListener('resize', () => { renderer.setSize(innerWidth, innerHeight); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); });
 
+// Radio adaptativo: baja si el frame pasa de 33 ms, sube si sobra; la niebla sigue al radio.
+const adapt = view && params.get('adapt') !== '0' ? createAdaptiveRadius({ max: RADIUS, min: 2.5,
+  onChange(r) { view.setRadius(r); const f = fogForRadius(r); scene.fog.near = f.fogNear; scene.fog.far = f.fogFar; } }) : null;
 const loop = createLoop({
   update(dt, tick) {
     const { frame } = la.update(dt);
@@ -76,7 +80,7 @@ const loop = createLoop({
     rig.update(dt);
     if (view) view.update(camera.position.x, camera.position.z);
   },
-  render() { for (const f of fighters) f.view.update(f.anim.skeleton); renderer.render(scene, camera); fps.frame(); },
+  render(now) { for (const f of fighters) f.view.update(f.anim.skeleton); renderer.render(scene, camera); fps.frame(); adapt?.frame(); },
 });
 loop.start();
-window.__ORIGEN__ = { scene, camera, rig, loop, fps, fighters, live, SEED, world, view, look, renderer, ready: true };
+window.__ORIGEN__ = { scene, camera, rig, loop, fps, fighters, live, adapt, SEED, world, view, look, renderer, ready: true };
