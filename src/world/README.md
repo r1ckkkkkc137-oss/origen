@@ -18,7 +18,7 @@ Cumple `src/shared/contracts.js` v0.2b: `CHUNK` 16×64×16, índice `x + 16·z +
 | `mesher.js` | greedy meshing, 3 capas, tile por cara, uvs repetibles |
 | `tilemap.js` | **único** mapa `blockId + cara → tile` del atlas |
 | `physics.js` | AABB barrido por eje, escalones, agua, raycast DDA |
-| `threeAdapter.js` | `createGeometry`, `createVoxelMaterial` + shaders base (SIN PROBAR en GPU) |
+| `threeAdapter.js` | `createWorldView` (carga por radio + mallado con presupuesto + atlas de Arte), `createGeometry`, `createVoxelMaterial`, `buildTileMap` + shaders base (con niebla/sRGB/tonemap de THREE). Solo probado en SwiftShader |
 | `bench.mjs` | benchmark real (`node src/world/bench.mjs`) |
 | `index.js` | reexporta todo; `createWorld(seed)` |
 
@@ -54,7 +54,7 @@ Física: `createBody(x,y,z,{halfW:.3,height:1.8})` (metros); `moveAndCollide(wor
 * **Capas**: `opaque` (todo lo sólido), `cutout` (hojas; `alphaTest` 0,5, sin blending), `water` (blending, sin depthWrite). Desvío respecto al pedido original (una sola capa «transparente»): son tres porque hojas y agua se renderizan distinto.
 * **Caras ocultas**: se descartan entre opacos, también contra chunks vecinos (vecino `null` ⇒ opaco). Entre dos transparentes distintos dentro del chunk se emite solo una cara (la del índice menor); en el borde del chunk cada chunk emite la suya.
 * **Caras / tiles**: orden `0:+x 1:-x 2:top 3:bottom 4:+z 5:-z`. `tilemap.js` → `BLOCK_TILES` mapea `blockId → nombre` o `{top, side, bottom}`; `TILE_OF[id*6+cara]` es la tabla plana. Para ajustar un bloque se edita **solo** `BLOCK_TILES`.
-* **uv repetible**: con greedy un quad de w×h bloques lleva uv `0..w × 0..h` (unidades de bloque) y el atributo `tile` fija el tile. El shader hace `fract(vUv)` para repetir el tile (no estirarlo) y arma la uv del atlas. Fragmento (de `threeAdapter.js`, sin probar en GPU):
+* **uv repetible**: con greedy un quad de w×h bloques lleva uv `0..w × 0..h` (unidades de bloque) y el atributo `tile` fija el tile. El shader hace `fract(vUv)` para repetir el tile (no estirarlo) y arma la uv del atlas. Fragmento (de `threeAdapter.js`; compilado y ejecutado solo en SwiftShader, no en GPU real):
 
 ```glsl
 float t = floor(vTile + 0.5); float row = floor(t / uGrid.x); float col = t - row * uGrid.x;
@@ -62,8 +62,8 @@ vec2 f = fract(vUv);                                      // repite el tile
 vec2 tuv = vec2((col + f.x) / uGrid.x, 1.0 - (row + 1.0 - f.y) / uGrid.y);   // atlas: fila 0 arriba
 ```
 
-  `t` crece hacia +Y en caras laterales. Ojo: `fract(1.0)=0`; el shader acota la uv al interior del tile (medio texel) para evitar sangrado.
-* **Atlas** (Arte, `src/render/atlas.js`, 16 px, 4 columnas): los 8 primeros `TILE_NAMES` coinciden con el `TILES` de Arte (test lo comprueba si existe `/tmp/origen-art`). **Arte debe agregar al final, en este orden**: `sand, snow, gravel, coal_ore, iron_ore, water` (índices 8..13), o se cambia el orden aquí. Tile de `water` es un color plano con alpha. El `look.js` de Arte decide teñido/niebla.
+  `t` crece hacia +Y en caras laterales. Ojo: `fract(x)` vale 0 en los enteros, así que el borde derecho/superior de un quad exacto caería en el tile vecino; el shader acota la uv al interior del tile (medio texel) para evitar sangrado.
+* **Atlas** (Arte, `src/render/atlas.js`, 16 px, 4 columnas): los 8 primeros `TILE_NAMES` coinciden con el `TILES` de Arte (test lo comprueba si existe `/tmp/origen-art`). **Arte debe agregar al final, en este orden**: `sand, snow, gravel, coal_ore, iron_ore, water` (índices 8..13), o se cambia el orden aquí. Mientras el atlas de Arte tenga solo 8 tiles, `buildTileMap` usa sustitutos (`TILE_FALLBACK`: sand→dirt, water→dirt, snow/gravel/coal_ore/iron_ore→stone; `view.missingTiles` los lista) y las filas del atlas salen de `canvas.height/16`, así que al agregar tiles al final **no hay que tocar nada aquí**. El agua usa `uOpacity=0.7` en el shader (alpha del material), no del tile.
 
 ## Diff aditivo propuesto a `src/shared/contracts.js` (Motor decide)
 
@@ -77,13 +77,19 @@ El módulo ya usa estos valores como respaldo (`BLOCK.IRON ?? 9`, …) y los tom
 
 Notas para la interfaz `World` (aclaraciones, no cambios): `raycast` devuelve además `place:[bx,by,bz]`; `setBlock` marca `dirty` también en el chunk vecino cargado si el bloque está en el borde; `chunk.dirty` lo limpia quien re-malla (`World.consumeDirty()` lo hace por ti).
 
+## Integración con el motor (atlas conectado)
+`src/main.js` (único archivo de Motor que se tocó, mínimo): `applyLook` (Arte) + `createAtlas(SEED)` + `createWorld(seed)` + `createWorldView(THREE, scene, world, atlas, { tileNames: TILES, radius })`; cada frame `view.update(camera.x, camera.z)` (metros). Se quitó el `GridHelper` y la luz/niebla provisorias. `?r=<chunks>` fija el radio (por defecto 4,5 ≈ 8×8 chunks = 60 chunks cargados), `?wseed=` la semilla del mundo. `window.__ORIGEN__` expone `world, view, look, renderer`.
+
+## Para Animador (`createAnimator3D({ seed, getBlock, blockM })`)
+`getBlock` de Animador es un predicado «sólido» en celdas enteras: usar **`(x,y,z) => world.solidAt(x,y,z)`** con `blockM: BLOCK_M`. No pasar `world.getBlock` crudo: devuelve el id (el agua, id 6, es truthy y contaría como suelo). `solidAt`/`getBlock` hacen una sola indexación con caché del último chunk y no asignan memoria (se mide en `bench.mjs`).
+
 ## Decisiones de diseño
 
 * **Pureza**: todo sale de funciones puras por columna `(x,z)` y por voxel `(x,y,z)`; el orden de generación no importa (test con procesos hijos en distinto orden). Cuadrícula de columnas con relleno de 4 para pendientes y árboles en bordes.
 * **Mundo**: `CHUNK` 16×64×16, nivel del mar `SEA_LEVEL=20`, altura máxima 62. Mar/lagos por debajo del nivel del mar; no hay agua flotante (los huecos de cueva no se llenan).
 * **Biomas** (temperatura × humedad, escala ~400 bloques): `plains`, `forest`, `desert`, `snowy_mountain` (+ montañas por ruido ridged, nieve en altura). Superficie: pasto/tierra, arena (desierto/orillas), grava (fondos profundos), nieve; piedra en pendientes ≥3.
 * **Cuevas**: espaguetis (dos ruidos cerca de 0) + cavernas; profundidad mínima 4 bajo la superficie salvo «bocas» raras. Menas: carbón e hierro (hierro solo y≤28) por ruido 3D.
-* **Regla de árboles**: grilla de 7×7; tronco = celda·7 + jitter 0..2 ⇒ troncos ≥5 separados y copas (radio 2) nunca solapan. Existe si `hash3` pasa (bosque 0,8; llanura 0,06) y la columna es válida (bosque/llanura, suelo ≥ SEA+2, pendiente ≤2, pasto, no boca de cueva). Tronco 4..6 bloques; hojas/troncos solo reemplazan aire. **Con 0,5 m por bloque eso son 2–3 m de árbol**: si Rick quiere árboles más altos hay que subir TRUNK en `generator.js` (pendiente de decisión, no se cambió).
+* **Regla de árboles**: grilla de 7×7; tronco = celda·7 + jitter 0..2 ⇒ troncos ≥5 separados y copas (radio 2) nunca solapan. Existe si `hash3` pasa (bosque 0,8; llanura 0,06) y la columna es válida (bosque/llanura, suelo ≥ SEA+2, pendiente ≤2, pasto, no boca de cueva). Tronco 4..6 bloques; hojas/troncos solo reemplazan aire. **Con 0,5 m por bloque eso son 2–3 m de árbol**: si Rick quiere árboles más altos hay que subir la línea `trunk = 4 + floor(hash3(ts,cx,4,cz)*3)` de `generator.js` (pendiente de decisión, no se cambió).
 * **Edición**: el diff guarda por chunk el valor original; revertir una edición la descarta.
 
 ## Rendimiento (medido, `node src/world/bench.mjs`, Node v24, Xeon virtual ×8, grilla 8×8, semillas 1234 y 7)
@@ -99,8 +105,7 @@ Cifras de una sola máquina/corrida; la variación entre corridas es visible (p.
 
 ## Pendiente / limitaciones conocidas
 
-* **GPU/shader sin probar** (el box no tiene GPU): `threeAdapter.js` se testea con un THREE falso solo para atributos.
-* El smoke del repo (`npm run smoke`) pasa pero **aún no usa este módulo** (el motor no lo importa todavía).
+* **Sin GPU real**: shader y vista se ejecutan en Chrome headless con SwiftShader (render por software) vía `npm run smoke:world`; los fps de abajo NO representan un GPU ni un celular. Los tests unitarios usan un THREE falso.
 * Periodo del ruido: 256 celdas (se repite el patrón; imperceptible a esta escala).
 * Ediciones cargadas desde disco no se pueden descartar automáticamente al revertirlas (se desconoce el original).
 * Filtraciones de agua hacia cuevas solo verificadas dentro de un chunk; sin simulación de fluidos.

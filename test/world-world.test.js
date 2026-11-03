@@ -130,3 +130,20 @@ test('dirty: editar en el borde marca también al chunk vecino', () => {
   assert.deepEqual(d, ['-1,0', '0,0']);
   assert.deepEqual(w.consumeDirty(), []);
 });
+
+test('World.solidAt / getBlock en coords de bloque (para Animador): agua no es suelo, y<0 sí, caché no se queda con chunks descargados', async () => {
+  const { B } = await import('../src/world/blocks.js');
+  const w = new World(1234);
+  let sawWater = false, sawSolid = false;
+  for (let x = -300; x < 300 && !(sawWater && sawSolid); x += 3) for (let z = -300; z < 300; z += 3) for (let y = 0; y < 40; y++) {
+    const id = w.getBlock(x, y, z);
+    assert.equal(w.solidAt(x, y, z), id !== B.AIR && id !== B.WATER);
+    if (id === B.WATER) sawWater = true; if (id === B.STONE) sawSolid = true;
+  }
+  assert.ok(sawWater && sawSolid);
+  assert.equal(w.solidAt(0, -1, 0), true); assert.equal(w.solidAt(0, 64, 0), false);
+  // caché: tras editar y descargar, getBlock refleja el chunk nuevo
+  const a = w.getBlock(1, 5, 1), e = a === B.STONE ? B.DIRT : B.STONE; w.setBlock(1, 5, 1, e);
+  w.unloadChunk(0, 0); w.getChunk(5, 5); w.unloadChunk(5, 5);
+  assert.equal(w.peekChunk(0, 0), null); assert.equal(w.getBlock(1, 5, 1), e, 'la edición se reaplica al regenerar; la caché no sirve el chunk descargado');
+});

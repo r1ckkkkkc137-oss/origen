@@ -43,3 +43,18 @@ console.log(`    greedy                 media ${f(g.mean, 0)}  mediana ${f(g.med
 console.log(`    ingenua con culling    media ${f(n.mean, 0)}  mediana ${f(n.median, 0)}  p95 ${f(n.p95, 0)}   (greedy = ${f(100 * g.mean / n.mean, 1)}% de esta)`);
 console.log(`    sin culling            media ${f(nc.mean, 0)}  mediana ${f(nc.median, 0)}  p95 ${f(nc.p95, 0)}   (greedy = ${f(100 * g.mean / nc.mean, 2)}% de esta)`);
 console.log(`  vértices/chunk media ${f(v.mean, 0)} · memoria de malla/chunk media ${f(b.mean / 1024, 1)} KiB (p95 ${f(b.p95 / 1024, 1)} KiB)`);
+
+// getBlock/solidAt (lo que consume Animador): patrón de muestreador de suelo = por columna, de y alto a bajo hasta el primer sólido. Mundo ya cargado.
+{
+  const { World } = await import('./world.js');
+  const w = new World(seeds[0]); for (let cz = 0; cz < grid; cz++) for (let cx = 0; cx < grid; cx++) w.getChunk(cx, cz);
+  const span = grid * 16, cols = 20000; let calls = 0, sink = 0;
+  const run = (fn) => { calls = 0; const t0 = now(); for (let i = 0; i < cols; i++) { const x = (i * 37) % span, z = (i * 91) % span; for (let y = 62; y >= 0; y--) { calls++; if (fn(x, y, z)) { sink += y; break; } } } return (now() - t0); };
+  run((x, y, z) => w.solidAt(x, y, z)); // calentamiento
+  const ts = []; let n1 = 0;
+  for (let k = 0; k < 7; k++) { ts.push(run((x, y, z) => w.solidAt(x, y, z))); n1 = calls; }
+  const tg = []; for (let k = 0; k < 7; k++) tg.push(run((x, y, z) => w.getBlock(x, y, z) !== 0));
+  const s1 = stats(ts), s2 = stats(tg);
+  console.log(`\ngetBlock en mundo cargado (${grid}×${grid} chunks, ${cols} columnas por repetición, ${n1} llamadas/repetición, N=7 repeticiones; sink ${sink})`);
+  console.log(`  solidAt  mediana ${f(1e6 * s1.median / n1, 1)} ns/llamada · getBlock mediana ${f(1e6 * s2.median / n1, 1)} ns/llamada`);
+}

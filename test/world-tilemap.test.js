@@ -59,6 +59,8 @@ test('threeAdapter: createGeometry/createVoxelMaterial con THREE falso (sin GPU)
     BufferAttribute: class { constructor(array, itemSize) { this.array = array; this.itemSize = itemSize; } },
     ShaderMaterial: class { constructor(o) { Object.assign(this, o); } },
     Vector2: class { constructor(x, y) { this.x = x; this.y = y; } },
+    UniformsLib: { fog: { fogColor: { value: 0 } } },
+    UniformsUtils: { merge: (a) => Object.assign({}, ...a) },
   };
   const m = new World(1234).meshChunk(0, 0);
   createGeometry(THREE, m.opaque);
@@ -68,4 +70,40 @@ test('threeAdapter: createGeometry/createVoxelMaterial con THREE falso (sin GPU)
   assert.equal(mat.uniforms.uAlphaTest.value, 0.5); assert.equal(createVoxelMaterial(THREE, {}, 'water').transparent, true);
   assert.equal(mat.uniforms.uGrid.value.x, ATLAS_COLS);
   assert.ok(VERTEX_SHADER.includes('attribute float tile') && FRAGMENT_SHADER.includes('fract(vUv)'));
+});
+
+test('threeAdapter: buildTileMap usa sustitutos para tiles que el atlas no tiene y respeta los que sí', async () => {
+  const { buildTileMap } = await import('../src/world/threeAdapter.js');
+  const arte = ['grass_top', 'grass_side', 'dirt', 'stone', 'log_side', 'log_top', 'planks', 'leaves'];
+  const { map, missing } = buildTileMap(arte);
+  assert.deepEqual(missing, ['sand', 'snow', 'gravel', 'coal_ore', 'iron_ore', 'water']);
+  for (let i = 0; i < 8; i++) assert.equal(map[i], i);
+  for (let i = 8; i < TILE_NAMES.length; i++) assert.ok(map[i] < 8);
+  const full = buildTileMap(TILE_NAMES); assert.deepEqual(full.missing, []); assert.deepEqual([...full.map], TILE_NAMES.map((_, i) => i));
+});
+
+test('threeAdapter: createWorldView carga, malla por presupuesto, descarga y libera geometrías (THREE falso)', async () => {
+  const { createWorldView } = await import('../src/world/threeAdapter.js');
+  let disposed = 0;
+  class Obj { constructor() { this.children = []; this.position = { set() {} }; } add(o) { this.children.push(o); } remove(o) { this.children = this.children.filter((c) => c !== o); } updateMatrix() {} }
+  const THREE = {
+    BufferGeometry: class { setAttribute() {} setIndex() {} dispose() { disposed++; } },
+    BufferAttribute: class { constructor(a, n) { this.array = a; this.itemSize = n; } },
+    ShaderMaterial: class { constructor(o) { Object.assign(this, o); } dispose() {} },
+    Vector2: class { constructor(x, y) { this.x = x; this.y = y; } },
+    UniformsLib: { fog: {} }, UniformsUtils: { merge: (a) => Object.assign({}, ...a) },
+    Group: Obj, Mesh: class extends Obj { constructor(g, m) { super(); this.geometry = g; this.material = m; } },
+  };
+  const scene = new Obj(), world = new World(1234);
+  const view = createWorldView(THREE, scene, world, { texture: {}, canvas: { width: 64, height: 32 } }, { radius: 2, maxMeshPerFrame: 3, tileNames: ['grass_top', 'grass_side', 'dirt', 'stone', 'log_side', 'log_top', 'planks', 'leaves'] });
+  assert.deepEqual(view.grid, { cols: 4, rows: 2 });
+  assert.ok(view.missingTiles.length === 6);
+  let frames = 0; while (view.stats().chunks < 13 && frames++ < 100) view.update(4, 4);   // radio 2 en chunks ≈ 13 chunks
+  const st = view.stats();
+  assert.ok(st.chunks >= 12 && st.chunks <= 13 && st.pendingMesh === 0 && st.triangles > 0, JSON.stringify(st));
+  assert.ok(frames >= 4, 'el presupuesto por frame reparte el mallado');
+  for (let f = 0; f < 3; f++) view.update(4 + 200, 4);   // lejos (200 m = 25 chunks): lo anterior se descarga
+  assert.ok(disposed > 0);
+  assert.ok(view.stats().chunks <= 13 && view.group.children.length <= 40);
+  view.dispose();
 });

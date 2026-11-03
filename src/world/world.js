@@ -18,6 +18,7 @@ export class World {
   constructor(seed) {
     this.seed = normalizeSeed(seed);
     this._chunks = new Map();  // key -> Chunk
+    this._last = null;         // último chunk consultado (caché)
     this.edits = new Map();    // key -> { cx, cz, m: Map<localIdx, { orig:number(-1=desconocido), id:number }> }
   }
 
@@ -31,18 +32,20 @@ export class World {
 
   /** Devuelve el chunk, generándolo (y aplicando sus ediciones guardadas) si no está en caché. */
   getChunk(cx, cz) {
+    const l = this._last;                                  // caché de 1 entrada: getBlock/solidAt consecutivos casi siempre caen en el mismo chunk
+    if (l && l.cx === cx && l.cz === cz) return l;
     const k = keyOf(cx, cz);
     let c = this._chunks.get(k);
-    if (c) return c;
+    if (c) { this._last = c; return c; }
     c = generateChunk(this.seed, cx, cz);
     const e = this.edits.get(k);
     if (e) for (const [idx, v] of e.m) c.blocks[idx] = v.id;
     // la "original" de ediciones cargadas desde disco se desconoce (-1); la guardamos desde el generado limpio si hace falta
-    this._chunks.set(k, c);
+    this._chunks.set(k, c); this._last = c;
     return c;
   }
 
-  unloadChunk(cx, cz) { return this._chunks.delete(keyOf(cx, cz)); }
+  unloadChunk(cx, cz) { this._last = null; return this._chunks.delete(keyOf(cx, cz)); }
 
   // ---------- bloques ----------
   /** Bloque en coords globales (enteras, bloques). Fuera de rango vertical (y<0, y>=SY) => AIR (contrato). Genera el chunk si hace falta. */
@@ -50,6 +53,17 @@ export class World {
     if (y < 0 || y >= CHUNK_Y) return B.AIR;
     const c = this.getChunk(x >> 4, z >> 4);
     return c.blocks[(x & 15) + ((z & 15) << 4) + (y << 8)];
+  }
+
+  /**
+   * ¿Celda sólida? (x,y,z enteros, BLOQUES). Es el `getBlock` que espera Animador (`createAnimator3D({ getBlock: (x,y,z)=>world.solidAt(x,y,z), blockM: BLOCK_M })`):
+   * `world.getBlock` devuelve el id (el agua, id 6, es truthy y NO es suelo). y<0 cuenta como suelo (igual que physics); y>=SY, no.
+   */
+  solidAt(x, y, z) {
+    if (y < 0) return true;
+    if (y >= CHUNK_Y) return false;
+    const c = this.getChunk(x >> 4, z >> 4);
+    return IS_SOLID[c.blocks[(x & 15) + ((z & 15) << 4) + (y << 8)]] === 1;
   }
 
   /** Escritura de bajo nivel (sin reglas de juego). Registra diff y marca chunk.dirty (y los vecinos cargados si es borde). true si CAMBIÓ. */
@@ -155,7 +169,7 @@ export class World {
     const ur = radius + margin;
     for (const [k, c] of this._chunks) {
       const dx = c.cx - pcx, dz = c.cz - pcz;
-      if (dx * dx + dz * dz > ur * ur) { this._chunks.delete(k); removed.push({ cx: c.cx, cz: c.cz }); }
+      if (dx * dx + dz * dz > ur * ur) { this._chunks.delete(k); this._last = null; removed.push({ cx: c.cx, cz: c.cz }); }
     }
     return { added, removed, pending };
   }
@@ -206,7 +220,7 @@ export class World {
       const m = new Map();
       for (let i = 0; i < ch.edits.length; i += 2) m.set(ch.edits[i], { orig: -1, id: ch.edits[i + 1] });
       this.edits.set(k, { cx: ch.cx, cz: ch.cz, m });
-      this._chunks.delete(k);
+      this._chunks.delete(k); this._last = null;
       this._markDirty(ch.cx, ch.cz);
     }
   }
