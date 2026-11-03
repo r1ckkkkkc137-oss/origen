@@ -1,8 +1,8 @@
 // ORIGEN: paleta oscura, cruda. Valores sRGB.
 export const PALETTE = Object.freeze({
-  sky: '#2a2f36', skyNight: '#0b0d12', fog: '#3a3d40', fogNight: '#0e1014',
+  sky: '#2a2f36', skyNight: '#0b0d12', skyTop: '#1d2836', skyHorizon: '#59606a', skyTopNight: '#04060a', skyHorizonNight: '#141821', fog: '#3a3d40', fogNight: '#0e1014',
   sun: '#ffd9a8', ambient: '#6d7682', ground: '#2b241d',
-  grass: ['#3f5a2a', '#4a6430', '#36502a', '#55703a'],
+  grass: ['#41592c', '#465e2f', '#3c552a', '#4b6332'], // contraste bajo: sin moiré a distancia
   dirt: ['#4a3626', '#553e2b', '#3f2e21', '#5e4632'],
   stone: ['#5b5d60', '#66686b', '#4f5154', '#727477'],
   bark: ['#3b2a1c', '#46321f', '#2f2216', '#523b25'],
