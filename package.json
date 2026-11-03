@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0 --port 5180",
     "build": "vite build --base ./",
-    "test": "node --test test/*.test.js \"src/combat/**/*.test.js\"",
+    "test": "node --test test/*.test.js \"src/combat/**/*.test.js\" \"src/anim/tests/*.test.mjs\"",
     "smoke": "node test/smoke.mjs",
     "test:anim": "node --test \"src/anim/tests/*.test.mjs\"",
     "anim:capture": "node scripts/anim-capture.mjs",
