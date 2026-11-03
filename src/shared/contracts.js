@@ -1,6 +1,14 @@
-// ORIGEN — contratos compartidos v0.1 (dueño: Motor). Cambios se anuncian en la sala.
-// Ejes: Y arriba, 1 unidad = 1 bloque = ~0.5 m. Sim a 60 Hz fijo (TICK_HZ).
+// ORIGEN — contratos compartidos v0.2 (dueño: Motor). Cambios se anuncian en la sala.
+// UNIDADES Y EJES: metros, mano derecha, +Y arriba. 1 bloque = 1 m (BLOCK_M).
+// Frente local de todo esqueleto/criatura = +X. heading (yaw) en radianes alrededor de +Y;
+// heading 0 mira a +X; dirección mundo = (cos h, 0, -sin h) (rotación estándar de Three alrededor de +Y).
+// Sim a 60 Hz fijo (TICK_HZ).
+// RAÍZ: la simulación (combat/mind) es dueña de root.pos y root.heading. Anim lee la raíz, puede
+// SUAVIZAR el heading solo para la pose visual, y NUNCA devuelve root motion a la sim.
 export const TICK_HZ = 60;
+export const BLOCK_M = 1;
+export const CONTRACTS_VERSION = '0.2';
+export const headingDir = (h) => [Math.cos(h), 0, -Math.sin(h)];
 export const CHUNK = Object.freeze({ SX: 16, SY: 64, SZ: 16 });
 
 // IDs de bloque (u8). 0 = aire. Mundo puede agregar al final, nunca renumerar.
@@ -16,7 +24,7 @@ export const BLOCK = Object.freeze({ AIR: 0, GRASS: 1, DIRT: 2, STONE: 3, WOOD: 
  * @property {()=>Iterable<Chunk>} chunks
  * @property {(origin:[number,number,number],dir:[number,number,number],maxDist:number)=>RaycastHit|null} raycast
  */
-/** @typedef {{cx:number,cz:number,blocks:Uint8Array,dirty:boolean}} Chunk  index = x + SX*(z + SZ*y) */
+/** @typedef {{cx:number,cz:number,blocks:Uint8Array,dirty:boolean}} Chunk  index = x + SX*(z + SZ*y); bloque (x,y,z) ocupa [x,x+1)×[y,y+1)×[z,z+1) m */
 /** @typedef {{pos:[number,number,number],normal:[number,number,number],block:number,dist:number}} RaycastHit */
 export const chunkIndex = (x, y, z) => x + CHUNK.SX * (z + CHUNK.SZ * y);
 
@@ -30,8 +38,9 @@ export const HUMAN_BONES = Object.freeze([
  * @typedef {Object} Skeleton3D
  * @property {string[]} bones                      nombres (HUMAN_BONES para humanos; fauna define los suyos)
  * @property {Object<string,string|null>} parent    hueso -> padre
- * @property {{pos:[number,number,number],yaw:number}} root   posición mundo de la pelvis proyectada al suelo
- * @property {Object<string,[number,number,number]>} pose     posiciones MUNDO de cada joint (lo que lee Combate para hitboxes y Arte para dibujar)
+ * @property {{pos:[number,number,number],heading:number}} root   SOLO LECTURA para anim: lo escribe la sim. pos = pelvis proyectada al suelo (m)
+ * @property {number} visualHeading                 heading suavizado por anim (solo render; la sim no lo lee)
+ * @property {Object<string,[number,number,number]>} pose     posiciones MUNDO en metros de cada joint (Combate: hitboxes; Arte: dibujo)
  */
 
 // CombatEvent (lo emite Combate en src/combat/). Mismo espíritu que FIGHT_EVENTS de KAGE.
