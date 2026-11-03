@@ -8,7 +8,7 @@ import { createHumanView } from './engine/humanView.js';
 import { createAtlas } from './render/atlas.js';
 import { applyLook, fogForRadius } from './render/look.js';
 import { TILES } from './render/atlas.js';
-import { createWorld } from './world/index.js';
+import { createWorld, createPlayerBody, stepPlayer, playerEye } from './world/index.js';
 import { createRegionView } from './engine/regionView.js';
 import { createAdaptiveRadius } from './engine/adaptive.js';
 import { createAnimator3D } from './anim/index.js';
@@ -62,7 +62,19 @@ const fighters = [[0xd8d2c4, 'a'], [0x9a3b34, 'b']].map(([color, side]) => {
 const p0 = live.frame.fighters.a.pos;
 
 const input = createInput(renderer.domElement);
-const rig = createCameraRig(camera, input, { mode: 'third', pos: [p0[0], groundY + 2.2, p0[2] + 5], speed: 5 });
+// Cámara: C cicla pelea (3.ª persona sobre los peleadores) → jugador 1.ª → jugador 3.ª → libre.
+// El modo del rig es first/third/free; `follow` dice a quién sigue la 3.ª persona.
+const CAM = ['fight', 'p1', 'p3', 'free'];
+let camMode = params.get('cam') ?? 'fight';
+const rigMode = (m) => (m === 'p1' ? 'first' : m === 'free' ? 'free' : 'third');
+const rig = createCameraRig(camera, input, { mode: rigMode(camMode), pos: [p0[0], groundY + 2.2, p0[2] + 5], speed: 5,
+  cycle: [rigMode(camMode)] });
+let cWas = false;
+// Jugador: física de Mundo (AABB contra vóxeles, gravedad, escalón de 1 bloque), en metros; pies en (x,y,z).
+const player = createPlayerBody({ x: spawn[0] - 2, y: groundY + 1, z: spawn[1] + 2 });
+const playerMesh = new THREE.Mesh(new THREE.BoxGeometry(0.6, 1.8, 0.6), new THREE.MeshLambertMaterial({ color: 0x5c6b4a })); // placeholder hasta el avatar
+playerMesh.geometry.translate(0, 0.9, 0); scene.add(playerMesh);
+const eye = new THREE.Vector3();
 const fps = createFpsMeter(document.getElementById('fps'));
 const mid = new THREE.Vector3();
 addEventListener('resize', () => { renderer.setSize(innerWidth, innerHeight); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); });
@@ -76,11 +88,18 @@ const loop = createLoop({
     fighters.forEach((f, i) => { f.root = frame.list[i]; });
     if (live.done) live.restart(++fightSeed);                 // pelea siguiente, determinista
     mid.set((fighters[0].root.pos[0] + fighters[1].root.pos[0]) / 2, (fighters[0].root.pos[1] + fighters[1].root.pos[1]) / 2 + 1.0, (fighters[0].root.pos[2] + fighters[1].root.pos[2]) / 2);
-    rig.setTarget(mid);
+    const c = input.down('KeyC'); if (c && !cWas) { camMode = CAM[(CAM.indexOf(camMode) + 1) % CAM.length]; rig.setMode(rigMode(camMode)); } cWas = c;
+    if (camMode === 'p1' || camMode === 'p3') {
+      const [mx, mz] = input.moveAxis();
+      stepPlayer(world ?? { getBlock: (x, y, z) => (getBlock(x, y, z) ? 3 : 0) }, player, { moveX: mx, moveZ: mz, jump: input.down('Space'), sprint: input.down('ShiftLeft'), yaw: rig.yaw }, dt);
+    }
+    playerMesh.position.set(player.x, player.y, player.z); playerMesh.rotation.y = rig.yaw; playerMesh.visible = camMode !== 'p1';
+    if (camMode === 'fight') rig.setTarget(mid);
+    else { const [ex, ey, ez] = playerEye(player); rig.setTarget(eye.set(ex, camMode === 'p1' ? ey : ey - 0.3, ez)); }
     rig.update(dt);
-    if (view) view.update(camera.position.x, camera.position.z);
+    if (view) view.update(camMode === 'free' ? camera.position.x : (camMode === 'fight' ? mid.x : player.x), camMode === 'free' ? camera.position.z : (camMode === 'fight' ? mid.z : player.z));
   },
   render(now) { for (const f of fighters) f.view.update(f.anim.skeleton); renderer.render(scene, camera); fps.frame(); adapt?.frame(); },
 });
 loop.start();
-window.__ORIGEN__ = { scene, camera, rig, loop, fps, fighters, live, adapt, SEED, world, view, look, renderer, ready: true };
+window.__ORIGEN__ = { scene, camera, rig, loop, player, get camMode() { return camMode; }, fps, fighters, live, adapt, SEED, world, view, look, renderer, ready: true };

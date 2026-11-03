@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-// Cámara libre (vuelo) y tercera persona (orbita un target). Tecla C alterna.
+// Modos: 'third' (orbita un target), 'first' (ojo en el target, sin orbitar), 'free' (vuelo). Tecla C cicla `opts.cycle`.
 export function createCameraRig(camera, input, opts = {}) {
   let mode = opts.mode ?? 'free';
   let yaw = opts.yaw ?? 0, pitch = opts.pitch ?? -0.3, dist = opts.dist ?? 4.5;
@@ -8,12 +8,14 @@ export function createCameraRig(camera, input, opts = {}) {
   const target = new THREE.Vector3();
   const fwd = new THREE.Vector3(), right = new THREE.Vector3();
   let cWas = false;
+  const cycle = opts.cycle ?? ['free', 'third'];
   return {
     get mode() { return mode; },
     setMode(m) { mode = m; },
+    get yaw() { return yaw; },
     setTarget(v) { target.copy(v); },
     update(dt) {
-      const c = input.down('KeyC'); if (c && !cWas) mode = mode === 'free' ? 'third' : 'free'; cWas = c;
+      const c = input.down('KeyC'); if (c && !cWas) { mode = cycle[(cycle.indexOf(mode) + 1) % cycle.length]; opts.onMode?.(mode); } cWas = c;
       const [lx, ly] = input.consumeLook();
       yaw -= lx * 0.0025; pitch = Math.max(-1.5, Math.min(1.5, pitch - ly * 0.0025));
       fwd.set(-Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), -Math.cos(yaw) * Math.cos(pitch));
@@ -25,6 +27,9 @@ export function createCameraRig(camera, input, opts = {}) {
         if (input.down('Space')) pos.y += speed; if (input.down('ControlLeft') || input.down('KeyQ')) pos.y -= speed;
         camera.position.copy(pos);
         camera.lookAt(pos.x + fwd.x, pos.y + fwd.y, pos.z + fwd.z);
+      } else if (mode === 'first') {
+        camera.position.copy(target); pos.copy(target);
+        camera.lookAt(target.x + fwd.x, target.y + fwd.y, target.z + fwd.z);
       } else {
         camera.position.copy(target).addScaledVector(fwd, -dist);
         camera.lookAt(target);

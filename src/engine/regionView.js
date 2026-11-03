@@ -53,8 +53,7 @@ export function createRegionView(THREE, scene, world, atlas, opts = {}) {
     get radius() { return radius; },
     setRadius(r) { radius = r; },
     update(pxM, pzM) {
-      const res = world.ensureChunks(pxM, pzM, Math.ceil(radius), { maxNew, unloadMargin: 1 });
-      // ensureChunks con radio fraccionario (4.5) carga chunks en coords x.5 (bug de world.js, avisado): pedimos radio entero y filtramos
+      const res = world.ensureChunks(pxM, pzM, radius, { maxNew, unloadMargin: 1 });
       for (const c of res.removed) dropChunk(key(c.cx, c.cz));
       const pcx = Math.floor(pxM / 8), pcz = Math.floor(pzM / 8); // 16 bloques × 0.5 m
       const inR = (cx, cz) => (cx - pcx) ** 2 + (cz - pcz) ** 2 <= radius * radius;
@@ -62,7 +61,7 @@ export function createRegionView(THREE, scene, world, atlas, opts = {}) {
       const push = (cx, cz) => { const k = key(cx, cz); if (!queued.has(k)) { queued.add(k); todo.push({ cx, cz }); } };
       for (const c of world.consumeDirty()) if (chunkGeo.has(key(c.cx, c.cz))) push(c.cx, c.cz);
       for (const [k, e] of chunkGeo) { const [cx, cz] = k.split(',').map(Number); if (!inR(cx, cz)) dropChunk(k); } // radio bajó
-      for (const c of world.chunks()) if (Number.isInteger(c.cx) && Number.isInteger(c.cz) && !chunkGeo.has(key(c.cx, c.cz)) && inR(c.cx, c.cz)) push(c.cx, c.cz);
+      for (const c of world.chunks()) if (!chunkGeo.has(key(c.cx, c.cz)) && inR(c.cx, c.cz)) push(c.cx, c.cz);
       todo = todo.filter((c) => world.peekChunk(c.cx, c.cz) && inR(c.cx, c.cz));
       todo.sort((a, b) => ((a.cx - pcx) ** 2 + (a.cz - pcz) ** 2) - ((b.cx - pcx) ** 2 + (b.cz - pcz) ** 2));
       let meshed = 0;
