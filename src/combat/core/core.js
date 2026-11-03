@@ -13,7 +13,7 @@ import { createFighter, createRuntime, condition, fatigueOf, damageOf } from './
 import * as AI from './ai.js';
 import { createGeometry } from '../geometry.js';
 import { resolveControllers, sameIntent } from './controllers.js';
-import { resolveStrike, resolveTakedown, resolveGroundContest, checkDamage, subOffense, subDefense, prowess, rel, softSubEdge, dist, clamp, sig, skill, hitstopFor, cornered, stepInPerTick, stepInReach, STEP_BACK_PX, reachable, canUseMove, rw } from './resolve.js';
+import { resolveStrike, resolveTakedown, resolveGroundContest, checkDamage, subOffense, subDefense, prowess, rel, softSubEdge, dist, clamp, sig, skill, hitstopFor, cornered, stepInPerTick, stepInReach, STEP_BACK_PX, reachable, canUseMove, rw, reachableAI, CLOSE_ONLY } from './resolve.js';
 const KD_BACK = 0.04; // prob. de tomar la espalda al rematar en el suelo tras knockdown
 
 // Valores tunables. tuning.js (del otro agente) puede pasar overrides en options (merge superficial + hitstop/windows).
@@ -398,7 +398,7 @@ function endAction(F, f) {
     if (!act.feint && F.phase === 'stand') next = AI.adaptNext(F, f, next, act);
     const mv = MOVES[next];
     const okPhase = mv.phase === F.phase || (mv.kind === 'takedown' && F.phase === 'stand');
-    const inWin = mv.kind !== 'strike' || F.phase !== 'stand' || reachable(F, mv, dist(F));
+    const inWin = mv.kind !== 'strike' || F.phase !== 'stand' || (F.reach ? reachableAI(F, mv, dist(F), true, f) : reachable(F, mv, dist(F)));
     const go = act.feint || act.result === 'hit' || act.result === 'block' || act.result === 'check' || F.aiRng[f.id].chance(0.4 + 0.5 * f.style.combo);
     const ok = okPhase && inWin && f.stamina >= mv.stamina && go;
     if (ok) { F.startAction(f, next, { chain: !act.feint, setup: true, startupMul: F.opt.windows.comboStartupMul }); return; }
@@ -458,6 +458,11 @@ function advanceAction(F, f) {
   // paso/estocada SOLO en startup temprano (t < startup): el tick de impacto y la fase activa quedan con root quieto
   // (Animador: pie plantado no desliza; el avance previsto va en tick.lunge / tick.step).
   // Apunta a que la distancia EN EL TICK DE IMPACTO sea rangeIdeal; nunca bajo minGap.
+  // 3D: golpe corto (hook/uppercut/codo) y el rival se va durante el startup -> no lo comete: queda en finta (no se tira al aire).
+  if (F.reach && F.phase === 'stand' && !act.resolved && !act.feint && CLOSE_ONLY.has(act.move) && act.t <= act.startup * 0.7) {
+    const left = (act.stepLeft ?? stepInReach(mv));
+    if (dist(F) - left > rw(F, mv).rangeMax) { act.feint = true; act.aborted = true; f.queue.length = 0; }
+  }
   if (F.phase === 'stand' && !act.resolved && !act.feint && mv.rangeMax && act.t < act.startup && F.impactT !== F.t) {
     const d = dist(F);
     const target = Math.max(rw(F, mv).rangeIdeal ?? rw(F, mv).rangeMax * 0.9, F.opt.minGap);

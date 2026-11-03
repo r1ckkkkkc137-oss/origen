@@ -3,7 +3,7 @@
 import { MOVES, STAND_STRIKES, CLINCH_MOVES, GROUND_MOVES, TAKEDOWNS, POSITION_VALUE, PX_PER_M as U } from '../data/moves.js';
 import { moveArea } from '../data/styles.js';
 import { condition } from './fighter.js';
-import { prowess, rel, subOffense, subDefense, dist, cornered, clamp, skill, reachable, stepInReach, STEP_BACK_PX, canUseMove, rw } from './resolve.js';
+import { prowess, rel, subOffense, subDefense, dist, cornered, clamp, skill, reachable, stepInReach, STEP_BACK_PX, canUseMove, rw, reachableAI } from './resolve.js';
 
 const ln = (x) => Math.log(Math.max(1e-4, x));
 const moveWeight = (f, id) => (canUseMove(f, id) ? (f.style.moveW[id] ?? 0.3) : 0);
@@ -133,7 +133,7 @@ export function pickCounter(F, D, A, how) {
     const m = MOVES[id];
     const w = s.moveW[id] ?? 0;
     if (w < 0.1 || m.startup > 16) continue;
-    if (!reachable(F, m, d)) continue; // sólo si la punta del clip llega a la zona
+    if (!reachableAI(F, m, d)) continue; // sólo si la punta del clip llega a la zona
     if (d < rw(F, m).rangeMin && cornered(F, D)) continue; // contra la reja no hay paso atrás
     let u = ln(w) + m.damage * 0.12 - m.startup * 0.06;
     if ((how === 'slip' || how === 'parry') && (m.arc === 'hook' || m.arc === 'upper' || id === 'cross')) u += 0.6;
@@ -257,7 +257,7 @@ function decideStand(F, self, opp) {
     const mv = MOVES[id];
     const w = (s.moveW[id] ?? 0.3);
     if (w < 0.02) continue;
-    if (!reachable(F, mv, d)) continue;               // ventana del clip (con paso adentro/atrás del startup)
+    if (!reachableAI(F, mv, d, oppEntering)) continue; // ventana del clip (con paso adentro/atrás del startup)
     if (selfCornered && d < (mv.startup >= 12 ? rw(F, mv).rangeIdeal + 3 : rw(F, mv).rangeMin)) continue; // contra la reja no hay paso atrás y el rival presiona: lo lento quedaría 'jammed'
     // rival entrando: la distancia en el impacto será menor (patadas lentas quedaban 'jammed'): exigir que también llegue ahí
     if (oppEntering && !reachable(F, mv, d - oppCloseSpeed * Math.min(mv.startup, opp.intent.until - F.t) * 0.7)) continue;
@@ -380,8 +380,8 @@ function feintFollow(F, self, opp, d, rng) {
   const tdOk = s.td > 0.25 && self.stamina > 12 && F.t - (self.lastTdT ?? -9999) >= TD_GAP;
   const tds = tdOk ? TAKEDOWNS.filter((id) => reachable(F, MOVES[id], d)) : [];
   // finta de derribo -> golpe arriba (la guardia baja); finta de golpe -> shoot o al cuerpo/pierna
-  const high = ['cross', 'overhand', 'hook', 'highKick', 'jab'].filter((id) => (s.moveW[id] ?? 0.3) >= 0.25 && reachable(F, MOVES[id], d));
-  const low = ['bodyKick', 'lowKick', 'bodyHook', 'bodyCross', 'calfKick', 'cross'].filter((id) => (s.moveW[id] ?? 0.3) >= 0.25 && reachable(F, MOVES[id], d));
+  const high = ['cross', 'overhand', 'hook', 'highKick', 'jab'].filter((id) => (s.moveW[id] ?? 0.3) >= 0.25 && reachableAI(F, MOVES[id], d));
+  const low = ['bodyKick', 'lowKick', 'bodyHook', 'bodyCross', 'calfKick', 'cross'].filter((id) => (s.moveW[id] ?? 0.3) >= 0.25 && reachableAI(F, MOVES[id], d));
   const tdFeint = s.td > 0.15 && high.length && rng.chance(0.3 + 0.6 * s.td);
   if (tdFeint) return { variant: 'takedown', move: rng.weighted(high.map((id) => ({ id, w: s.moveW[id] ?? 0.3 }))).id };
   if (tds.length && rng.chance(Math.min(0.85, 0.2 + s.td))) return { variant: 'strike', move: tds[0] };
@@ -398,7 +398,7 @@ const LONGER = ['cross', 'jab', 'lowKick', 'bodyKick', 'calfKick', 'highKick'];
 export function adaptNext(F, self, next, prev) {
   const rng = F.aiRng[self.id];
   const s = self.style;
-  const ok = (id) => id && MOVES[id] && canUseMove(self, id) && (s.moveW[id] ?? 0.3) >= 0.25 && (MOVES[id].kind !== 'strike' || reachable(F, MOVES[id], dist(F)));
+  const ok = (id) => id && MOVES[id] && canUseMove(self, id) && (s.moveW[id] ?? 0.3) >= 0.25 && (MOVES[id].kind !== 'strike' || reachableAI(F, MOVES[id], dist(F), true, self));
   if (prev.result === 'block' && MOVES[next]?.zone === 'head' && ok(TO_BODY[next]) && rng.chance(0.55)) return TO_BODY[next];
   if (prev.result === 'dodge' && ok(TO_ARC[next]) && rng.chance(0.5)) return TO_ARC[next];
   // el rival se fue de la distancia: la mano/patada larga sigue la cadena (no se tira al aire)
