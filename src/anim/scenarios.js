@@ -25,6 +25,9 @@ export const SCENARIOS = {
   lowkick: { blockM: 0.5, terrain: flat(), duration: 4.5, root: () => ({ pos: [0, 0, 0], yaw: 0 }), actions: [{ t: 1.5, play: 'lowkick' }, { t: 3.2, play: 'lowkick' }] },
   block: { blockM: 0.5, terrain: flat(), duration: 3, root: () => ({ pos: [0, 0, 0], yaw: 0 }), actions: [{ t: 1.0, play: 'block' }] },
   // plataforma de 1 bloque (0.5 m) en x >= 3.0 m
+  hurt: { blockM: 0.5, terrain: flat(), duration: 6, root: () => ({ pos: [0, 0, 0], yaw: 0 }), actions: [{ t: 1.0, play: 'hurt_head', opts: { force: true } }, { t: 2.5, play: 'hurt_body', opts: { force: true } }, { t: 4.0, play: 'hurt_legs', opts: { force: true } }] },
+  rocked: { blockM: 0.5, terrain: flat(), duration: 5, root: () => ({ pos: [0, 0, 0], yaw: 0 }), actions: [{ t: 1.0, play: 'rocked', opts: { force: true } }, { t: 4.0, cancel: 0.3 }] },
+  ko: { blockM: 0.5, terrain: flat(), duration: 6, root: () => ({ pos: [0, 0, 0], yaw: 0 }), actions: [{ t: 1.0, play: 'ko', opts: { force: true } }, { t: 3.0, play: 'getUp', opts: { force: true } }] },
   step: { blockM: 0.5, terrain: stepTerrain(6, 1), duration: 8.5, groundY: (x) => 0.5 * smooth((x - 2.9) / 0.6),
     root: (t) => ({ pos: [walkX(t, 0, 0.8, 1.0, 4.3) + walkX(t, 0, 0.8, 5.3, 6.8), 0, 0], yaw: 0 }), actions: [] },
   // plataforma de 1 bloque de 1 m (BLOCK_M=1): caso extremo
@@ -44,7 +47,7 @@ export function simulate(name, { seed = 7, hz = 60, duration, onFrame } = {}) {
   const acts = sc.actions.slice();
   for (let i = 0; i <= n; i++) {
     const t = i * dt;
-    while (acts.length && acts[0].t <= t + 1e-9) A.play(acts.shift().play);
+    while (acts.length && acts[0].t <= t + 1e-9) { const a = acts.shift(); if (a.cancel !== undefined) A.cancel(a.cancel); else if (a.state) A.setState(a.state); else A.play(a.play, a.opts || {}); }
     const r = sc.root(t);
     if (sc.groundY) r.pos[1] = sc.groundY(r.pos[0]);
     const sk = A.update(dt, r);

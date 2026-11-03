@@ -12,6 +12,7 @@ import { HUMAN_BONES_LOCAL, HUMAN_PARENT } from './bones.js';
 import { createHumanoid3D, solveRig, DIM, STAND_PELVIS_Y } from './skeleton3d.js';
 import { makeTopSampler, createFoot, initFeet, updateFeet, capHeightForFoot, wrapPi, footprintTop } from './footplacement.js';
 import { GUARD, CHANNELS, makeChannels, makeIdleParams, idleLayer, walkLayer, addClip, phaseAt, CLIPS, BLOCK_POSE } from './clips.js';
+import { ZONE_CLIP } from './reactions.js';
 import { createRng } from '../shared/rng.js';
 import { clamp, smoothstep, smin, spring, springCritical, lerp, qRot } from './math3.js';
 
@@ -66,14 +67,14 @@ export function createAnimator3D(opts = {}) {
   const startClip = (name, o) => {
     const clip = CLIPS[name]; if (!clip) return false;
     if (A.clip && !o.force) return false;
-    if (A.clip && o.force) A.fade = { clip: A.clip, t: A.clipT, w: 1, rate: 1 / 0.08 };
+    if (A.clip && o.force && clip.from !== A.clipMode.name) A.fade = { clip: A.clip, t: A.clipT, w: 1, rate: 1 / 0.08, h: A.clipMode.holding ? A.clipMode.holdT : -1 };
     A.clip = clip; A.clipT = clamp(o.phase ?? 0, 0, 1) * clip.duration;
     const m = A.clipMode; m.name = name; m.driven = !!o.driven; m.map = null; m.speed = o.speed > 0 ? o.speed : 1;
     if (o.duration > 0) {
       if (o.impactIn > 0 && o.impactIn < o.duration) m.map = { ti: o.impactIn, tt: o.duration };
       else m.speed *= clip.duration / o.duration;
     }
-    m.stale = 0; m.prev = A.clipT;
+    m.stale = 0; m.prev = A.clipT; m.holding = false; m.holdT = 0; m.amp = o.amp > 0 ? o.amp : 1;
     return true;
   };
   A.play = (name, opts = {}) => startClip(name, opts);
@@ -92,7 +93,29 @@ export function createAnimator3D(opts = {}) {
   // nivel de guardia 0..1 (1 = bloqueo alto): sostenido mientras la sim lo pida, con resorte (≈0.08 s). Se suma bajo los clips.
   A.guard = { target: 0, sp: { x: 0, v: 0 } };
   A.setGuardLevel = (l) => { A.guard.target = clamp(+l || 0, 0, 1); };
-  A.cancel = (fade = 0.15) => { if (!A.clip) return false; A.fade = { clip: A.clip, t: A.clipT, w: 1, rate: 1 / Math.max(fade, 1e-3) }; A.clip = null; return true; };
+  A.cancel = (fade = 0.15) => { if (!A.clip) return false; A.fade = { clip: A.clip, t: A.clipT, w: 1, rate: 1 / Math.max(fade, 1e-3), h: A.clipMode.holding ? A.clipMode.holdT : -1 }; A.clip = null; return true; };
+
+  // ---- reacciones y estados (zona del golpe, aturdido, KO, levantarse)
+  //   react(zone,{power})   zone = 'head'|'body'|'legs'  (state.hurt.zone de la sim). Corta lo que haya con fundido de 80 ms. power ∈ (0..1.5] escala la pose.
+  //   setState(state)       lee el state del peleador de la sim (state.hurt, rocked, stance down|ko, guard) y dispara/sostiene el clip correcto cada frame:
+  //                         hurt nuevo -> hurt_<zona>; rocked -> 'rocked' sostenido; down/ko -> 'ko' (cae y queda); al salir de down/ko -> 'getUp'; guard -> setGuardLevel.
+  A.react = (zone, o = {}) => { const n = ZONE_CLIP[zone] || 'hurt_body'; return startClip(n, { force: true, amp: clamp(o.power ?? 1, 0.2, 1.5) }); };
+  A.lying = false; A.hurtSeen = null;
+  A.setState = (st) => {
+    if (!st) return;
+    if (st.guard !== undefined) A.setGuardLevel(st.guard);
+    const wantLying = st.ko === true || st.down === true || st.stance === 'ko' || st.stance === 'down';
+    const name = A.clip ? A.clipMode.name : '';
+    if (wantLying) {
+      if (!A.lying) { A.lying = true; startClip('ko', { force: true }); }
+      return;
+    }
+    if (A.lying) { A.lying = false; startClip('getUp', { force: true }); return; }
+    if (st.hurt && (A.hurtSeen === null || st.hurt.age < A.hurtSeen - 1e-6)) A.react(st.hurt.zone, { power: st.hurt.power });
+    A.hurtSeen = st.hurt ? st.hurt.age : null;
+    if (st.rocked) { if (!A.clip) startClip('rocked', { force: true }); }
+    else if (name === 'rocked') A.cancel(0.3);
+  };
   A.clipInfo = (name) => {
     const clip = CLIPS[name ?? A.clipMode.name]; if (!clip) return null;
     const d = clip.duration, a = clip.phases.find((q) => q.name === 'strike') || clip.phases[1];
@@ -143,7 +166,7 @@ export function createAnimator3D(opts = {}) {
     if (A.guard.sp.x > 1e-4) { const g = clamp(A.guard.sp.x, 0, 1.05); for (const n in BLOCK_POSE) c[n] += BLOCK_POSE[n] * g; }
     const S = A.strike; S.active = false; S.phase = 'none';
     if (A.fade) {
-      A.fade.w -= dt * A.fade.rate; if (A.fade.w <= 0) A.fade = null; else addClip(A.fade.clip, A.fade.t, A.fade.w * A.fade.w * (3 - 2 * A.fade.w), c);
+      A.fade.w -= dt * A.fade.rate; if (A.fade.w <= 0) A.fade = null; else { const fw = A.fade.w * A.fade.w * (3 - 2 * A.fade.w); addClip(A.fade.clip, A.fade.t, fw, c); if (A.fade.h >= 0 && A.fade.clip.holdLayer) { A.fade.h += dt; const tmp = makeChannels(); A.fade.clip.holdLayer(A.fade.h, tmp); for (const n of CHANNELS) c[n] += fw * tmp[n]; } }
     }
     if (A.clip) {
       const m = A.clipMode, clip = A.clip, tPrev = m.prev;
@@ -155,9 +178,13 @@ export function createAnimator3D(opts = {}) {
       }
       m.prev = A.clipT;
       if (tPrev < clip.impactT && A.clipT >= clip.impactT) ev.push({ type: 'impact', name: m.name, tip: clip.tip || 'L' });
-      if (A.clipT >= clip.duration || (m.driven && m.cutAt)) { addClip(clip, clip.duration, 1, c); A.clip = null; ev.push({ type: 'clipEnd', name: m.name }); }
+      if (clip.hold && A.clipT >= clip.duration) {                    // clip SOSTENIDO (rocked, ko): se queda en la última pose hasta otro play/cancel
+        if (!m.holding) { m.holding = true; m.holdT = 0; ev.push({ type: 'clipHold', name: m.name }); }
+        A.clipT = clip.duration; m.holdT += dt; addClip(clip, clip.duration, 1, c); if (clip.holdLayer) clip.holdLayer(m.holdT, c);
+        S.phase = 'hold'; S.t = clip.duration; S.impactT = clip.impactT; S.name = m.name; S.phase01 = 1; S.tip = clip.tip || 'L';
+      } else if (A.clipT >= clip.duration || (m.driven && m.cutAt)) { addClip(clip, clip.duration, 1, c); A.clip = null; ev.push({ type: 'clipEnd', name: m.name }); }
       else {
-        addClip(clip, A.clipT, 1, c);
+        addClip(clip, A.clipT, m.amp ?? 1, c);
         S.phase = phaseAt(clip, A.clipT); S.t = A.clipT; S.impactT = clip.impactT; S.name = m.name; S.phase01 = A.clipT / clip.duration; S.tip = clip.tip || 'L';
         S.active = A.clipT >= clip.phases[1].t0 && A.clipT <= clip.phases[1].t1;
       }

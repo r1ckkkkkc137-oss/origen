@@ -28,6 +28,10 @@ function plan() {
     const t0 = tp - 0.55;
     P.push({ sc, label: sc, times: range(t0, tp + 0.35, 8), keys: [tp - 0.35, tp - 0.02, tp + 0.30], keyNames: ['swing_up', 'plant_on_block', 'after'] });
   }
+  for (const [lb, t0] of [['hurt_head', 1.0], ['hurt_body', 2.5], ['hurt_legs', 4.0]]) P.push({ sc: 'hurt', label: lb, times: [-0.05, 0.04, 0.08, 0.14, 0.22, 0.32, 0.44, 0.60].map((x) => +(t0 + x).toFixed(3)), keys: [t0 + 0.08, t0 + 0.22] , keyNames: ['peak', 'hold'] });
+  P.push({ sc: 'rocked', label: 'rocked', times: [0.9, 1.15, 1.4, 1.8, 2.1, 2.6, 3.3, 4.2], keys: [1.4, 2.1] });
+  P.push({ sc: 'ko', label: 'ko', times: [0.95, 1.08, 1.25, 1.45, 1.65, 1.85, 2.2, 2.9], keys: [1.45, 2.9] });
+  P.push({ sc: 'ko', label: 'getup', times: [2.95, 3.25, 3.55, 3.85, 4.15, 4.45, 4.8, 5.3], keys: [3.55, 4.15] });
   P.push({ sc: 'turn90', label: 'turn90', times: [1.4, 1.55, 1.7, 1.85, 2.0, 2.2, 2.6, 3.2], keys: [1.7, 2.2] });
   return P;
 }
