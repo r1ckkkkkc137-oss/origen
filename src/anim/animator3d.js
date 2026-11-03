@@ -10,8 +10,8 @@
 // Internamente se trabaja en un marco (+Z adelante, +X izquierda) y se convierte al exportar: mundo = (z_i, y, -x_i).
 import { HUMAN_BONES_LOCAL, HUMAN_PARENT } from './bones.js';
 import { createHumanoid3D, solveRig, DIM, STAND_PELVIS_Y } from './skeleton3d.js';
-import { makeTopSampler, createFoot, initFeet, updateFeet, capHeightForFoot, wrapPi } from './footplacement.js';
-import { GUARD, CHANNELS, makeChannels, makeIdleParams, idleLayer, walkLayer, addClip, phaseAt, CLIPS } from './clips.js';
+import { makeTopSampler, createFoot, initFeet, updateFeet, capHeightForFoot, wrapPi, footprintTop } from './footplacement.js';
+import { GUARD, CHANNELS, makeChannels, makeIdleParams, idleLayer, walkLayer, addClip, phaseAt, CLIPS, BLOCK_POSE } from './clips.js';
 import { createRng } from '../shared/rng.js';
 import { clamp, smoothstep, smin, spring, springCritical, lerp, qRot } from './math3.js';
 
@@ -19,6 +19,7 @@ export const BLOCK_M_DEFAULT = 0.5;
 export const yawToDir = (yaw, out = [0, 0, 0]) => { out[0] = Math.cos(yaw); out[1] = 0; out[2] = -Math.sin(yaw); return out; };
 export const dirToYaw = (x, z) => Math.atan2(-z, x);
 const toW = (p, o) => { o[0] = p[2]; o[1] = p[1]; o[2] = -p[0]; return o; };           // interno -> mundo
+const BALL = 0.16;                                                                         // bola del pie respecto del tobillo (m)
 const HIP_GUARD = 0.72, HIP_WALK = 0.79;                                                  // altura cadera sobre tobillo
 
 export function createAnimator3D(opts = {}) {
@@ -40,6 +41,7 @@ export function createAnimator3D(opts = {}) {
   const A = {
     skeleton, rig, t: 0, inited: false, events: [],
     feet: [createFoot('L'), createFoot('R')],
+    eff: [0, 1].map(() => ({ pos: [0, 0, 0], sole: 0, yaw: 0, pitch: 0, planted: true, ball: false, contact: [0, 0, 0] })),   // pies efectivos = plantados + override del clip
     ch: makeChannels(GUARD),
     visYaw: 0, yawSp: spring(0), vel: [0, 0], lastRoot: [0, 0], walkAmt: 0, idleT: 0, pelvisY: 0, pelvisSp: spring(0), gate: spring(0),
     clip: null, clipT: 0, strike: { active: false, phase: 'none', t: 0, impactT: 0, fist: [0, 0, 0], name: '', phase01: 0, tip: 'L' },
@@ -87,6 +89,9 @@ export function createAnimator3D(opts = {}) {
     A.clipT = p * clip.duration; m.cutAt = p >= 1 ? 1 : 0; m.stale = 0;
     return true;
   };
+  // nivel de guardia 0..1 (1 = bloqueo alto): sostenido mientras la sim lo pida, con resorte (≈0.08 s). Se suma bajo los clips.
+  A.guard = { target: 0, sp: { x: 0, v: 0 } };
+  A.setGuardLevel = (l) => { A.guard.target = clamp(+l || 0, 0, 1); };
   A.cancel = (fade = 0.15) => { if (!A.clip) return false; A.fade = { clip: A.clip, t: A.clipT, w: 1, rate: 1 / Math.max(fade, 1e-3) }; A.clip = null; return true; };
   A.clipInfo = (name) => {
     const clip = CLIPS[name ?? A.clipMode.name]; if (!clip) return null;
@@ -126,7 +131,7 @@ export function createAnimator3D(opts = {}) {
     const turning = Math.abs(A.yawSp.x) > 0.08 || Math.abs(A.yawSp.v) > 0.3;
     A.idleT = (speed > 0.08 || turning) ? 0 : A.idleT + dt;
     // ---- pies
-    updateFeet(A.feet, top, _root, yaw, { t: A.t, vel: A.vel, speed, walkAmt: A.walkAmt, idleT: A.idleT }, dt, ev);
+    updateFeet(A.feet, top, _root, yaw, { t: A.t, vel: A.vel, speed, walkAmt: A.walkAmt, idleT: A.idleT, freeze: !!(A.clip && A.clip.feet && A.walkAmt < 0.3) }, dt, ev);
     const [fL, fR] = A.feet;
     // ---- canales: guardia + idle + caminar + clips
     const c = A.ch; for (const n of CHANNELS) c[n] = GUARD[n];
@@ -134,6 +139,8 @@ export function createAnimator3D(opts = {}) {
     springCritical(A.gate, swingEnv(fL) - swingEnv(fR), 16, dt);
     const fwdSpeed = A.vel[0] * Math.sin(yaw) + A.vel[1] * Math.cos(yaw);
     walkLayer(A.gate.x, A.walkAmt, fwdSpeed, c);
+    springCritical(A.guard.sp, A.guard.target, 22, dt);
+    if (A.guard.sp.x > 1e-4) { const g = clamp(A.guard.sp.x, 0, 1.05); for (const n in BLOCK_POSE) c[n] += BLOCK_POSE[n] * g; }
     const S = A.strike; S.active = false; S.phase = 'none';
     if (A.fade) {
       A.fade.w -= dt * A.fade.rate; if (A.fade.w <= 0) A.fade = null; else addClip(A.fade.clip, A.fade.t, A.fade.w * A.fade.w * (3 - 2 * A.fade.w), c);
@@ -158,7 +165,27 @@ export function createAnimator3D(opts = {}) {
     // ---- altura de pelvis
     const sf = Math.sin(yaw), cf = Math.cos(yaw);                       // adelante visual (marco interno)
     const px = _root[0] + c.px * cf + c.pz * sf, pz = _root[2] - c.px * sf + c.pz * cf;
-    const ankles = A.feet.map((f) => [f.pos[0], f.sole + DIM.ankleH, f.pos[2]]);
+    const wf = clamp(1 - A.walkAmt * 1.5, 0, 1);                        // los clips de pies solo mandan con el cuerpo quieto
+    const eff = A.eff;
+    for (let i = 0; i < 2; i++) {
+      const f = A.feet[i], s = i ? 'R' : 'L', e = eff[i];
+      const ox = c['f' + s + 'x'] * wf, oy = c['f' + s + 'y'] * wf, oz = c['f' + s + 'z'] * wf, dyaw = c['f' + s + 'yaw'] * wf, dp = c['f' + s + 'pitch'] * wf;
+      e.yaw = f.yaw + dyaw; e.pitch = f.pitch + dp; e.ball = !!(A.clip?.ball?.[s] || A.fade?.clip?.ball?.[s]);
+      const fx = Math.sin(f.yaw), fz = Math.cos(f.yaw);
+      if (e.ball && (Math.abs(dyaw) > 1e-4 || dp < -1e-4)) {                       // pivote sobre la bola del pie: la bola queda clavada, el talón gira/sube
+        const gx = f.pos[0] + ox * cf + oz * sf, gz = f.pos[2] - ox * sf + oz * cf;
+        const bx = gx + fx * BALL, bz = gz + fz * BALL, heel = Math.max(0, -dp);
+        e.pos[0] = bx - Math.sin(e.yaw) * BALL * Math.cos(heel); e.pos[2] = bz - Math.cos(e.yaw) * BALL * Math.cos(heel);
+        e.sole = f.sole + BALL * Math.sin(heel) + oy; e.contact[0] = bx; e.contact[1] = f.sole; e.contact[2] = bz;
+        e.planted = f.planted && oy < 0.006;
+      } else {
+        e.pos[0] = f.pos[0] + ox * cf + oz * sf; e.pos[2] = f.pos[2] - ox * sf + oz * cf; e.sole = f.sole + oy;
+        if (Math.abs(ox) + Math.abs(oz) > 1e-5) e.sole = Math.max(e.sole, footprintTop(top, e.pos[0], e.pos[2], e.yaw, f.sole + 0.3, 0));
+        e.contact[0] = e.pos[0] + Math.sin(e.yaw) * BALL; e.contact[1] = e.sole; e.contact[2] = e.pos[2] + Math.cos(e.yaw) * BALL;   // punto de la bola del pie
+        e.planted = f.planted && e.sole - f.sole < 0.006 && Math.abs(dp) < 0.02;
+      }
+    }
+    const ankles = eff.map((e) => [e.pos[0], e.sole + DIM.ankleH, e.pos[2]]);
     const lowest = Math.min(ankles[0][1], ankles[1][1]);
     const hipAbove = lerp(HIP_GUARD, HIP_WALK, A.walkAmt);
     springCritical(A.pelvisSp, lowest + hipAbove, 10, dt);
@@ -167,7 +194,7 @@ export function createAnimator3D(opts = {}) {
     for (let i = 0; i < 2; i++) py = smin(py, capHeightForFoot(hips[i], ankles[i]), 0.06);
     A.pelvisY = py;
     // ---- rig
-    const armPole = (sx, elb) => [sx * (0.45 + 2.5 * elb), -1, -0.15];
+    const armPole = (sx, elb, elv) => [sx * (0.45 + 2.5 * elb), -1 + 2 * elv, -0.15];
     // polo de rodilla: hacia adelante (dirección del pie); si el tobillo queda a la altura de la cadera o por encima, la rodilla sube.
     // La mezcla es continua en la elevación del eje cadera->tobillo, así que la rodilla no puede invertirse ni saltar.
     const legPole = (f, i) => {
@@ -182,12 +209,12 @@ export function createAnimator3D(opts = {}) {
       hipYaw: c.hipYaw, hipPitch: c.hipPitch, hipRoll: c.hipRoll, spYaw: c.spYaw, spPitch: c.spPitch, spRoll: c.spRoll,
       hdYaw: c.hdYaw, hdPitch: c.hdPitch, hdRoll: c.hdRoll,
       arms: {
-        L: { rel: [c.hLx, c.hLy, c.hLz], pole: armPole(1, c.elbL), shrug: c.shrugL, prot: c.protL },
-        R: { rel: [c.hRx, c.hRy, c.hRz], pole: armPole(-1, c.elbR), shrug: c.shrugR, prot: c.protR },
+        L: { rel: [c.hLx, c.hLy, c.hLz], pole: armPole(1, c.elbL, c.elvL), shrug: c.shrugL, prot: c.protL },
+        R: { rel: [c.hRx, c.hRy, c.hRz], pole: armPole(-1, c.elbR, c.elvR), shrug: c.shrugR, prot: c.protR },
       },
       legs: {
-        L: { ankle: ankles[0], pole: legPole(fL, 0), footYaw: fL.yaw, footPitch: fL.pitch },
-        R: { ankle: ankles[1], pole: legPole(fR, 1), footYaw: fR.yaw, footPitch: fR.pitch },
+        L: { ankle: ankles[0], pole: legPole(eff[0], 0), footYaw: eff[0].yaw, footPitch: eff[0].pitch },
+        R: { ankle: ankles[1], pole: legPole(eff[1], 1), footYaw: eff[1].yaw, footPitch: eff[1].pitch },
       },
     };
     solveRig(rig, r);
@@ -203,11 +230,12 @@ export function createAnimator3D(opts = {}) {
     }
     toW(P.head.t, skeleton.tips.headTop);
     { const hc = qRot(P.head.q, [0, DIM.head * 0.55, 0.11]); toW([P.head.p[0] + hc[0], P.head.p[1] + hc[1], P.head.p[2] + hc[2]], skeleton.tips.face); }
-    toW(P['hand' + (S.tip || 'L')].t, S.fist);
+    if (S.tip === 'kickR') { const k = P.shinR, a = P.shinR.t; toW([a[0] + (k.p[0] - a[0]) * 0.3, a[1] + (k.p[1] - a[1]) * 0.3, a[2] + (k.p[2] - a[2]) * 0.3], S.fist); }
+    else toW(P['hand' + (S.tip || 'L')].t, S.fist);
     A.diag.clamped = (rig.diag.legReachedL && rig.diag.legReachedR) ? 0 : 1;
     return skeleton;
   };
   // Posiciones MUNDO de las plantas de pie (para tests/visores): { L:{planted,pos:[x,y,z]}, R:{...} }
-  A.feetWorld = () => A.feet.map((f) => ({ side: f.side, planted: f.planted, pos: toW([f.pos[0], f.sole, f.pos[2]], [0, 0, 0]), yaw: f.yaw }));
+  A.feetWorld = () => A.eff.map((e, i) => ({ side: A.feet[i].side, planted: e.planted, pos: toW([e.pos[0], e.sole, e.pos[2]], [0, 0, 0]), contact: toW(e.contact, [0, 0, 0]), yaw: e.yaw, pitch: e.pitch, ball: e.ball }));
   return A;
 }

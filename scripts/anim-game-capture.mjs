@@ -17,9 +17,10 @@ const SCENES = {
   guard: { times: [1.0, 1.7, 2.4, 3.1], actions: [] },
   jab: { times: [1.40, 1.50, 1.58, 1.65, 1.75, 1.90, 2.10, 2.40], actions: [{ t: 1.5, who: 0, play: 'jab' }] },
   jabsync: { times: [1.50, 1.56, 1.60, 1.64, 1.70, 1.76, 1.82, 1.95], actions: [{ t: 1.5, who: 0, play: 'jab', opts: { impactIn: 0.10, duration: 0.32 } }, { t: 1.5, who: 1, play: 'jab', opts: { speed: 0.6 } }] },   // KAGE: impacto a 0.10 s, total 0.32 s
-  cross: { times: [1.40, 1.55, 1.65, 1.72, 1.80, 1.95, 2.20, 2.60], actions: [{ t: 1.5, who: 0, play: 'cross' }] },
-  hook: { times: [1.40, 1.55, 1.65, 1.72, 1.80, 1.95, 2.20, 2.60], actions: [{ t: 1.5, who: 0, play: 'hook' }] },
-  lowkick: { times: [1.40, 1.60, 1.75, 1.88, 2.0, 2.15, 2.4, 2.8], actions: [{ t: 1.5, who: 0, play: 'lowkick' }] },
+  cross: { times: [1.50, 1.58, 1.62, 1.65, 1.68, 1.71, 1.76, 1.90], actions: [{ t: 1.5, who: 0, play: 'cross' }] },
+  hook: { times: [1.50, 1.58, 1.62, 1.65, 1.68, 1.72, 1.78, 1.95], actions: [{ t: 1.5, who: 0, play: 'hook' }] },
+  block: { times: [1.0, 1.15, 1.3, 1.5, 1.6, 1.7, 2.2, 2.6], actions: [{ t: 1.1, who: 0, guard: 1 }, { t: 1.5, who: 1, play: 'jab' }, { t: 2.3, who: 0, guard: 0 }] },
+  lowkick: { times: [1.50, 1.58, 1.65, 1.72, 1.78, 1.82, 1.90, 2.05, 2.20, 2.40, 2.55, 2.80], actions: [{ t: 1.5, who: 0, play: 'lowkick' }] },
 };
 
 const server = await createServer({ configFile: false, root: path.resolve('.'), server: { port: 5198, host: '127.0.0.1' }, logLevel: 'error' });
@@ -52,7 +53,7 @@ for (const [name, sc] of Object.entries(SCENES)) {
     const camDef = { front: [cx - 1.3, gy + 1.15, cz + 3.0], side: [cx, gy + 1.1, cz - 3.0], top34: [cx - 1.5, gy + 2.5, cz - 2.2] };   // front = 3/4 por el lado derecho de beige
     for (let i = 0; i * dt <= last + 1e-6; i++) {
       const t = i * dt;
-      while (acts.length && acts[0].t <= t + 1e-9) { const a = acts.shift(); fighters[a.who].anim.play(a.play, a.opts); }
+      while (acts.length && acts[0].t <= t + 1e-9) { const a = acts.shift(); if (a.play) fighters[a.who].anim.play(a.play, a.opts); if (a.guard !== undefined) fighters[a.who].anim.setGuardLevel(a.guard); }
       for (const f of fighters) f.anim.update(dt, f.root);
       if (ti < times.length && Math.abs(t - times[ti]) < dt / 2) {
         for (const f of fighters) f.view.update(f.anim.skeleton);

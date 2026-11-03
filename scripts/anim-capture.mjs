@@ -18,6 +18,10 @@ function plan() {
   P.push({ sc: 'walk', label: 'walk', times: range(3.0, 3.7, 8), keys: [3.0, 3.175, 3.35, 3.525] });
   const j0 = 1.5; P.push({ sc: 'jab', label: 'jab', times: [j0 - 0.05, j0 + 0.06, j0 + 0.10, j0 + 0.152, j0 + 0.22, j0 + 0.30, j0 + 0.40, j0 + 0.55],
     keys: [j0 + 0.06, j0 + 0.152, j0 + 0.26] , keyNames: ['anticipation', 'impact', 'recoil'] });
+  for (const [sc, imp, ts] of [['cross', 0.17, [-0.05, 0.05, 0.10, 0.14, 0.17, 0.22, 0.30, 0.50]], ['hook', 0.17, [-0.05, 0.06, 0.10, 0.14, 0.17, 0.22, 0.30, 0.50]], ['lowkick', 0.30, [-0.05, 0.10, 0.20, 0.26, 0.30, 0.36, 0.50, 0.75]]]) {
+    P.push({ sc, label: sc, times: ts.map((x) => +(1.5 + x).toFixed(3)), keys: [1.5 + ts[2], 1.5 + imp, 1.5 + ts[6]], keyNames: ['load', 'impact', 'recoil'] });
+  }
+  P.push({ sc: 'block', label: 'block', times: [0.9, 1.05, 1.15, 1.3, 1.5, 1.7, 1.9, 2.3], keys: [1.3] });
   // pasos sobre el bloque: buscar el primer plant sobre el bloque alto
   for (const [sc, hMin] of [['step', 0.3], ['step1m', 0.6]]) {
     let tp = 0; simulate(sc, { onFrame: (t, sk, A) => { for (const e of A.events) if (e.type === 'plant' && e.pos[1] > hMin && !tp) tp = t; } });

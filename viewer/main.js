@@ -104,13 +104,13 @@ const hud = document.getElementById('hud');
 if (!location.search.includes('capture')) {
   let scName = new URLSearchParams(location.search).get('s') || 'walk', camName = 'side', frames = [], idx = 0, acc = 0, last = performance.now(), fpsN = 0, fpsT = 0, fps = 0;
   const load = () => { const sc = SCENARIOS[scName]; frames = []; simulate(scName, { duration: sc.duration, onFrame: (t, sk, A) => frames.push(snapshot(sk, A)) }); buildTerrain(sc); idx = 0; };
-  addEventListener('keydown', (e) => { const k = e.key; if ('1234567'.includes(k)) { scName = Object.keys(SCENARIOS)[+k - 1]; load(); } if (k === 'c') camName = camName === 'side' ? 'front' : camName === 'front' ? 'top34' : 'side'; });
+  addEventListener('keydown', (e) => { const k = e.key; if ('123456789'.includes(k)) { scName = Object.keys(SCENARIOS)[+k - 1]; load(); } if (k === 'c') camName = camName === 'side' ? 'front' : camName === 'front' ? 'top34' : 'side'; });
   const resize = () => size(innerWidth, innerHeight); addEventListener('resize', resize); resize(); load();
   const loop = (now) => {
     const dt = Math.min(0.1, (now - last) / 1000); last = now; acc += dt; while (acc >= 1 / 60) { acc -= 1 / 60; idx = (idx + 1) % frames.length; }
     const s = frames[idx]; drawSnap(s); setCam(camName, [s.pose.pelvis[0], Math.min(s.feet[0].pos[1], s.feet[1].pos[1]), 0]); renderer.render(scene, cam);
     fpsN++; fpsT += dt; if (fpsT > 0.5) { fps = fpsN / fpsT; fpsN = 0; fpsT = 0; }
-    hud.textContent = `escenario ${scName} (teclas 1-7) cámara ${camName} (c)  t=${(idx / 60).toFixed(2)}s  fps=${fps.toFixed(0)}`; window.__fps = fps;
+    hud.textContent = `escenario ${scName} (teclas 1-9) cámara ${camName} (c)  t=${(idx / 60).toFixed(2)}s  fps=${fps.toFixed(0)}`; window.__fps = fps;
     requestAnimationFrame(loop);
   };
   requestAnimationFrame(loop);
