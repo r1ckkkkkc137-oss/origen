@@ -20,13 +20,13 @@ import { createGeometry2D } from './geometry2d.js';
 import { createGeometry3D } from './geometry3d.js';
 
 /**
- * @typedef {[number, number, number]} Vec3   [x,y,z] en las unidades del adaptador (geo.units: '2d' = px de KAGE, '3d' = unidades de mundo/bloques)
+ * @typedef {[number, number, number]} Vec3   [x,y,z] en las unidades del adaptador (geo.units: '2d' = px de KAGE, '3d' = METROS, como Skeleton3D)
  * @typedef {{a:Vec3, b:Vec3, radius:number, zone:'head'|'body'|'legs'|'armL'|'armR', bones:[string,string]}} Capsule  (unidades del adaptador)
  * @typedef {object} Fighter  runtime del núcleo (createRuntime). Sólo el adaptador toca sus campos de posición.
  *
  * @typedef {object} Geometry
  * @property {'2d'|'3d'} kind
- * @property {'px'|'block'} units                                          Unidad de lo que SALE hacia afuera (boneWorldPos, hurtboxes, contactPoint, tickExtras.pos). 3D: 1 bloque = BLOCK_M m.
+ * @property {'px'|'m'} units                                          Unidad de lo que SALE hacia afuera (boneWorldPos, hurtboxes, contactPoint, tickExtras.pos). 3D: metros; `toBlocks`/`fromBlocks` convierten a bloques de mundo (BLOCK_M).
  * @property {(F:object)=>void} bind            Se llama una vez al crear la pelea (F.fighters ya existen).
  *
  * --- Colocación / orientación ---
@@ -69,7 +69,7 @@ import { createGeometry3D } from './geometry3d.js';
  */
 
 /**
- * Crea una geometría. spec: '2d' | '3d' | instancia Geometry | (opt)=>Geometry | { kind:'3d', skeleton, boneMap, blockM }.
+ * Crea una geometría. spec: '2d' | '3d' | instancia Geometry | (opt)=>Geometry | { kind:'3d', skeleton, boneMap, origin }.
  * Un spec ausente = Geometry2D (comportamiento KAGE).
  * @param {string|object|Function|undefined} spec
  * @param {{cage:number}} opt  tuning de la pelea (usa cage)

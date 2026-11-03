@@ -7,10 +7,11 @@ import { createGeometry } from './geometry.js';
 import { fightDigest, levelSpec, subset56 } from './digest.js';
 import { HUMAN_BONES } from '../shared/contracts.js';
 import { HUMAN_PARENT, KAGE_TO_HUMAN, KAGE_UNMAPPED, HUMAN_ONLY, restPose } from './pose.js';
-import { BLOCK_M, yawFromHeading } from './geometry3d.js';
+import { BLOCK_M, headingDir } from '../shared/contracts.js';
+import { yawFromHeading } from './geometry3d.js';
 import * as THREE from 'three';
 
-const PXB = 85 * BLOCK_M; // px de sim por bloque
+const PXM = 85; // px de sim por metro
 
 const S = subset56(m.STYLE_IDS);
 
@@ -67,28 +68,28 @@ test('3D: distancia 3D, pared circular y movimiento por heading', () => {
   g.applyKnockback(A, 100); g.clampToRing(A); assert.ok(Math.hypot(A.pos.x, A.pos.z) <= 260 + 1e-9);
 });
 
-test('3D: boneWorldPos/hurtboxes en bloques ([x,y,z]) sobre HUMAN_BONES (17), rotan con yaw', () => {
+test('3D: boneWorldPos/hurtboxes en METROS ([x,y,z], como Skeleton3D) sobre HUMAN_BONES (17), rotan con yaw', () => {
   const geo = createGeometry('3d', { cage: 260 });
   const F = { t: 0, phase: 'stand', ground: null, fighters: [] };
   geo.bind(F);
-  const f = { id: 'a', pos: { x: 10 * PXB, y: 0, z: -20 * PXB }, heading: 0, down: 0, action: null };   // (10, 0, -20) bloques
+  const f = { id: 'a', pos: { x: 10 * PXM, y: 0, z: -20 * PXM }, heading: 0, down: 0, action: null };   // (10, 0, -20) m
   for (const b of HUMAN_BONES) { const p = geo.boneWorldPos(f, b); assert.ok(Array.isArray(p) && p.length === 3 && p.every(Number.isFinite), b); }
   const head0 = geo.boneWorldPos(f, 'head');
-  assert.ok(head0[1] > 3 && head0[1] < 4, 'cabeza ~1.75 m / 0.5 = ~3.5 bloques: ' + head0[1]);
+  assert.ok(head0[1] > 1.5 && head0[1] < 2, 'cabeza ~1.75 m: ' + head0[1]);
   assert.ok(Math.abs(geo.boneWorldPos(f, 'pelvis')[0] - 10) < 0.05);
   f.heading = Math.PI / 2;                                         // girar 90°: el "adelante" del hueso pasa de +x a +z (heading interno)
   const hand = geo.boneWorldPos(f, 'handR'), hand0rest = restPose().handR;
-  assert.ok(Math.abs((hand[2] - (-20)) - hand0rest.x / BLOCK_M) < 0.03);
+  assert.ok(Math.abs((hand[2] - (-20)) - hand0rest.x) < 0.03);
   const caps = geo.hurtboxes(f);
   assert.equal(caps.length, HUMAN_BONES.length - 1);               // 16 segmentos: todo hueso con padre (pelvis es la raíz)
   const zones = new Set(caps.map((c) => c.zone));
   for (const z of ['head', 'body', 'legs', 'armL', 'armR']) assert.ok(zones.has(z), z);
-  for (const c of caps) assert.ok(c.radius > 0 && c.radius < 0.5 && c.a.every(Number.isFinite) && c.b.every(Number.isFinite));
+  for (const c of caps) assert.ok(c.radius > 0 && c.radius < 0.25 && c.a.every(Number.isFinite) && c.b.every(Number.isFinite));
   // punto de contacto de un jab contra la cabeza del rival
   f.heading = 0;
   const g = { id: 'b', pos: { x: f.pos.x + 90, y: 0, z: f.pos.z }, heading: Math.PI, down: 0, action: null };
   const cp = geo.contactPoint(f, g, { limb: 'handL', zone: 'head' });
-  assert.ok(Array.isArray(cp) && cp[1] > 2, JSON.stringify(cp));
+  assert.ok(Array.isArray(cp) && cp[1] > 1, JSON.stringify(cp));
 });
 
 test('3D: mapeo KAGE joints -> HUMAN_BONES: los 16 coinciden; sólo chest es derivado', () => {
@@ -106,26 +107,29 @@ test('3D: yaw = convención Three (rotation.y): +x local -> (cos yaw, 0, -sin ya
     const f = { id: 'a', pos: { x: 0, y: 0, z: 0 }, heading: h, down: 0, action: null };
     const yaw = yawFromHeading(h);
     const fwdThree = new THREE.Vector3(1, 0, 0).applyAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
+    const hd3 = headingDir(yaw);   // contracts: debe coincidir con Three y con la sim
+    assert.ok(Math.abs(hd3[0] - fwdThree.x) < 1e-12 && Math.abs(hd3[2] - fwdThree.z) < 1e-12);
     const p = geo.boneWorldPos(f, 'pelvis'), hd = geo.boneWorldPos(f, 'head');   // cabeza adelantada 10 cm respecto de la pelvis
     const dx = hd[0] - p[0], dz = hd[2] - p[2], l = Math.hypot(dx, dz);
     assert.ok(Math.abs(dx / l - fwdThree.x) < 1e-9 && Math.abs(dz / l - fwdThree.z) < 1e-9, `h=${h}`);
-    // moveAlong también avanza hacia fwdThree
+    // moveAlong también avanza hacia headingDir(yaw)
     geo.moveAlong(f, 10); assert.ok(Math.abs(f.pos.x / 10 - fwdThree.x) < 1e-9 && Math.abs(f.pos.z / 10 - fwdThree.z) < 1e-9);
   }
 });
 
 test('3D: Skeleton3D del contrato (mundo, arrays) de un provider se re-ancla a la raíz de la sim', () => {
-  // esqueleto de Animador: raíz propia en (100, 0, 100) con yaw 1; la sim dice (2, 0, 3) bloques con otro heading
+  // esqueleto de Animador: raíz propia en (100, 0, 100) con yaw 1; la sim dice (2, 0, 3) m con otro heading
   const sk = { bones: ['pelvis', 'head'], parent: { pelvis: null, head: 'pelvis' }, root: { pos: [100, 0, 100], yaw: 1 },
-    pose: { pelvis: [100, 1.1, 100], head: [100 + Math.cos(1) * 0.2, 3.3, 100 - Math.sin(1) * 0.2] } };   // cabeza 0.2 bloques adelante (yaw 1)
+    pose: { pelvis: [100, 1.1, 100], head: [100 + Math.cos(1) * 0.2, 1.65, 100 - Math.sin(1) * 0.2] } };   // cabeza 0.2 m adelante (yaw 1)
   const geo = createGeometry({ kind: '3d', skeleton: () => sk }, { cage: 260 });
   geo.bind({ t: 0 });
-  const f = { id: 'a', pos: { x: 2 * PXB, y: 0, z: 3 * PXB }, heading: 0.5, down: 0, action: null };    // yaw sim = -0.5
+  const f = { id: 'a', pos: { x: 2 * PXM, y: 0, z: 3 * PXM }, heading: 0.5, down: 0, action: null };    // yaw sim = -0.5
   const p = geo.boneWorldPos(f, 'pelvis'), h = geo.boneWorldPos(f, 'head');
   assert.ok(Math.abs(p[0] - 2) < 1e-9 && Math.abs(p[2] - 3) < 1e-9 && Math.abs(p[1] - 1.1) < 1e-9, 'pelvis sobre la raíz de la sim');
   const yaw = -0.5;
-  assert.ok(Math.abs(h[0] - (2 + Math.cos(yaw) * 0.2)) < 1e-9 && Math.abs(h[2] - (3 - Math.sin(yaw) * 0.2)) < 1e-9 && Math.abs(h[1] - 3.3) < 1e-9);
+  assert.ok(Math.abs(h[0] - (2 + Math.cos(yaw) * 0.2)) < 1e-9 && Math.abs(h[2] - (3 - Math.sin(yaw) * 0.2)) < 1e-9 && Math.abs(h[1] - 1.65) < 1e-9);
   assert.deepEqual(geo.skeletonOf(f).root, { pos: [2, 0, 3], yaw });
+  assert.equal(geo.skeletonOf(f).visualYaw, yaw);
 });
 
 test('3D: skeleton externo (nombres propios + boneMap + space local en metros)', () => {
@@ -134,8 +138,20 @@ test('3D: skeleton externo (nombres propios + boneMap + space local en metros)',
   const geo = createGeometry({ kind: '3d', boneMap: map, skeleton: () => sk }, { cage: 260 });
   geo.bind({ t: 0 });
   const f = { id: 'a', pos: { x: 0, y: 0, z: 0 }, heading: 0 };
-  assert.ok(Math.abs(geo.boneWorldPos(f, 'head')[1] - 1.65 / BLOCK_M) < 1e-9);
+  assert.ok(Math.abs(geo.boneWorldPos(f, 'head')[1] - 1.65) < 1e-9);
   assert.deepEqual(geo.hurtboxes(f).map((c) => c.zone), ['body', 'body', 'head']);
+});
+
+test('3D: origin (bloques) ubica el ring en el mundo sólo en las salidas; toBlocks usa BLOCK_M', () => {
+  const geo = createGeometry({ kind: '3d', origin: [100, 20, -40] }, { cage: 260 });
+  geo.bind({ t: 0, phase: 'stand', ground: null });
+  const f = { id: 'a', pos: { x: 85, y: 0, z: 0 }, heading: 0, down: 0, action: null };   // 1 m al +x del centro del ring
+  const root = geo.skeletonOf(f).root.pos;
+  assert.ok(Math.abs(root[0] - (100 * BLOCK_M + 1)) < 1e-9 && root[1] === 20 * BLOCK_M && root[2] === -40 * BLOCK_M);
+  const b = geo.toBlocks(root); assert.ok(Math.abs(b[0] - (100 + 1 / BLOCK_M)) < 1e-9 && b[1] === 20 && b[2] === -40);
+  assert.deepEqual(geo.fromBlocks(geo.toBlocks([1, 2, 3])), [1, 2, 3]);
+  assert.equal(geo.units, 'm');
+  assert.equal(f.pos.x, 85);   // la sim no se entera del origen
 });
 
 test('Geometry2D: boneWorldPos [x,y,0] en px y sin cápsulas', () => {
