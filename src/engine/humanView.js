@@ -2,8 +2,8 @@ import * as THREE from 'three';
 // Cuerpo de depuración (cápsulas) sobre un Skeleton3D, con InstancedMesh: 2 draw calls por humano. Placeholder hasta los modelos de Arte.
 const SEG = [
   ['pelvis', 'spine', 0.075], ['spine', 'chest', 0.08], ['chest', 'neck', 0.085], ['neck', 'head', 0.04], ['head', 't.headTop', 0.095],
-  ['neck', 'shoulderL', 0.04], ['shoulderL', 'elbowL', 0.045], ['elbowL', 'handL', 0.038], ['handL', 't.handL', 0.05],
-  ['neck', 'shoulderR', 0.04], ['shoulderR', 'elbowR', 0.045], ['elbowR', 'handR', 0.038], ['handR', 't.handR', 0.05],
+  ['neck', 'shoulderL', 0.04], ['shoulderL', 'elbowL', 0.045], ['elbowL', 'handL', 0.032], ['handL', 't.handL', 0.035],
+  ['neck', 'shoulderR', 0.04], ['shoulderR', 'elbowR', 0.045], ['elbowR', 'handR', 0.032], ['handR', 't.handR', 0.035],
   ['pelvis', 'hipL', 0.06], ['hipL', 'kneeL', 0.065], ['kneeL', 'footL', 0.05], ['footL', 't.toeL', 0.04],
   ['pelvis', 'hipR', 0.06], ['hipR', 'kneeR', 0.065], ['kneeR', 'footR', 0.05], ['footR', 't.toeR', 0.04],
 ];

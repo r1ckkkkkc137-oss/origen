@@ -2,8 +2,9 @@
 //   const live = createLiveFight({...});  const la = createLiveAnimation(live, { createAnimator3D, getBlock: world.solidAt, blockM: BLOCK_M });
 //   cada frame:  la.update(dt)  ->  { frame, skeletons:{a,b} }   (Skeleton3D del contrato, listos para humanView/Arte)
 // La sim es dueña de pos/yaw (sólo se LEEN en el animador); lo único que se le pide a la animación es play(clip) en el momento justo.
-// Hoy el animador sólo tiene el clip 'jab': todos los golpes de pie (strike) se animan con él (aproximado); el resto no tiene clip.
-export const CLIP_MAP = Object.freeze({ strike: 'jab' });   // kind del movimiento -> clip disponible (override por move: opts.clipMap)
+// anim-r2: clips jab, cross, hook, lowkick (+ reacciones vía setState). Lo que no tiene clip propio usa el más parecido (aprox.).
+export const CLIP_MAP = Object.freeze({ strike: 'jab', jab: 'jab', cross: 'cross', overhand: 'cross', hook: 'hook', uppercut: 'hook',
+  lowKick: 'lowkick', calfKick: 'lowkick', bodyKick: 'lowkick', highKick: 'lowkick', teep: 'lowkick' });   // kind del movimiento -> clip disponible (override por move: opts.clipMap)
 /** Lo que le falta a Animador para representar lo que la sim ya produce (state/eventos de createLiveFight). */
 export const ANIM_GAPS = Object.freeze([
   'cross / hook / uppercut / overhand / body shots: sólo existe jab (mano izquierda); todos los golpes de mano salen como jab',
@@ -45,7 +46,8 @@ export function createLiveAnimation(live, opt) {
       const st = F.fighters[side].state;
       const clip = clipFor(ev.action, st.kind);
       if (!clip) continue;
-      pending[side] = { clip, move: ev.action, at: clock + Math.max(0, st.windupSeconds - impactT) };
+      const iT = anims[side].clipInfo?.(clip)?.impactT ?? impactT;   // impacto propio de cada clip
+      pending[side] = { clip, move: ev.action, at: clock + Math.max(0, st.windupSeconds - iT) };
     }
     for (const side of ['a', 'b']) {
       const p = pending[side];
@@ -53,6 +55,7 @@ export function createLiveAnimation(live, opt) {
     }
     for (const side of ['a', 'b']) {
       const f = F.fighters[side];
+      anims[side].setState?.(f.state);              // hurt por zona, rocked, down/ko -> getUp, guard (cada frame)
       skeletons[side] = anims[side].update(dt, { pos: f.pos, yaw: f.yaw });
     }
   }

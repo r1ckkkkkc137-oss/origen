@@ -93,7 +93,7 @@ const loop = createLoop({
       const [mx, mz] = input.moveAxis();
       stepPlayer(world ?? { getBlock: (x, y, z) => (getBlock(x, y, z) ? 3 : 0) }, player, { moveX: mx, moveZ: mz, jump: input.down('Space'), sprint: input.down('ShiftLeft'), yaw: rig.yaw }, dt);
     }
-    playerMesh.position.set(player.x, player.y, player.z); playerMesh.rotation.y = rig.yaw; playerMesh.visible = camMode !== 'p1';
+    playerMesh.position.set(player.x, player.y, player.z); playerMesh.rotation.y = rig.yaw; playerMesh.visible = camMode === 'p3' || camMode === 'free';
     if (camMode === 'fight') rig.setTarget(mid);
     else { const [ex, ey, ez] = playerEye(player); rig.setTarget(eye.set(ex, camMode === 'p1' ? ey : ey - 0.3, ez)); }
     rig.update(dt);

@@ -178,12 +178,12 @@ test('ground: origen pegado al suelo (cara superior) y pos[1] sigue el terreno; 
 });
 
 // ---- adaptador al animador --------------------------------------------------------------------------------------------------
-test('adaptador: pelea completa con createAnimator3D (60 fps y dt irregular), sin errores, raíz = pos/yaw de la sim, jab disparado', () => {
+test('adaptador: pelea completa con createAnimator3D (60 fps y dt irregular), sin errores, raíz = pos/yaw de la sim, clips de golpe disparados', () => {
   for (const dtOf of [() => 1 / 60, (() => { const r = lcg(5); return () => r() * 0.06; })()]) {
     const live = createLiveFight({ seed: SEED, origin: ORIGIN, styles: { a: 'boxer', b: 'boxer' } });
     const calls = { a: 0, b: 0 };
     const la = createLiveAnimation(live, { createAnimator3D, getBlock: () => false, blockM: 0.5 });
-    for (const s of ['a', 'b']) { const p = la.anims[s].play; la.anims[s].play = (n) => { calls[s]++; assert.equal(n, 'jab'); return p(n); }; }
+    for (const s of ['a', 'b']) { const p = la.anims[s].play; la.anims[s].play = (n) => { calls[s]++; assert.ok(['jab', 'cross', 'hook', 'lowkick'].includes(n), n); return p(n); }; }
     let n = 0;
     while (!live.done && n++ < 40000) {
       const { frame, skeletons } = la.update(dtOf());
@@ -194,7 +194,7 @@ test('adaptador: pelea completa con createAnimator3D (60 fps y dt irregular), si
       }
     }
     assert.ok(live.done);
-    assert.ok(calls.a + calls.b > 20, `clips jab ${calls.a}+${calls.b}`);
+    assert.ok(calls.a + calls.b > 20, `clips ${calls.a}+${calls.b}`);
   }
 });
 
