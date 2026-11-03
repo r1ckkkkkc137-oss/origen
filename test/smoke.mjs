@@ -1,7 +1,9 @@
 // Test de carga en Chrome headless (SwiftShader, sin GPU). Uso: npm run build && npm run smoke
 import { spawn } from 'node:child_process';
 import puppeteer from 'puppeteer-core';
-const port = 5190;
+import { createServer } from 'node:net';
+// puerto libre (otro agente puede tener un preview colgado en 5190 y mediríamos SU build)
+const port = Number(process.env.PORT) || await new Promise((r) => { const s = createServer().listen(0, () => { const p = s.address().port; s.close(() => r(p)); }); });
 const srv = spawn('npx', ['vite', 'preview', '--port', String(port), '--strictPort'], { stdio: 'ignore', detached: true });
 await new Promise((r) => setTimeout(r, 2500));
 const browser = await puppeteer.launch({ executablePath: process.env.CHROME || '/usr/bin/google-chrome', headless: 'new',
@@ -21,5 +23,5 @@ try {
   await page.screenshot({ path: process.env.SHOT || 'shots/smoke.png' });
   console.log(JSON.stringify({ fps: +fps.toFixed(1), tick, errors }));
   if (errors.length || tick < 60) code = 1;
-} finally { await browser.close(); process.kill(-srv.pid); }
+} finally { await browser.close(); try { process.kill(-srv.pid); } catch {} }
 process.exit(code);
