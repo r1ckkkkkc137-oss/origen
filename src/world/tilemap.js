@@ -7,7 +7,9 @@ import { B, BLOCK_COUNT } from './blocks.js';
 export const ATLAS_COLS = 4;
 export const TILE_NAMES = [
   'grass_top', 'grass_side', 'dirt', 'stone', 'log_side', 'log_top', 'planks', 'leaves', // existentes (Arte 82fee24)
-  'sand', 'snow', 'gravel', 'coal_ore', 'iron_ore', 'water',                              // propuestos, pendientes en el atlas
+  'sand', 'snow', 'gravel', 'coal_ore', 'iron_ore', 'water',                              // propuestos (ya en el atlas de Arte)
+  // especies (prep para Arte; mismos nombres/orden que su rama render-species). Hasta que existan en el atlas caen a log_side/log_top/leaves (TILE_FALLBACK):
+  'pine_log_side', 'pine_log_top', 'pine_leaves', 'birch_log_side', 'birch_log_top', 'birch_leaves',
 ];
 export const ATLAS_ROWS = Math.ceil(TILE_NAMES.length / ATLAS_COLS);
 export const tileIndex = (name) => { const i = TILE_NAMES.indexOf(name); if (i < 0) throw new Error(`tile desconocido: ${name}`); return i; };
@@ -23,8 +25,17 @@ export const BLOCK_TILES = {
   [B.STONE]:  'stone',
   [B.SAND]:   'sand',
   [B.WATER]:  'water',
-  [B.LOG]:    { top: 'log_top', side: 'log_side', bottom: 'log_top' },
+  // Troncos NATURALES: la cara superior (y la inferior) usa la corteza, no los anillos (un tronco que nadie cortó no tiene anillos a la vista).
+  [B.LOG]:        { top: 'log_side',      side: 'log_side',      bottom: 'log_side' },
+  [B.PINE_LOG]:   { top: 'pine_log_side', side: 'pine_log_side', bottom: 'pine_log_side' },
+  [B.BIRCH_LOG]:  { top: 'birch_log_side', side: 'birch_log_side', bottom: 'birch_log_side' },
+  // Troncos CORTADOS / colocados por el jugador: anillos arriba y abajo.
+  [B.LOG_CUT]:        { top: 'log_top',       side: 'log_side',       bottom: 'log_top' },
+  [B.PINE_LOG_CUT]:   { top: 'pine_log_top',  side: 'pine_log_side',  bottom: 'pine_log_top' },
+  [B.BIRCH_LOG_CUT]:  { top: 'birch_log_top', side: 'birch_log_side', bottom: 'birch_log_top' },
   [B.LEAVES]: 'leaves',
+  [B.PINE_LEAVES]: 'pine_leaves',
+  [B.BIRCH_LEAVES]: 'birch_leaves',
   [B.COAL]:   'coal_ore',
   [B.IRON]:   'iron_ore',
   [B.GRAVEL]: 'gravel',

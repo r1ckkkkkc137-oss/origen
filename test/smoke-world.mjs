@@ -3,7 +3,7 @@
 import { spawn } from 'node:child_process';
 import puppeteer from 'puppeteer-core';
 const port = 5191, R = process.env.R ?? '4.5', SECS = Number(process.env.SECS ?? 8);
-const srv = spawn('npx', ['vite', 'preview', '--port', String(port), '--strictPort'], { stdio: 'ignore' });
+const srv = spawn('npx', ['vite', 'preview', '--port', String(port), '--strictPort'], { stdio: 'ignore', detached: true });
 await new Promise((r) => setTimeout(r, 2500));
 const browser = await puppeteer.launch({ executablePath: process.env.CHROME || '/usr/bin/google-chrome', headless: 'new',
   args: ['--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--window-size=1280,720'] });
@@ -44,5 +44,5 @@ try {
   await page.screenshot({ path: process.env.SHOT || 'shots/smoke-world.png' });
   console.log(JSON.stringify({ R, loadMs, ...res, errors }, null, 1));
   if (errors.length || res.view.chunks < 1) code = 1;
-} finally { await browser.close(); srv.kill(); }
+} finally { await browser.close(); try { process.kill(-srv.pid); } catch {} }
 process.exit(code);

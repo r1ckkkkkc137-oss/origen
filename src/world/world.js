@@ -2,7 +2,7 @@
 // edición de juego (dig/place), diff serializable, carga por radio y mallas.
 // Unidades (ver units.js): contrato v0.2 = mundo en BLOQUES (getBlock/setBlock/chunk/raycast). Helpers de la sim con reales en METROS:
 // ensureChunks, raycastM, AABBs de place, meshChunk (posiciones, por defecto).
-import { B, BLOCKS, IS_SOLID, IS_LIQUID, isValidBlock } from './blocks.js';
+import { B, BLOCKS, IS_SOLID, IS_LIQUID, IS_LOG, IS_LEAF, isValidBlock } from './blocks.js';
 import { CHUNK_Y, localIndex } from './chunk.js';
 import { generateChunk, listTrees, treeBlocks } from './generator.js';
 import { meshChunk } from './mesher.js';
@@ -121,7 +121,7 @@ export class World {
    * { logs, leaves, drops: [{ id, count }] } o null si (x,y,z) no es un tronco. Cada cambio pasa por setBlock (diff y dirty normales).
    */
   fellTree(x, y, z, maxLogs = 4096) {
-    if (this.getBlock(x, y, z) !== B.LOG) return null;
+    if (!IS_LOG[this.getBlock(x, y, z)]) return null;
     const N6 = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
     const key = (a, b, c) => `${a},${b},${c}`;
     const logs = [], seen = new Set([key(x, y, z)]), st = [[x, y, z]];
@@ -129,10 +129,11 @@ export class World {
       const [a, b, c] = st.pop(); logs.push([a, b, c]);
       for (const [dx, dy, dz] of N6) {
         const k = key(a + dx, b + dy, c + dz);
-        if (!seen.has(k) && this.getBlock(a + dx, b + dy, c + dz) === B.LOG) { seen.add(k); st.push([a + dx, b + dy, c + dz]); }
+        if (!seen.has(k) && IS_LOG[this.getBlock(a + dx, b + dy, c + dz)]) { seen.add(k); st.push([a + dx, b + dy, c + dz]); }
       }
     }
-    for (const [a, b, c] of logs) this.setBlock(a, b, c, B.AIR);
+    const dropCount = new Map();
+    for (const [a, b, c] of logs) { const id = this.getBlock(a, b, c); const d = BLOCKS[id].drop; dropCount.set(d, (dropCount.get(d) ?? 0) + 1); this.setBlock(a, b, c, B.AIR); }
     let leaves = 0;
     // 1) árboles generados: las hojas son EXACTAMENTE las del árbol dueño de los troncos (treeBlocks), así una copa vecina que solo se toca no se ve afectada
     const owned = new Set();
@@ -140,29 +141,29 @@ export class World {
     for (const [a, , c] of logs) { mnx = Math.min(mnx, a); mxx = Math.max(mxx, a); mnz = Math.min(mnz, c); mxz = Math.max(mxz, c); }
     for (const t of listTrees(this.seed, mnx - 1, mnz - 1, mxx + 1, mxz + 1)) {
       const bl = treeBlocks(this.seed, t);
-      if (!bl.some((q) => q[3] === B.LOG && seen.has(key(q[0], q[1], q[2])))) continue;
+      if (!bl.some((q) => IS_LOG[q[3]] && seen.has(key(q[0], q[1], q[2])))) continue;
       for (const q of bl) {
-        if (q[3] === B.LOG) owned.add(key(q[0], q[1], q[2]));
-        else if (this.getBlock(q[0], q[1], q[2]) === B.LEAVES && this.setBlock(q[0], q[1], q[2], B.AIR)) leaves++;
+        if (IS_LOG[q[3]]) owned.add(key(q[0], q[1], q[2]));
+        else if (q[3] === this.getBlock(q[0], q[1], q[2]) && this.setBlock(q[0], q[1], q[2], B.AIR)) leaves++;
       }
     }
     // 2) troncos que no son de un árbol generado: decay genérico (hojas a ≤ LEAF_DECAY_DIST de cadena de un tronco en pie sobreviven)
     if (logs.some(([a, b, c]) => !owned.has(key(a, b, c)))) {
       const cand = new Map();
       let fr = [];
-      const addC = (a, b, c) => { const k = key(a, b, c); if (!cand.has(k) && this.getBlock(a, b, c) === B.LEAVES) { cand.set(k, [a, b, c]); fr.push([a, b, c]); } };
+      const addC = (a, b, c) => { const k = key(a, b, c); if (!cand.has(k) && IS_LEAF[this.getBlock(a, b, c)]) { cand.set(k, [a, b, c]); fr.push([a, b, c]); } };
       for (const [a, b, c] of logs) if (!owned.has(key(a, b, c))) for (const [dx, dy, dz] of N6) addC(a + dx, b + dy, c + dz);
       for (let d = 1; d < LEAF_CHAIN_REACH && fr.length; d++) { const cur = fr; fr = []; for (const [a, b, c] of cur) for (const [dx, dy, dz] of N6) addC(a + dx, b + dy, c + dz); }
       const supported = new Set();
       fr = [];
-      for (const [k, [a, b, c]] of cand) if (N6.some(([dx, dy, dz]) => this.getBlock(a + dx, b + dy, c + dz) === B.LOG)) { supported.add(k); fr.push([a, b, c]); }
+      for (const [k, [a, b, c]] of cand) if (N6.some(([dx, dy, dz]) => IS_LOG[this.getBlock(a + dx, b + dy, c + dz)])) { supported.add(k); fr.push([a, b, c]); }
       for (let d = 1; d < LEAF_DECAY_DIST && fr.length; d++) {
         const cur = fr; fr = [];
         for (const [a, b, c] of cur) for (const [dx, dy, dz] of N6) { const k = key(a + dx, b + dy, c + dz); if (cand.has(k) && !supported.has(k)) { supported.add(k); fr.push([a + dx, b + dy, c + dz]); } }
       }
       for (const [k, [a, b, c]] of cand) if (!supported.has(k) && this.setBlock(a, b, c, B.AIR)) leaves++;
     }
-    return { logs: logs.length, leaves, drops: [{ id: BLOCKS[B.LOG].drop, count: logs.length }] };
+    return { logs: logs.length, leaves, drops: [...dropCount].map(([id, count]) => ({ id, count })) };
   }
 
   /**
