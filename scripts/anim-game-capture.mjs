@@ -23,7 +23,8 @@ const SCENES = {
   lowkick: { times: [1.50, 1.58, 1.65, 1.72, 1.78, 1.82, 1.90, 2.05, 2.20, 2.40, 2.55, 2.80], actions: [{ t: 1.5, who: 0, play: 'lowkick' }] },
 };
 
-const server = await createServer({ configFile: false, root: path.resolve('.'), server: { port: 5198, host: '127.0.0.1' }, logLevel: 'error' });
+const PORT = +process.env.PORT || (5300 + (process.pid % 600));   // puerto libre; sin servidores colgados al terminar (server.close)
+const server = await createServer({ configFile: false, root: path.resolve('.'), server: { port: PORT, host: '127.0.0.1' }, logLevel: 'error' });
 await server.listen();
 const browser = await puppeteer.launch({ executablePath: '/usr/bin/google-chrome', headless: 'new',
   args: ['--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', `--window-size=${W},${H}`] });
@@ -35,8 +36,8 @@ const save = (name, dataUrl) => fs.writeFileSync(path.join(OUT, name), Buffer.fr
 
 for (const [name, sc] of Object.entries(SCENES)) {
   if (ONLY && !ONLY.includes(name)) continue;
-  await page.goto(`http://127.0.0.1:5198/?seed=1${FLOOR === 'flat' ? '&floor=flat' : '&r=2'}`, { waitUntil: 'load' });
-  await page.waitForFunction('window.__ORIGEN__ && window.__ORIGEN__.ready');
+  await page.goto(`http://127.0.0.1:${PORT}/?seed=1${FLOOR === 'flat' ? '&floor=flat&adapt=0' : '&r=2&adapt=0'}`, { waitUntil: 'load' });
+  await page.waitForFunction('window.__ORIGEN__ && window.__ORIGEN__.ready', { timeout: 120000 });
   await new Promise((r) => setTimeout(r, 1500));
   const res = await page.evaluate(async (sc, cams) => {
     const G = window.__ORIGEN__; G.loop.stop();
