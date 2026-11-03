@@ -71,9 +71,9 @@ function buildTerrain(sc, x0 = -2, x1 = 8) {
 }
 
 const CAMS = {
-  front: (t) => ({ pos: [t[0] + 4.3, t[1] + 1.1, t[2]], look: [t[0], t[1] + 0.9, t[2]], fov: 28 }),
-  side: (t) => ({ pos: [t[0], t[1] + 1.0, t[2] - 4.4], look: [t[0], t[1] + 0.9, t[2]], fov: 28 }),     // cámara en -Z (lado IZQUIERDO del personaje, el del pie/mano rojos de guardia): el personaje (+X adelante) mira a la IZQUIERDA de la pantalla
-  top34: (t) => ({ pos: [t[0] + 2.2, t[1] + 2.7, t[2] + 2.9], look: [t[0], t[1] + 0.75, t[2]], fov: 28 }),
+  front: (t) => ({ pos: [t[0] + 3.5, t[1] + 1.0, t[2]], look: [t[0], t[1] + 0.9, t[2]], fov: 28 }),
+  side: (t) => ({ pos: [t[0], t[1] + 1.0, t[2] - 3.5], look: [t[0], t[1] + 0.9, t[2]], fov: 28 }),     // cámara en -Z (lado IZQUIERDO del personaje, el del pie/mano rojos de guardia): el personaje (+X adelante) mira a la IZQUIERDA de la pantalla
+  top34: (t) => ({ pos: [t[0] + 1.9, t[1] + 2.2, t[2] + 2.4], look: [t[0], t[1] + 0.75, t[2]], fov: 28 }),
 };
 function setCam(name, target) { const c = CAMS[name](target); cam.fov = c.fov; cam.position.set(...c.pos); cam.lookAt(...c.look); cam.aspect = canvas.width / canvas.height; cam.updateProjectionMatrix(); }
 function size(w, h) { renderer.setSize(w, h, false); canvas.width = w; canvas.height = h; }
@@ -90,7 +90,7 @@ window.CAP = {
       out[cn] = [];
       for (const i of want) {
         const s = snaps[i]; drawSnap(s);
-        const tgt = followRoot ? [s.pose.pelvis[0], Math.min(s.feet[0].pos[1], s.feet[1].pos[1]), 0] : [0, 0, 0];
+        const tgt = followRoot ? [s.pose.pelvis[0], Math.max(s.root.pos[1], Math.min(s.feet[0].pos[1], s.feet[1].pos[1])), 0] : [0, 0, 0];
         setCam(cn, tgt); renderer.render(scene, cam);
         out[cn].push(canvas.toDataURL('image/png'));
       }
@@ -104,13 +104,13 @@ const hud = document.getElementById('hud');
 if (!location.search.includes('capture')) {
   let scName = new URLSearchParams(location.search).get('s') || 'walk', camName = 'side', frames = [], idx = 0, acc = 0, last = performance.now(), fpsN = 0, fpsT = 0, fps = 0;
   const load = () => { const sc = SCENARIOS[scName]; frames = []; simulate(scName, { duration: sc.duration, onFrame: (t, sk, A) => frames.push(snapshot(sk, A)) }); buildTerrain(sc); idx = 0; };
-  addEventListener('keydown', (e) => { const k = e.key; if ('1234567'.includes(k)) { scName = Object.keys(SCENARIOS)[+k - 1]; load(); } if (k === 'c') camName = camName === 'side' ? 'front' : camName === 'front' ? 'top34' : 'side'; });
+  addEventListener('keydown', (e) => { const k = e.key; if ('123456789'.includes(k)) { scName = Object.keys(SCENARIOS)[+k - 1]; load(); } if (k === 'c') camName = camName === 'side' ? 'front' : camName === 'front' ? 'top34' : 'side'; });
   const resize = () => size(innerWidth, innerHeight); addEventListener('resize', resize); resize(); load();
   const loop = (now) => {
     const dt = Math.min(0.1, (now - last) / 1000); last = now; acc += dt; while (acc >= 1 / 60) { acc -= 1 / 60; idx = (idx + 1) % frames.length; }
     const s = frames[idx]; drawSnap(s); setCam(camName, [s.pose.pelvis[0], Math.min(s.feet[0].pos[1], s.feet[1].pos[1]), 0]); renderer.render(scene, cam);
     fpsN++; fpsT += dt; if (fpsT > 0.5) { fps = fpsN / fpsT; fpsN = 0; fpsT = 0; }
-    hud.textContent = `escenario ${scName} (teclas 1-7) cámara ${camName} (c)  t=${(idx / 60).toFixed(2)}s  fps=${fps.toFixed(0)}`; window.__fps = fps;
+    hud.textContent = `escenario ${scName} (teclas 1-9) cámara ${camName} (c)  t=${(idx / 60).toFixed(2)}s  fps=${fps.toFixed(0)}`; window.__fps = fps;
     requestAnimationFrame(loop);
   };
   requestAnimationFrame(loop);

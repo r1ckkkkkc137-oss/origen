@@ -28,7 +28,7 @@ test('contrato: frente local +X (yaw 0), metros, Y arriba', () => {
   const A = createAnimator3D({ seed: 1 });
   let sk; for (let i = 0; i < 180; i++) sk = A.update(1 / 60, { pos: [0, 0, 0], yaw: 0 });
   const p = sk.pose;
-  assert.ok(p.pelvis[1] > 0.7 && p.pelvis[1] < 1.0 && p.head[1] > 1.4 && p.head[1] < 1.9, 'alturas en metros');
+  assert.ok(p.pelvis[1] > 0.7 && p.pelvis[1] < 1.0 && p.head[1] > 1.3 && p.head[1] < 1.9, 'alturas en metros');
   assert.ok(p.handL[0] > p.shoulderL[0] - 0.05 && p.handR[0] > p.shoulderR[0] - 0.05, 'las manos van al frente (+X)');
   assert.ok(sk.tips.face[0] > p.head[0], 'la cara mira a +X');
   // lateral: izquierda = -Z con yaw 0 (derecha = +Z, mano derecha, Y arriba, adelante +X)

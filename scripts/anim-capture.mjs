@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { simulate } from '../src/anim/scenarios.js';
 
-const OUT = process.argv[2] || '/workspace/origen-shots/anim-r1';
+const OUT = process.argv[2] || '/workspace/origen-shots/anim-r2';
 fs.mkdirSync(OUT, { recursive: true });
 const CAMS = ['front', 'side', 'top34'];
 const W = 440, H = 400;
@@ -18,12 +18,21 @@ function plan() {
   P.push({ sc: 'walk', label: 'walk', times: range(3.0, 3.7, 8), keys: [3.0, 3.175, 3.35, 3.525] });
   const j0 = 1.5; P.push({ sc: 'jab', label: 'jab', times: [j0 - 0.05, j0 + 0.06, j0 + 0.10, j0 + 0.152, j0 + 0.22, j0 + 0.30, j0 + 0.40, j0 + 0.55],
     keys: [j0 + 0.06, j0 + 0.152, j0 + 0.26] , keyNames: ['anticipation', 'impact', 'recoil'] });
+  for (const [sc, imp, ts] of [['cross', 0.17, [-0.05, 0.05, 0.10, 0.14, 0.17, 0.22, 0.30, 0.50]], ['hook', 0.17, [-0.05, 0.06, 0.10, 0.14, 0.17, 0.22, 0.30, 0.50]], ['lowkick', 0.30, [-0.05, 0.10, 0.20, 0.26, 0.30, 0.36, 0.50, 0.75]]]) {
+    P.push({ sc, label: sc, times: ts.map((x) => +(1.5 + x).toFixed(3)), keys: [1.5 + ts[2], 1.5 + imp, 1.5 + ts[6]], keyNames: ['load', 'impact', 'recoil'] });
+  }
+  P.push({ sc: 'block', label: 'block', times: [0.9, 1.05, 1.15, 1.3, 1.5, 1.7, 1.9, 2.3], keys: [1.3] });
   // pasos sobre el bloque: buscar el primer plant sobre el bloque alto
   for (const [sc, hMin] of [['step', 0.3], ['step1m', 0.6]]) {
     let tp = 0; simulate(sc, { onFrame: (t, sk, A) => { for (const e of A.events) if (e.type === 'plant' && e.pos[1] > hMin && !tp) tp = t; } });
     const t0 = tp - 0.55;
     P.push({ sc, label: sc, times: range(t0, tp + 0.35, 8), keys: [tp - 0.35, tp - 0.02, tp + 0.30], keyNames: ['swing_up', 'plant_on_block', 'after'] });
   }
+  for (const [lb, t0] of [['hurt_head', 1.0], ['hurt_body', 2.5], ['hurt_legs', 4.0]]) P.push({ sc: 'hurt', label: lb, times: [-0.05, 0.04, 0.08, 0.14, 0.22, 0.32, 0.44, 0.60].map((x) => +(t0 + x).toFixed(3)), keys: [t0 + 0.08, t0 + 0.22] , keyNames: ['peak', 'hold'] });
+  P.push({ sc: 'rocked', label: 'rocked', times: [0.9, 1.15, 1.4, 1.8, 2.1, 2.6, 3.3, 4.2], keys: [1.4, 2.1] });
+  P.push({ sc: 'ko', label: 'ko', times: [0.95, 1.08, 1.25, 1.45, 1.65, 1.85, 2.2, 2.9], keys: [1.45, 2.9] });
+  P.push({ sc: 'ko', label: 'getup', times: [2.95, 3.25, 3.55, 3.85, 4.15, 4.45, 4.8, 5.3], keys: [3.55, 4.15] });
+  P.push({ sc: 'climb1m', label: 'climb1m', times: [0.1, 0.4, 0.75, 1.05, 1.3, 1.55, 1.8, 2.15].map((x) => +(3.6 + x).toFixed(3)), keys: [3.6 + 0.4, 3.6 + 1.05, 3.6 + 1.55], keyNames: ['grab', 'knee', 'push'] });
   P.push({ sc: 'turn90', label: 'turn90', times: [1.4, 1.55, 1.7, 1.85, 2.0, 2.2, 2.6, 3.2], keys: [1.7, 2.2] });
   return P;
 }
@@ -41,7 +50,9 @@ const save = (name, dataUrl) => fs.writeFileSync(path.join(OUT, name), Buffer.fr
 const sheetPage = await browser.newPage();
 await sheetPage.goto('about:blank');
 
+const ONLY = process.argv[3] ? process.argv[3].split(',') : null;   // p.ej. node scripts/anim-capture.mjs out guard,jab
 for (const p of plan()) {
+  if (ONLY && !ONLY.includes(p.label)) continue;
   const allTimes = [...new Set([...p.times, ...p.keys])];
   const res = await page.evaluate((sc, times, cams, w, h) => window.CAP.run(sc, times, cams, w, h), p.sc, allTimes, CAMS, W, H);
   // PNG individuales

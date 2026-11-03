@@ -21,7 +21,7 @@ import { solveTwoBone, makeIKOut } from './ik.js';
 export const DIM = Object.freeze({
   ankleH: 0.08, shin: 0.42, thigh: 0.44, hipHalf: 0.09,
   pelvis: 0.14, spine: 0.18, chest: 0.22, neck: 0.10, head: 0.22,
-  clavUp: 0.20, clav: 0.18, upperArm: 0.31, foreArm: 0.27, hand: 0.18, foot: 0.22,
+  clavUp: 0.20, clav: 0.18, upperArm: 0.31, foreArm: 0.27, hand: 0.12, foot: 0.22,
 });
 export const STAND_PELVIS_Y = DIM.ankleH + DIM.shin + DIM.thigh;   // 0.94
 export const HEIGHT = STAND_PELVIS_Y + DIM.pelvis + DIM.spine + DIM.chest + DIM.neck + DIM.head;  // 1.80
