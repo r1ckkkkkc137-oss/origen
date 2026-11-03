@@ -24,8 +24,9 @@ try {
   await new Promise((r) => setTimeout(r, 4000));
   const fps = await page.evaluate(() => window.__ORIGEN__.fps.fps);
   const tick = await page.evaluate(() => window.__ORIGEN__.loop.tick);
+  const cpu = await page.evaluate(() => window.__ORIGEN__.loop.cpu.stats());
   await page.screenshot({ path: process.env.SHOT || 'shots/smoke.png' });
-  console.log(JSON.stringify({ fps: +fps.toFixed(1), tick, errors }));
+  console.log(JSON.stringify({ fps: +fps.toFixed(1), tick, cpu, errors }));
   if (errors.length || tick < 60) code = 1;
 } finally { await browser.close(); try { process.kill(-srv.pid); } catch {} }
 process.exit(code);
