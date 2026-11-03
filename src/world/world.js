@@ -9,6 +9,7 @@ import { meshChunk } from './mesher.js';
 import { normalizeSeed } from './seed.js';
 import { raycastBlocks, raycastMeters } from './physics.js';
 import { toBlocks } from './units.js';
+import { createEntityState, createFallingTree, fallDirection, updateEntities as _updateEntities, stepEntities as _stepEntities, pickupItems as _pickupItems } from './entities.js';
 
 const keyOf = (cx, cz) => `${cx},${cz}`;
 export const chunkCoord = (v) => v >> 4;
@@ -22,6 +23,7 @@ export class World {
     this._chunks = new Map();  // key -> Chunk
     this._last = null;         // último chunk consultado (caché)
     this.edits = new Map();    // key -> { cx, cz, m: Map<localIdx, { orig:number(-1=desconocido), id:number }> }
+    this.entities = createEntityState(); // árboles cayendo e items sueltos (transitorio: no entra en serialize())
   }
 
   // ---------- chunks ----------
@@ -118,10 +120,21 @@ export class World {
    * Tala un árbol entero a partir de UN bloque de tronco (sirve con troncos gruesos 2x2 y ramas): quita todos los LOG conectados por
    * caras (hasta maxLogs) y deja caer sus hojas: las del árbol generado dueño de esos troncos (exacto, no toca copas vecinas) o, si los
    * troncos no son de un árbol generado, las que quedan a más de LEAF_DECAY_DIST hojas de un tronco en pie. Devuelve
-   * { logs, leaves, drops: [{ id, count }] } o null si (x,y,z) no es un tronco. Cada cambio pasa por setBlock (diff y dirty normales).
+   * { logs, leaves, drops: [{ id, count }], tree, direction } o null si (x,y,z) no es un tronco. Cada cambio pasa por setBlock (diff y dirty normales).
+   *
+   * Firmas (retrocompatible):
+   *  - fellTree(x,y,z) / fellTree(x,y,z,maxLogs:number): comportamiento de siempre. Instantáneo: sin entidad (tree = null, direction = null);
+   *    el que llama acredita r.drops.
+   *  - fellTree(x,y,z,{ fromX, fromZ, dirX, dirZ, maxLogs, instant, leafDrops }): el árbol CAE como entidad FallingTree. fromX/fromZ = de dónde viene
+   *    el golpe (bloques, p.ej. la posición del jugador / BLOCK_M): cae en sentido opuesto. dirX/dirZ = vector del golpe (cae en ese sentido; gana
+   *    sobre from). Sin dirección: ángulo por hash3 de la base (determinista). instant:true = como la firma vieja. Con entidad, r.drops describe lo
+   *    que SE SOLTARÁ al impactar (lo mismo que antes); NO acreditarlo: llegan como ItemDrop y se recogen con world.pickupItems.
    */
-  fellTree(x, y, z, maxLogs = 4096) {
+  fellTree(x, y, z, arg = 4096) {
     if (!IS_LOG[this.getBlock(x, y, z)]) return null;
+    const opts = typeof arg === 'object' && arg !== null ? arg : null;
+    const maxLogs = typeof arg === 'number' ? arg : (opts && Number.isFinite(opts.maxLogs) ? opts.maxLogs : 4096);
+    const animate = !!opts && !opts.instant;
     const N6 = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
     const key = (a, b, c) => `${a},${b},${c}`;
     const logs = [], seen = new Set([key(x, y, z)]), st = [[x, y, z]];
@@ -132,8 +145,8 @@ export class World {
         if (!seen.has(k) && IS_LOG[this.getBlock(a + dx, b + dy, c + dz)]) { seen.add(k); st.push([a + dx, b + dy, c + dz]); }
       }
     }
-    const dropCount = new Map();
-    for (const [a, b, c] of logs) { const id = this.getBlock(a, b, c); const d = BLOCKS[id].drop; dropCount.set(d, (dropCount.get(d) ?? 0) + 1); this.setBlock(a, b, c, B.AIR); }
+    const dropCount = new Map(), logBlocks = [], leafBlocks = [];
+    for (const [a, b, c] of logs) { const id = this.getBlock(a, b, c); const d = BLOCKS[id].drop; dropCount.set(d, (dropCount.get(d) ?? 0) + 1); logBlocks.push([a, b, c, id]); this.setBlock(a, b, c, B.AIR); }
     let leaves = 0;
     // 1) árboles generados: las hojas son EXACTAMENTE las del árbol dueño de los troncos (treeBlocks), así una copa vecina que solo se toca no se ve afectada
     const owned = new Set();
@@ -144,7 +157,7 @@ export class World {
       if (!bl.some((q) => IS_LOG[q[3]] && seen.has(key(q[0], q[1], q[2])))) continue;
       for (const q of bl) {
         if (IS_LOG[q[3]]) owned.add(key(q[0], q[1], q[2]));
-        else if (q[3] === this.getBlock(q[0], q[1], q[2]) && this.setBlock(q[0], q[1], q[2], B.AIR)) leaves++;
+        else if (q[3] === this.getBlock(q[0], q[1], q[2]) && this.setBlock(q[0], q[1], q[2], B.AIR)) { leaves++; leafBlocks.push([q[0], q[1], q[2], q[3]]); }
       }
     }
     // 2) troncos que no son de un árbol generado: decay genérico (hojas a ≤ LEAF_DECAY_DIST de cadena de un tronco en pie sobreviven)
@@ -161,10 +174,39 @@ export class World {
         const cur = fr; fr = [];
         for (const [a, b, c] of cur) for (const [dx, dy, dz] of N6) { const k = key(a + dx, b + dy, c + dz); if (cand.has(k) && !supported.has(k)) { supported.add(k); fr.push([a + dx, b + dy, c + dz]); } }
       }
-      for (const [k, [a, b, c]] of cand) if (!supported.has(k) && this.setBlock(a, b, c, B.AIR)) leaves++;
+      for (const [k, [a, b, c]] of cand) if (!supported.has(k)) { const id = this.getBlock(a, b, c); if (this.setBlock(a, b, c, B.AIR)) { leaves++; leafBlocks.push([a, b, c, id]); } }
     }
-    return { logs: logs.length, leaves, drops: [...dropCount].map(([id, count]) => ({ id, count })) };
+    const result = { logs: logs.length, leaves, drops: [...dropCount].map(([id, count]) => ({ id, count })), tree: null, direction: null };
+    if (animate) {
+      // base = bloques de tronco del nivel más bajo
+      let yMin = Infinity; for (const l of logBlocks) if (l[1] < yMin) yMin = l[1];
+      let cx = 0, cz = 0, n = 0;
+      for (const l of logBlocks) if (l[1] === yMin) { cx += l[0] + 0.5; cz += l[2] + 0.5; n++; }
+      cx /= n; cz /= n;
+      const d = fallDirection(this.seed, cx, cz, [Math.floor(cx), yMin, Math.floor(cz)], opts);
+      const tree = createFallingTree(this, this.entities.nextId++, logBlocks, leafBlocks, d);
+      tree.opts = { leafDrops: !!opts.leafDrops };
+      this.entities.trees.push(tree);
+      this.entities.events.push({ type: 'fell', treeId: tree.id, x: tree.pivotM[0], y: tree.pivotM[1], z: tree.pivotM[2], logs: logs.length, leaves });
+      result.tree = tree; result.direction = [d[0], d[1]];
+    }
+    return result;
   }
+
+  // ---------- entidades (árbol que cae, items) ----------
+  /** Avanza las entidades dt segundos con subpasos fijos de 1/120 s (acumulador). Devuelve cuántos subpasos hizo. */
+  updateEntities(dt) { return _updateEntities(this, this.entities, dt); }
+  /** Exactamente n subpasos fijos (para tests/replays: sin acumulador). */
+  stepEntities(n = 1) { for (let i = 0; i < n; i++) _stepEntities(this, this.entities); return n; }
+  /** Quita y devuelve los items a <= radiusM metros de pos ([x,y,z] o {x,y,z}, metros): [{ id, count, x, y, z }]. id = bloque (CUT_LOG...) o ITEM_STICK. */
+  pickupItems(pos, radiusM = 1.5) { return _pickupItems(this.entities, pos, radiusM); }
+  /** Árboles cayendo (solo lectura) e items vivos (solo lectura). */
+  get fallingTrees() { return this.entities.trees; }
+  get itemDrops() { return this.entities.items; }
+  /** Eventos pendientes ({type:'fell'|'impact', ...}, en metros) para sonido/partículas; vacía la cola. */
+  consumeEntityEvents() { const e = this.entities.events; this.entities.events = []; return e; }
+  /** Termina de caer (instantáneamente, pasos fijos) todos los árboles en vuelo, p.ej. antes de guardar. Devuelve cuántos pasos usó. */
+  settleEntities(maxSteps = 2000) { let n = 0; while (this.entities.trees.length && n < maxSteps) { _stepEntities(this, this.entities); n++; } return n; }
 
   /**
    * ¿Se puede colocar `id` en (x,y,z) (enteros, bloques)? Reglas: rango válido, id no-aire, la celda es aire o agua, y toca (6 caras) un
