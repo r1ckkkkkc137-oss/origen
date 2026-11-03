@@ -13,6 +13,7 @@ import { createHumanoid3D, solveRig, DIM, STAND_PELVIS_Y } from './skeleton3d.js
 import { makeTopSampler, createFoot, initFeet, updateFeet, capHeightForFoot, wrapPi, footprintTop } from './footplacement.js';
 import { GUARD, CHANNELS, makeChannels, makeIdleParams, idleLayer, walkLayer, addClip, phaseAt, CLIPS, BLOCK_POSE } from './clips.js';
 import { ZONE_CLIP } from './reactions.js';
+import { planClimb, buildClimb, sampleClimb, wallToXZ, xzToWall, climbPathAt, CLIMB_T } from './climb.js';
 import { createRng } from '../shared/rng.js';
 import { clamp, smoothstep, smin, spring, springCritical, lerp, qRot } from './math3.js';
 
@@ -20,6 +21,8 @@ export const BLOCK_M_DEFAULT = 0.5;
 export const yawToDir = (yaw, out = [0, 0, 0]) => { out[0] = Math.cos(yaw); out[1] = 0; out[2] = -Math.sin(yaw); return out; };
 export const dirToYaw = (x, z) => Math.atan2(-z, x);
 const toW = (p, o) => { o[0] = p[2]; o[1] = p[1]; o[2] = -p[0]; return o; };           // interno -> mundo
+const rootYawW = (y) => y;
+const smooth01 = (x) => { x = x < 0 ? 0 : x > 1 ? 1 : x; return x * x * (3 - 2 * x); };
 const BALL = 0.16;                                                                         // bola del pie respecto del tobillo (m)
 const HIP_GUARD = 0.72, HIP_WALK = 0.79;                                                  // altura cadera sobre tobillo
 
@@ -44,7 +47,7 @@ export function createAnimator3D(opts = {}) {
     feet: [createFoot('L'), createFoot('R')],
     eff: [0, 1].map(() => ({ pos: [0, 0, 0], sole: 0, yaw: 0, pitch: 0, planted: true, ball: false, contact: [0, 0, 0] })),   // pies efectivos = plantados + override del clip
     ch: makeChannels(GUARD),
-    visYaw: 0, yawSp: spring(0), vel: [0, 0], lastRoot: [0, 0], walkAmt: 0, idleT: 0, pelvisY: 0, pelvisSp: spring(0), gate: spring(0),
+    visYaw: 0, yawSp: spring(0), vel: [0, 0], lastRoot: [0, 0], walkAmt: 0, idleT: 0, pelvisY: 0, lastPelvis: [0, 0.8, 0], climbC: null, climbInfo: null, pelvisSp: spring(0), gate: spring(0),
     clip: null, clipT: 0, strike: { active: false, phase: 'none', t: 0, impactT: 0, fist: [0, 0, 0], name: '', phase01: 0, tip: 'L' },
     diag: { maxFootErr: 0, clamped: 0 },
   };
@@ -75,6 +78,16 @@ export function createAnimator3D(opts = {}) {
       else m.speed *= clip.duration / o.duration;
     }
     m.stale = 0; m.prev = A.clipT; m.holding = false; m.holdT = 0; m.amp = o.amp > 0 ? o.amp : 1;
+    A.climbC = null;
+    if (clip.climb) {                                                  // trepar: detectar saliente y anclar manos/pies/pelvis en el mundo
+      const O = [_root[0], _root[2]], y0 = _root[1], yw = A.visYaw;
+      const info = planClimb(top, _root, yw, o.ledge || {});
+      const loc = (i) => { const e = A.eff[i], uv = xzToWall(O, yw, e.pos[0], e.pos[2]); return [uv[0], e.sole - y0, uv[1], e.yaw - yw]; };
+      const pu = xzToWall(O, yw, A.lastPelvis[0], A.lastPelvis[2]);
+      A.climbC = buildClimb(info, { pelvis: [pu[0], A.lastPelvis[1] - y0, pu[1]], footL: loc(0), footR: loc(1) });
+      A.climbC.O = O; A.climbC.y0 = y0; A.climbC.yaw = yw;
+      A.climbInfo = { dist: info.dist, height: info.height, duration: CLIMB_T, startRoot: toW(_root, [0, 0, 0]), yaw: rootYawW(yw), endFwd: info.dist + 0.35 };
+    }
     return true;
   };
   A.play = (name, opts = {}) => startClip(name, opts);
@@ -154,7 +167,10 @@ export function createAnimator3D(opts = {}) {
     const turning = Math.abs(A.yawSp.x) > 0.08 || Math.abs(A.yawSp.v) > 0.3;
     A.idleT = (speed > 0.08 || turning) ? 0 : A.idleT + dt;
     // ---- pies
-    updateFeet(A.feet, top, _root, yaw, { t: A.t, vel: A.vel, speed, walkAmt: A.walkAmt, idleT: A.idleT, freeze: !!(A.clip && A.clip.feet && A.walkAmt < 0.3) }, dt, ev);
+    const CLm = A.clip && A.clip.climb && A.climbC ? A.climbC : null;
+    if (CLm) { A.walkAmt = 0; A.vel[0] = A.vel[1] = 0; }
+    if (CLm && A.clipT > 1.40) initFeet(A.feet, top, _root, yaw, 0);   // salida: pies de reposo sobre la raíz (el sim ya la subió al saliente)
+    if (!CLm) updateFeet(A.feet, top, _root, yaw, { t: A.t, vel: A.vel, speed, walkAmt: A.walkAmt, idleT: A.idleT, freeze: !!(A.clip && A.clip.feet && A.walkAmt < 0.3) }, dt, ev);
     const [fL, fR] = A.feet;
     // ---- canales: guardia + idle + caminar + clips
     const c = A.ch; for (const n of CHANNELS) c[n] = GUARD[n];
@@ -212,13 +228,30 @@ export function createAnimator3D(opts = {}) {
         e.planted = f.planted && e.sole - f.sole < 0.006 && Math.abs(dp) < 0.02;
       }
     }
+    // ---- trepar: pies anclados al saliente (mezcla con los pies normales al entrar/salir)
+    let CS = null;
+    if (CLm) {
+      CS = sampleClimb(CLm, A.clipT); const Oc = CLm.O, yc = CLm.yaw, y0c = CLm.y0;
+      for (let i = 0; i < 2; i++) {
+        const e = eff[i], row = i ? CS.fR : CS.fL, xz = wallToXZ(Oc, yc, row[0], row[2]), w = CS.wF;
+        e.pos[0] += (xz[0] - e.pos[0]) * w; e.pos[2] += (xz[1] - e.pos[2]) * w; e.sole += (y0c + row[1] - DIM.ankleH - e.sole) * w;
+        e.pitch += (row[3] - e.pitch) * w; e.yaw += wrapPi((yc + (i ? CLm.yawR : CLm.yawL)) - e.yaw) * w;
+        e.planted = w < 0.01; e.ball = false;
+        e.contact[0] = e.pos[0] + Math.sin(e.yaw) * BALL; e.contact[1] = e.sole; e.contact[2] = e.pos[2] + Math.cos(e.yaw) * BALL;
+      }
+    }
     const ankles = eff.map((e) => [e.pos[0], e.sole + DIM.ankleH, e.pos[2]]);
     const lowest = Math.min(ankles[0][1], ankles[1][1]);
     const hipAbove = lerp(HIP_GUARD, HIP_WALK, A.walkAmt);
-    springCritical(A.pelvisSp, lowest + hipAbove, 10, dt);
-    let py = A.pelvisSp.x + c.dy;
-    const hips = [[px + DIM.hipHalf * cf, pz - DIM.hipHalf * sf], [px - DIM.hipHalf * cf, pz + DIM.hipHalf * sf]];
+    if (CS) { A.pelvisSp.x = lowest + hipAbove; A.pelvisSp.v = 0; } else springCritical(A.pelvisSp, lowest + hipAbove, 10, dt);
+    let py = A.pelvisSp.x + c.dy, qx = px, qz = pz;
+    if (CS) {                                                          // pelvis anclada a la pared (mezcla con la pelvis normal)
+      const xz = wallToXZ(CLm.O, CLm.yaw, CS.pel[0], CS.pel[2]), w = CS.wP;
+      qx = px + (xz[0] - px) * w; qz = pz + (xz[1] - pz) * w; py += (CLm.y0 + CS.pel[1] - py) * w;
+    }
+    const hips = [[qx + DIM.hipHalf * cf, qz - DIM.hipHalf * sf], [qx - DIM.hipHalf * cf, qz + DIM.hipHalf * sf]];
     for (let i = 0; i < 2; i++) py = smin(py, capHeightForFoot(hips[i], ankles[i]), 0.06);
+    A.lastPelvis[0] = qx; A.lastPelvis[1] = py; A.lastPelvis[2] = qz;
     A.pelvisY = py;
     // ---- rig
     const armPole = (sx, elb, elv) => [sx * (0.45 + 2.5 * elb), -1 + 2 * elv, -0.15];
@@ -232,7 +265,7 @@ export function createAnimator3D(opts = {}) {
     };
     const r = {
       root: { pos: [_root[0], _root[1], _root[2]], yaw },
-      pelvisPos: [px, py, pz],
+      pelvisPos: [qx, py, qz],
       hipYaw: c.hipYaw, hipPitch: c.hipPitch, hipRoll: c.hipRoll, spYaw: c.spYaw, spPitch: c.spPitch, spRoll: c.spRoll,
       hdYaw: c.hdYaw, hdPitch: c.hdPitch, hdRoll: c.hdRoll,
       arms: {
@@ -245,6 +278,18 @@ export function createAnimator3D(opts = {}) {
       },
     };
     solveRig(rig, r);
+    if (CS && CS.wH > 1e-3) {                                          // manos ancladas al borde (2.ª pasada: el blend parte de la muñeca normal)
+      for (const [s, row] of [['L', CS.hL], ['R', CS.hR]]) {
+        const nw = rig.pose['forearm' + s].t, xz = wallToXZ(CLm.O, CLm.yaw, row[0], row[2]), w = CS.wH;
+        r.arms[s].rel = null; const wr = [nw[0] + (xz[0] - nw[0]) * w, nw[1] + (CLm.y0 + row[1] - nw[1]) * w, nw[2] + (xz[1] - nw[2]) * w];
+        r.arms[s].wrist = wr;
+        // codo: abierto hacia fuera mientras el brazo cuelga/apunta abajo (polo normal = abajo → degenerado), vuelve al polo de guardia al subir la mano
+        const sh = rig.pose['shoulder' + s].t, ay = (wr[1] - sh[1]) / (Math.hypot(wr[0] - sh[0], wr[1] - sh[1], wr[2] - sh[2]) || 1);
+        const kp = 1 - w * (1 - smooth01((ay + 0.9) / 1.4)), np = r.arms[s].pole, sx = s === 'L' ? 1 : -1, fl = [sx * 0.6, -0.5, -0.9];
+        r.arms[s].pole = [fl[0] + (np[0] - fl[0]) * kp, fl[1] + (np[1] - fl[1]) * kp, fl[2] + (np[2] - fl[2]) * kp];
+      }
+      solveRig(rig, r);
+    }
     // ---- exportar (marco mundo del contrato)
     skeleton.root.pos[0] = rootW.pos[0]; skeleton.root.pos[1] = rootW.pos[1]; skeleton.root.pos[2] = rootW.pos[2]; skeleton.root.yaw = rootW.yaw;
     skeleton.visualYaw = yaw;

@@ -2,6 +2,7 @@
 // La raíz pertenece al sim: aquí se genera en función de t; el animador solo la lee.
 import { createAnimator3D } from './animator3d.js';
 import { flat, stepTerrain } from './testTerrain.js';
+import { climbPathAt, CLIMB_T } from './climb.js';
 
 const smooth = (u) => { u = Math.min(1, Math.max(0, u)); return u * u * (3 - 2 * u); };
 const ramp = (t, t0, dur) => { const u = Math.min(1, Math.max(0, (t - t0) / dur)); return u * u * (3 - 2 * u); };
@@ -33,6 +34,10 @@ export const SCENARIOS = {
   // plataforma de 1 bloque de 1 m (BLOCK_M=1): caso extremo
   step1m: { blockM: 1.0, terrain: stepTerrain(3, 1), duration: 8.5, groundY: (x) => 1.0 * smooth((x - 2.9) / 0.6),
     root: (t) => ({ pos: [walkX(t, 0, 0.7, 1.0, 4.3) + walkX(t, 0, 0.7, 5.3, 7.0), 0, 0], yaw: 0 }), actions: [] },
+  // trepar un saliente de 2 bloques (1 m) a 0.55 m: el "sim" acerca la raíz, la mantiene quieta, la sube por climbPathAt y se queda arriba.
+  climb1m: { blockM: 0.5, terrain: (x, y, z) => y < (x >= 3 ? 2 : 0), duration: 7.6,
+    root: (t) => { const t0 = 3.6, p = climbPathAt({ dist: 0.65, height: 1.0 }, Math.max(0, t - t0)); return { pos: [0.85 * ramp(t, 0.3, 2.0) + p.fwd, p.up, 0], yaw: 0 }; },
+    actions: [{ t: 3.6, play: 'climb' }] },
   // el sim salta de rumbo 90° de golpe (quieto) y luego otros -135° caminando
   turn90: { blockM: 0.5, terrain: flat(), duration: 6, root: (t) => ({ pos: [0, 0, 0], yaw: t < 1.5 ? 0 : Math.PI / 2 }), actions: [] },
   turnWalk: { blockM: 0.5, terrain: flat(), duration: 7,

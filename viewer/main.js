@@ -90,7 +90,7 @@ window.CAP = {
       out[cn] = [];
       for (const i of want) {
         const s = snaps[i]; drawSnap(s);
-        const tgt = followRoot ? [s.pose.pelvis[0], Math.min(s.feet[0].pos[1], s.feet[1].pos[1]), 0] : [0, 0, 0];
+        const tgt = followRoot ? [s.pose.pelvis[0], Math.max(s.root.pos[1], Math.min(s.feet[0].pos[1], s.feet[1].pos[1])), 0] : [0, 0, 0];
         setCam(cn, tgt); renderer.render(scene, cam);
         out[cn].push(canvas.toDataURL('image/png'));
       }

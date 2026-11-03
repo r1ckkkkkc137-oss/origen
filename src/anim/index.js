@@ -6,3 +6,4 @@ export { CLIPS, JAB, CROSS, HOOK, LOWKICK, BLOCK, BLOCK_POSE, GUARD } from './cl
 export { HUMAN_BONES_LOCAL, HUMAN_PARENT } from './bones.js';
 export { flat, stepTerrain, stairs } from './testTerrain.js';
 export { REACTIONS, HURT_HEAD, HURT_BODY, HURT_LEGS, ROCKED, KO, GETUP, KO_END, ZONE_CLIP } from './reactions.js';
+export { CLIMB, CLIMB_T, planClimb, climbPathAt } from './climb.js';

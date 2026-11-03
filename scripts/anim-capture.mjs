@@ -32,6 +32,7 @@ function plan() {
   P.push({ sc: 'rocked', label: 'rocked', times: [0.9, 1.15, 1.4, 1.8, 2.1, 2.6, 3.3, 4.2], keys: [1.4, 2.1] });
   P.push({ sc: 'ko', label: 'ko', times: [0.95, 1.08, 1.25, 1.45, 1.65, 1.85, 2.2, 2.9], keys: [1.45, 2.9] });
   P.push({ sc: 'ko', label: 'getup', times: [2.95, 3.25, 3.55, 3.85, 4.15, 4.45, 4.8, 5.3], keys: [3.55, 4.15] });
+  P.push({ sc: 'climb1m', label: 'climb1m', times: [0.1, 0.4, 0.75, 1.05, 1.3, 1.55, 1.8, 2.15].map((x) => +(3.6 + x).toFixed(3)), keys: [3.6 + 0.4, 3.6 + 1.05, 3.6 + 1.55], keyNames: ['grab', 'knee', 'push'] });
   P.push({ sc: 'turn90', label: 'turn90', times: [1.4, 1.55, 1.7, 1.85, 2.0, 2.2, 2.6, 3.2], keys: [1.7, 2.2] });
   return P;
 }
