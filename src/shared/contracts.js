@@ -48,8 +48,24 @@ export const HUMAN_BONES = Object.freeze([
 export const COMBAT_EVENT = Object.freeze({
   ACTION_START: 'actionStart', HIT: 'hit', BLOCK: 'block', DODGE: 'dodge', MISS: 'miss',
   KNOCKDOWN: 'knockdown', GETUP: 'getUp', SUBMISSION: 'submission', INJURY: 'injury', KO: 'ko',
+  // v0.2: tipos extra (antes descartados por el traductor de Combate)
+  CLINCH: 'clinch', BREAK: 'break', SPRAWL: 'sprawl', ROCKED: 'rocked', POSITION: 'position', SWEEP: 'sweep',
+  SUB_ESCAPE: 'subEscape', STOPPAGE: 'stoppage',
+  ROUND_START: 'roundStart', ROUND_END: 'roundEnd', DECISION: 'decision', FIGHT_END: 'fightEnd',
 });
-/** @typedef {{type:string,tick:number,attacker?:number,target?:number,action?:string,zone?:string,damage?:number,point?:[number,number,number]}} CombatEvent */
+/**
+ * @typedef {Object} CombatEvent
+ * @property {string} type        uno de COMBAT_EVENT
+ * @property {number} tick
+ * @property {number} [attacker]  id NUMÉRICO de Creature
+ * @property {number} [target]    id NUMÉRICO de Creature
+ * @property {string} [action]    id de movimiento
+ * @property {string} [zone]
+ * @property {number} [damage]
+ * @property {[number,number,number]} [point]  punto de contacto en coords MUNDO (bloques)
+ * @property {string} [src]       tipo de evento de origen (KAGE), para depurar
+ * @property {string} [result]    submission: 'attempt'|'tap'|'break'|'escape'; decision/fightEnd: método
+ */
 
 /**
  * Creature (lo compone Motor; mind/combat de Combate, skeleton de Animador).
