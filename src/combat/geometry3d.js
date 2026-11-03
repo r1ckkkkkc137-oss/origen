@@ -1,18 +1,31 @@
-// Geometry3D (prototipo): peleadores en el plano XZ del mundo con ángulo de heading, ring circular de radio `cage` (px),
-// distancia 3D ancla–ancla, cápsulas de daño y posiciones de hueso tomadas de un Skeleton3D.
+// Geometry3D: peleadores en el plano XZ del mundo con yaw, ring circular de radio `cage` (px de sim), distancia 3D ancla–ancla,
+// cápsulas de daño y posiciones de hueso tomadas de un Skeleton3D del contrato (HUMAN_BONES).
 //
-// Estado propio del adaptador por peleador (el núcleo no lo toca): f.pos = {x,y,z} (px; y = 0, altura del suelo), f.heading (rad).
-//   adelante(f) = (cos h, sin h) en (x, z).  Lateral derecha = (-sin h, cos h).
+// Unidades: la SIM sigue en px de KAGE (PX_PER_M = 85 px/m, ring ±260 px). El adaptador convierte en el borde con UNA constante,
+// BLOCK_M (metros por bloque; 0.5 en contracts v0.1, se lee de contracts si lo publica): 1 unidad de mundo = 1 bloque = BLOCK_M m
+//   => px por unidad de mundo = PX_PER_M * BLOCK_M = 42.5. Todo lo que SALE hacia ORIGEN (pos, huesos, cápsulas, puntos de contacto)
+//   va en unidades de mundo (bloques) como arrays [x,y,z], igual que el contrato.
+//
+// Estado propio del adaptador por peleador (el núcleo no lo toca): f.pos = {x,y,z} (px; y = 0, suelo), f.heading (rad, interno).
+//   yaw (contrato, convención Three rotation.y) = -heading.  Adelante(f) = (cos h, sin h) en (x, z) = (cos yaw, -sin yaw).
 //
 // DETERMINISMO: la sim sólo usa pos/heading (raíz). Los huesos/cápsulas/contactPoint vienen de la pose (provider o procedural)
-// y son SÓLO LECTURA: nunca vuelven a pos/heading ni a eventos. La animación no puede cambiar el resultado.
+// y son SÓLO LECTURA: nunca vuelven a pos/heading ni a eventos. La animación no puede cambiar el resultado. Un esqueleto de provider
+// en espacio mundo se RE-ANCLA a la raíz de la sim (rotación + traslación rígidas): la raíz de la animación no manda nunca.
 //
-// Provider de esqueleto: opts.skeleton = (fighter, F) => Skeleton3D | null  (ver pose.js para la convención).
-// Si no hay provider se usa el esqueleto KAGE por defecto + proceduralPose (sin animación externa).
+// Provider: opts.skeleton = (fighter, F) => Skeleton3D | null. Si es null/ausente: HUMAN_BONES + proceduralPose (sin animación externa).
+import * as C from '../shared/contracts.js';
 import { PX_PER_M } from './data/moves.js';
-import { KAGE_BONES, ZONE_OF, proceduralPose } from './pose.js';
+import { HUMAN_PARENT, ZONE_OF, proceduralPose } from './pose.js';
 
-const r2 = (v) => Math.round(v * 100) / 100;
+/** Metros por bloque (unidad de mundo). Fuente: contracts (BLOCK_M o UNITS.BLOCK_M) si existe; si no, 0.5 (v0.1). */
+export const BLOCK_M = C.BLOCK_M ?? C.UNITS?.BLOCK_M ?? 0.5;
+/** Ángulo normalizado a (-π, π]. */
+const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
+/** yaw (contrato) <-> heading (interno de la sim). Mismo valor con signo opuesto: Three rota +x local a (cos yaw, -sin yaw). */
+export const yawFromHeading = (h) => wrap(-h);
+export const headingFromYaw = (y) => wrap(-y);
+
 const EPS = 1e-9;
 const fwd = (f) => ({ x: Math.cos(f.heading), z: Math.sin(f.heading) });
 const len2 = (x, z) => Math.sqrt(x * x + z * z);
@@ -27,11 +40,13 @@ function closestOnSegment(p, a, b) {
 
 /**
  * @param {{cage:number}} opt
- * @param {{ skeleton?:Function, boneMap?:Record<string,string>, pxPerUnit?:number }} [spec]
+ * @param {{ skeleton?:Function, boneMap?:Record<string,string>, blockM?:number }} [spec]
  */
 export function createGeometry3D(opt, spec = {}) {
   const cage = opt.cage;
-  const pxPerUnit = spec.pxPerUnit ?? PX_PER_M;
+  const blockM = spec.blockM ?? BLOCK_M;
+  const PXB = PX_PER_M * blockM;                           // px de sim por unidad de mundo (bloque)
+  const toW = (p) => [p.x / PXB, p.y / PXB, p.z / PXB];     // px (sim) -> [x,y,z] bloques
   const boneMap = spec.boneMap ?? {};                      // joint KAGE -> nombre de hueso del esqueleto externo
   const inv = Object.fromEntries(Object.entries(boneMap).map(([k, v]) => [v, k]));
   const kageName = (bone) => inv[bone] ?? bone;
@@ -44,22 +59,47 @@ export function createGeometry3D(opt, spec = {}) {
   };
   const face = (f, toward) => { f.heading = Math.atan2(toward.pos.z - f.pos.z, toward.pos.x - f.pos.x); };
 
-  /** Skeleton3D actual del peleador (provider o procedural). Siempre con la raíz de la SIM. */
+  const vec = (p) => (Array.isArray(p) ? { x: p[0], y: p[1], z: p[2] ?? 0 } : { x: p.x, y: p.y, z: p.z ?? 0 });
+  /** Skeleton3D (contrato) actual del peleador: pose en mundo/bloques, SIEMPRE con la raíz de la sim. */
   function skeletonOf(f) {
-    let sk = spec.skeleton ? spec.skeleton(f, geo.F) : null;
-    if (!sk) sk = { bones: KAGE_BONES, pose: proceduralPose(geo.F, f), space: 'local' };
-    return { ...sk, root: { x: f.pos.x, y: f.pos.y, z: f.pos.z, heading: f.heading } };
-  }
-  function worldOf(f, sk, p) {
-    const k = pxPerUnit;
-    if (sk.space === 'world') return { x: p.x * k, y: p.y * k, z: p.z * k };
+    const sk = spec.skeleton ? spec.skeleton(f, geo.F) : null;
+    const root = { pos: toW(f.pos), yaw: yawFromHeading(f.heading) };
     const c = Math.cos(f.heading), s = Math.sin(f.heading);
-    const lz = p.z ?? 0;
-    return { x: f.pos.x + (p.x * c - lz * s) * k, y: f.pos.y + p.y * k, z: f.pos.z + (p.x * s + lz * c) * k };
+    const rb = { x: f.pos.x / PXB, y: f.pos.y / PXB, z: f.pos.z / PXB };
+    const out = {};
+    if (!sk) {                       // por defecto: pose local en METROS -> mundo en bloques
+      const loc = proceduralPose(geo.F, f);
+      for (const [name, p] of Object.entries(loc)) {
+        const lx = p.x / blockM, ly = p.y / blockM, lz = p.z / blockM;
+        out[name] = [rb.x + lx * c - lz * s, rb.y + ly, rb.z + lx * s + lz * c];
+      }
+      return { bones: Object.keys(HUMAN_PARENT), parent: HUMAN_PARENT, root, pose: out };
+    }
+    const names = sk.bones.map((b) => (typeof b === 'string' ? b : b.name));
+    const parent = Array.isArray(sk.bones) && typeof sk.bones[0] === 'object' ? Object.fromEntries(sk.bones.map((b) => [b.name, b.parent ?? null])) : sk.parent;
+    if ((sk.space ?? 'world') === 'local') {            // metros locales (+x adelante, y arriba, z derecha)
+      for (const n of names) {
+        const p = sk.pose[n]; if (!p) continue; const v = vec(p);
+        const lx = v.x / blockM, ly = v.y / blockM, lz = v.z / blockM;
+        out[n] = [rb.x + lx * c - lz * s, rb.y + ly, rb.z + lx * s + lz * c];
+      }
+    } else {                                            // mundo (bloques): re-anclar la raíz del provider a la de la sim
+      const r0 = sk.root?.pos ? vec(sk.root.pos) : null;
+      const dh = r0 && sk.root.yaw != null ? f.heading - headingFromYaw(sk.root.yaw) : 0;
+      const cd = Math.cos(dh), sd = Math.sin(dh);
+      for (const n of names) {
+        const p = sk.pose[n]; if (!p) continue; const v = vec(p);
+        if (!r0) { out[n] = [v.x, v.y, v.z]; continue; }
+        const dx = v.x - r0.x, dz = v.z - r0.z;
+        out[n] = [rb.x + dx * cd - dz * sd, v.y - r0.y + rb.y, rb.z + dx * sd + dz * cd];
+      }
+    }
+    return { bones: names, parent, root, pose: out };
   }
 
   const geo = {
     kind: '3d',
+    units: 'block', blockM, pxPerUnit: PXB,
     bind(F) { geo.F = F; },
 
     place(A, B, startGap) {
@@ -69,7 +109,7 @@ export function createGeometry3D(opt, spec = {}) {
     facingSign: () => 1,
     faceEachOther(A, B) { face(A, B); face(B, A); },
     axisX: (f) => f.pos.x,
-    tickExtras: (f) => ({ pos: { x: r2(f.pos.x), y: r2(f.pos.y), z: r2(f.pos.z) }, heading: Math.round(f.heading * 1e4) / 1e4 }),
+    tickExtras: (f) => ({ pos: toW(f.pos).map((v) => Math.round(v * 1e3) / 1e3), yaw: Math.round(yawFromHeading(f.heading) * 1e4) / 1e4 }), // bloques / rad (contrato)
 
     distance(a, b) { const dx = a.pos.x - b.pos.x, dy = a.pos.y - b.pos.y, dz = a.pos.z - b.pos.z; return Math.sqrt(dx * dx + dy * dy + dz * dz); },
 
@@ -137,37 +177,38 @@ export function createGeometry3D(opt, spec = {}) {
       B.pos.x = mid.x - ub.x * halfGap; B.pos.z = mid.z - ub.z * halfGap;
     },
 
-    // ---- lectura (presentación) ----
+    // ---- lectura (presentación): unidades de mundo (bloques), arrays [x,y,z] ----
     skeletonOf,
     boneWorldPos(f, joint) {
       const sk = skeletonOf(f);
       const p = sk.pose[boneName(joint)];
       if (!p) throw new Error('boneWorldPos: hueso sin pose ' + joint);
-      return worldOf(f, sk, p);
+      return p;
     },
+    /** Cápsulas entre cada hueso y su padre (parent del esqueleto): { a:[x,y,z], b:[x,y,z], radius (bloques), zone, bones }. */
     hurtboxes(f) {
       const sk = skeletonOf(f);
       const out = [];
-      for (const b of sk.bones) {
-        const name = kageName(b.name);
-        const z = ZONE_OF[name];
-        if (!z || !b.parent || !sk.pose[b.name] || !sk.pose[b.parent]) continue;
-        out.push({ a: worldOf(f, sk, sk.pose[b.parent]), b: worldOf(f, sk, sk.pose[b.name]), radius: z[1] * pxPerUnit, zone: z[0], bones: [b.parent, b.name] });
+      for (const name of sk.bones) {
+        const z = ZONE_OF[kageName(name)];
+        const par = sk.parent[name];
+        if (!z || !par || !sk.pose[name] || !sk.pose[par]) continue;
+        out.push({ a: sk.pose[par], b: sk.pose[name], radius: z[1] / blockM, zone: z[0], bones: [par, name] });
       }
       return out;
     },
-    /** Punto de contacto aproximado: de la articulación atacante al punto más cercano de las cápsulas de la zona objetivo. */
+    /** Punto de contacto aproximado ([x,y,z] bloques): de la articulación atacante al punto más cercano de las cápsulas de la zona objetivo. */
     contactPoint(attacker, defender, move) {
       if (!move || !move.limb) return null;
-      const tip = geo.boneWorldPos(attacker, move.limb);
+      const tip = vec(geo.boneWorldPos(attacker, move.limb));
       let best = null, bd = Infinity;
       for (const c of geo.hurtboxes(defender)) {
-        if (move.zone && c.zone !== move.zone && !(move.zone === 'legs' && c.zone === 'legs')) continue;
-        const q = closestOnSegment(tip, c.a, c.b);
+        if (move.zone && c.zone !== move.zone) continue;
+        const q = closestOnSegment(tip, vec(c.a), vec(c.b));
         const d = Math.hypot(q.x - tip.x, q.y - tip.y, q.z - tip.z);
         if (d < bd) { bd = d; best = q; }
       }
-      return best;
+      return best && [best.x, best.y, best.z];
     },
   };
   return geo;

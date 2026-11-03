@@ -1,12 +1,12 @@
-// Adaptador de geometría del núcleo de combate (src/fight). ÚNICO punto por donde el núcleo toca el espacio:
+// Adaptador de geometría del núcleo de combate (src/combat/core). ÚNICO punto por donde el núcleo toca el espacio:
 // posiciones, orientación, distancias, paredes del ring, separación mínima, knockback y huesos.
 //
 // El núcleo (core.js / resolve.js / ai.js / controllers.js) NO lee ni escribe `f.x`, `f.facing` ni `f.pos`:
 // todo pasa por `F.geo` (una instancia de Geometry). La lógica de combate sigue siendo "1D" (alcance = distancia
 // entre anclas, adelante/atrás, contra la pared); la geometría decide qué significa eso en el mundo.
 //
-// Unidades: PX de simulación (UNITS.PX_PER_M = 85 px/m, ring de radio/semiancho `cage` = 260 px). Un motor 3D que
-// trabaje en metros convierte en el borde (ver Geometry3D.pxPerUnit).
+// Unidades: la sim va en PX de KAGE (UNITS.PX_PER_M = 85 px/m, ring de radio/semiancho `cage` = 260 px). Geometry3D convierte en el
+// borde a unidades de mundo de ORIGEN (1 bloque = BLOCK_M m; ver geometry3d.js) con una sola constante.
 //
 // Implementaciones:
 //   Geometry2D (geometry2d.js): reproduce KAGE bit a bit (eje 1D, z = 0).  createGeometry('2d')
@@ -20,12 +20,13 @@ import { createGeometry2D } from './geometry2d.js';
 import { createGeometry3D } from './geometry3d.js';
 
 /**
- * @typedef {{x:number, y:number, z:number}} Vec3
- * @typedef {{a:Vec3, b:Vec3, radius:number, zone:'head'|'body'|'legs'|'armL'|'armR', bones:[string,string]}} Capsule  (px de mundo)
+ * @typedef {[number, number, number]} Vec3   [x,y,z] en las unidades del adaptador (geo.units: '2d' = px de KAGE, '3d' = unidades de mundo/bloques)
+ * @typedef {{a:Vec3, b:Vec3, radius:number, zone:'head'|'body'|'legs'|'armL'|'armR', bones:[string,string]}} Capsule  (unidades del adaptador)
  * @typedef {object} Fighter  runtime del núcleo (createRuntime). Sólo el adaptador toca sus campos de posición.
  *
  * @typedef {object} Geometry
  * @property {'2d'|'3d'} kind
+ * @property {'px'|'block'} units                                          Unidad de lo que SALE hacia afuera (boneWorldPos, hurtboxes, contactPoint, tickExtras.pos). 3D: 1 bloque = BLOCK_M m.
  * @property {(F:object)=>void} bind            Se llama una vez al crear la pelea (F.fighters ya existen).
  *
  * --- Colocación / orientación ---
@@ -62,13 +63,13 @@ import { createGeometry3D } from './geometry3d.js';
  * @property {(A:Fighter,B:Fighter,halfGap:number)=>void} clinchPlace    Al entrar al clinch: cada uno a halfGap px del punto medio, de frente.
  *
  * --- Huesos / cajas de daño (SÓLO LECTURA; presentación) ---
- * @property {(f:Fighter,bone:string)=>Vec3} boneWorldPos                Posición de mundo (px) de una articulación de JOINTS. 2D: z = 0.
+ * @property {(f:Fighter,bone:string)=>Vec3} boneWorldPos                Posición de mundo de un hueso de HUMAN_BONES (los 16 joints KAGE + chest). 2D: px, z = 0; 3D: bloques.
  * @property {(f:Fighter)=>Capsule[]} hurtboxes                          Cápsulas de daño entre huesos (zonas head/body/legs/armL/armR).
  * @property {(attacker:Fighter,defender:Fighter,move:object)=>(Vec3|null)} contactPoint  Punto de contacto aproximado de un golpe (null en 2D).
  */
 
 /**
- * Crea una geometría. spec: '2d' | '3d' | instancia Geometry | (opt)=>Geometry | { kind:'3d', ...opts3D }.
+ * Crea una geometría. spec: '2d' | '3d' | instancia Geometry | (opt)=>Geometry | { kind:'3d', skeleton, boneMap, blockM }.
  * Un spec ausente = Geometry2D (comportamiento KAGE).
  * @param {string|object|Function|undefined} spec
  * @param {{cage:number}} opt  tuning de la pelea (usa cage)

@@ -1,22 +1,31 @@
 // Esqueleto 3D por defecto + pose procedural SIN animación externa, para correr headless (tests, balance, prototipo).
-// Convención de Skeleton3D (propuesta; ver riesgos en el informe):
-//   { bones:[{name,parent}], pose:{ boneName:{x,y,z} }, root:{x,y,z,heading}, space:'local'|'world' }
-//   space 'local' : pose en el marco del peleador, EN METROS: origen = pelvis-en-reposo-sobre-el-suelo (root), +x = adelante (heading),
-//                   +y = ARRIBA, +z = lateral derecha del peleador. Se rota por heading y se escala por pxPerUnit (85).
-//   space 'world' : pose ya en mundo (metros, y arriba); root se ignora para la pose (la raíz de la sim manda igualmente).
-//   root.heading  : radianes en el plano XZ del mundo; adelante = (cos h, sin h) en (x, z).
+//
+// Convención (coordinada con contracts v0.1/v0.2 de Motor; ver README):
+//   - Esqueleto = Skeleton3D del contrato: { bones:string[] (HUMAN_BONES), parent:{hueso:padre|null}, root:{pos:[x,y,z], yaw}, pose:{hueso:[x,y,z]} }
+//     con pose en MUNDO y en unidades de mundo (1 unidad = 1 bloque = BLOCK_M metros).
+//   - La pose PROCEDURAL por defecto se define en el marco LOCAL del peleador, en METROS: origen = pelvis proyectada al suelo (root),
+//     +x = adelante (yaw), +y = ARRIBA, +z = lateral derecha. geometry3d.js la lleva a mundo (rota por yaw y divide por BLOCK_M).
+//   - yaw: convención de Three.js (rotation.y): el +x local apunta a (cos yaw, 0, -sin yaw) en (x,y,z) de mundo.
+//   - Los 16 joints de KAGE existen con el MISMO nombre en HUMAN_BONES; HUMAN_BONES agrega 'chest' (sin joint KAGE): la pose
+//     procedural lo deriva (punto medio spine–neck) y los hurtboxes lo usan como segmento propio.
+import { HUMAN_BONES } from '../shared/contracts.js';
 import { JOINTS } from './kage-contracts.js';
 import { CLIP_REACH, PX_PER_M, MOVES } from './data/moves.js';
 
-/** Huesos KAGE con su padre (jerarquía mínima de 16 articulaciones). */
-export const KAGE_BONES = Object.freeze([
-  { name: 'pelvis', parent: null },
-  { name: 'spine', parent: 'pelvis' }, { name: 'neck', parent: 'spine' }, { name: 'head', parent: 'neck' },
-  { name: 'shoulderL', parent: 'spine' }, { name: 'elbowL', parent: 'shoulderL' }, { name: 'handL', parent: 'elbowL' },
-  { name: 'shoulderR', parent: 'spine' }, { name: 'elbowR', parent: 'shoulderR' }, { name: 'handR', parent: 'elbowR' },
-  { name: 'hipL', parent: 'pelvis' }, { name: 'kneeL', parent: 'hipL' }, { name: 'footL', parent: 'kneeL' },
-  { name: 'hipR', parent: 'pelvis' }, { name: 'kneeR', parent: 'hipR' }, { name: 'footR', parent: 'kneeR' },
-]);
+/** Padre de cada hueso humano del contrato (jerarquía de 17). */
+export const HUMAN_PARENT = Object.freeze({
+  pelvis: null, spine: 'pelvis', chest: 'spine', neck: 'chest', head: 'neck',
+  shoulderL: 'chest', elbowL: 'shoulderL', handL: 'elbowL',
+  shoulderR: 'chest', elbowR: 'shoulderR', handR: 'elbowR',
+  hipL: 'pelvis', kneeL: 'hipL', footL: 'kneeL',
+  hipR: 'pelvis', kneeR: 'hipR', footR: 'kneeR',
+});
+/** joint de KAGE -> hueso de HUMAN_BONES (identidad: los 16 coinciden por nombre). */
+export const KAGE_TO_HUMAN = Object.freeze(Object.fromEntries(JOINTS.map((j) => [j, j])));
+/** Huesos de HUMAN_BONES sin joint KAGE equivalente (se derivan). */
+export const HUMAN_ONLY = Object.freeze(HUMAN_BONES.filter((b) => !JOINTS.includes(b)));
+/** Joints de KAGE sin hueso en HUMAN_BONES (vacío = todos mapean). */
+export const KAGE_UNMAPPED = Object.freeze(JOINTS.filter((j) => !HUMAN_BONES.includes(KAGE_TO_HUMAN[j])));
 
 /** Reposo de stickman en px (misma escala que src/anim: origen suelo bajo la pelvis, +x adelante, +y abajo). [x, y, z(px lateral)] */
 const REST_PX = Object.freeze({
@@ -29,18 +38,22 @@ const REST_PX = Object.freeze({
 
 /** Zona de daño y radio de cápsula (m) del hueso hijo del segmento padre→hijo. */
 export const ZONE_OF = Object.freeze({
-  spine: ['body', 0.17], neck: ['body', 0.07], head: ['head', 0.11],
+  spine: ['body', 0.17], chest: ['body', 0.16], neck: ['body', 0.07], head: ['head', 0.11],
   shoulderL: ['body', 0.06], shoulderR: ['body', 0.06],
   elbowL: ['armL', 0.05], handL: ['armL', 0.04], elbowR: ['armR', 0.05], handR: ['armR', 0.04],
   hipL: ['body', 0.1], hipR: ['body', 0.1],
   kneeL: ['legs', 0.08], footL: ['legs', 0.06], kneeR: ['legs', 0.08], footR: ['legs', 0.06],
 });
 
-/** Pose de reposo local en metros (y arriba, z lateral). */
+const mid = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, z: (a.z + b.z) / 2 });
+/** Agrega los huesos HUMAN_BONES que KAGE no tiene (chest = punto medio spine–neck). */
+function withDerived(p) { p.chest = mid(p.spine, p.neck); return p; }
+
+/** Pose de reposo local en metros (y arriba, z lateral) para los 17 huesos de HUMAN_BONES. */
 export function restPose() {
   const p = {};
   for (const j of JOINTS) { const r = REST_PX[j]; p[j] = { x: r[0] / PX_PER_M, y: -r[1] / PX_PER_M, z: r[2] / PX_PER_M }; }
-  return p;
+  return withDerived(p);
 }
 
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -67,7 +80,7 @@ export function proceduralPose(F, f) {
       const r = REST_PX[j];
       p[j] = { x: (-r[1] * (top ? 0.55 : 1)) / PX_PER_M, y: (top ? 0.45 + (r[1] / -90) * 0.1 : 0.12), z: r[2] / PX_PER_M };
     }
-    return p;
+    return withDerived(p);
   }
 
   const a = f.action;
@@ -85,5 +98,5 @@ export function proceduralPose(F, f) {
       else if (mv.limb.startsWith('foot')) { const kn = p[mv.limb.replace('foot', 'knee')]; kn.x = lerp(kn.x, reach.tip / PX_PER_M * 0.5, k); }
     }
   }
-  return p;
+  return withDerived(p);
 }

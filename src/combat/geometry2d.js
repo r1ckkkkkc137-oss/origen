@@ -18,6 +18,7 @@ export function createGeometry2D(opt) {
   const cage = opt.cage;
   const geo = {
     kind: '2d',
+    units: 'px',
     bind(F) { geo.F = F; },
 
     place(A, B, startGap) {
@@ -80,9 +81,10 @@ export function createGeometry2D(opt) {
     },
 
     boneWorldPos(f, bone) {
-      const r = REST_2D[bone];
-      if (!r || !JOINTS.includes(bone)) throw new Error('boneWorldPos: hueso desconocido ' + bone);
-      return { x: f.x + f.facing * r[0], y: -r[1], z: 0 }; // y de mundo hacia arriba en el adaptador
+      let r = REST_2D[bone];
+      if (bone === 'chest') r = [(REST_2D.spine[0] + REST_2D.neck[0]) / 2, (REST_2D.spine[1] + REST_2D.neck[1]) / 2]; // HUMAN_BONES.chest: derivado
+      else if (!r || !JOINTS.includes(bone)) throw new Error('boneWorldPos: hueso desconocido ' + bone);
+      return [f.x + f.facing * r[0], -r[1], 0]; // [x,y,z] en px de KAGE; y de mundo hacia arriba en el adaptador
     },
     hurtboxes: () => [],
     contactPoint: () => null,
