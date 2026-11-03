@@ -95,11 +95,14 @@ Notas para la interfaz `World` (aclaraciones, no cambios): `raycast` devuelve ad
 ## Rendimiento (medido, `node src/world/bench.mjs`, Node v24, Xeon virtual ×8, grilla 8×8, semillas 1234 y 7)
 
 ```
-generateChunk   N=128  media 1.818 ms  mediana 1.545  p95 3.497  (máx 7.201)
-meshChunk       N=72   media 0.248 ms  mediana 0.224  p95 0.392  (con 4 vecinos)
+generateChunk   N=128  media 1.595 ms  mediana 1.480  p95 2.358  (máx 7.341)
+meshChunk       N=72   media 0.256 ms  mediana 0.237  p95 0.416  (con 4 vecinos)
 triángulos/chunk (N=72): greedy media 218 (mediana 126, p95 636) · ingenua con culling media 993 · sin culling media 70185
-greedy = 22,0 % de la ingenua con culling · 0,31 % de la malla sin culling · malla ≈ 15,3 KiB/chunk
+greedy = 22,0 % de la ingenua con culling · 0,31 % de la malla sin culling · malla ≈ 15,3 KiB/chunk (p95 44,7)
+getBlock/solidAt (patrón de muestreador de suelo, mundo 8×8 cargado, 781 561 llamadas × 7 repeticiones): mediana ≈ 9 ns/llamada
 ```
+
+**Con el mundo cargado en el motor** (`npm run build && npm run smoke:world`, Chrome headless + **SwiftShader = render por software, no GPU**, 1280×720, radio 4,5 ≈ 60 chunks, cámara inicial de `main.js`; 4 corridas): carga inicial (página + 60 chunks generados y mallados) 0,8–0,95 s (2 corridas la midieron); 60 chunks / 89 mallas / 43 draw calls / 16 956 triángulos dibujados (26 932 en total cargados; el resto lo descarta el frustum culling), 1 textura. `requestAnimationFrame` de Chrome headless está topado a 60 Hz: fps promedio por frame 57,5–59,6 y mínimo (ventanas de 0,5 s) 50–58; peor frame 33–50 ms (1–2 frames perdidos). Para ver margen se cronometraron 200 renders seguidos con `readPixels` (sincroniza con SwiftShader): media 5,6–12,0 ms por render (mediana 5,0–10,4). La variación entre corridas es grande (máquina compartida). Esto **no predice un GPU real ni un celular**.
 
 Cifras de una sola máquina/corrida; la variación entre corridas es visible (p.ej. la media de `generateChunk` de la semilla 1234 fue 1,76 y 2,20 ms en dos corridas).
 

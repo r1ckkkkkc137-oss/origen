@@ -147,3 +147,22 @@ test('World.solidAt / getBlock en coords de bloque (para Animador): agua no es s
   w.unloadChunk(0, 0); w.getChunk(5, 5); w.unloadChunk(5, 5);
   assert.equal(w.peekChunk(0, 0), null); assert.equal(w.getBlock(1, 5, 1), e, 'la edición se reaplica al regenerar; la caché no sirve el chunk descargado');
 });
+
+test('integración con Animador (createAnimator3D con world.solidAt): los pies se apoyan en el tope del bloque de la columna', async () => {
+  const { createAnimator3D } = await import('../src/anim/index.js');
+  const { BLOCK_M } = await import('../src/shared/contracts.js');
+  const { DIM } = await import('../src/anim/skeleton3d.js');
+  const w = new World(1234);
+  const A = createAnimator3D({ seed: 1, getBlock: (x, y, z) => w.solidAt(x, y, z), blockM: BLOCK_M });
+  // posición en metros sobre una columna cualquiera; el animador mapea sus ejes a celdas MUNDO; buscamos el tope esperado con su misma convención de celdas
+  const px = 3.2, pz = 5.1, bx = Math.floor(px / BLOCK_M), bz = Math.floor(pz / BLOCK_M);
+  const yTop = (w.surfaceY(bx, bz) + 1) * BLOCK_M;
+  const root = { pos: [px, yTop + 1, pz], yaw: 0 };
+  for (let i = 0; i < 120; i++) A.update(1 / 60, root);
+  const feet = A.feetWorld();
+  assert.ok(feet.length === 2);
+  for (const f of feet) assert.ok(Number.isFinite(f.pos?.[1] ?? 0));
+  assert.ok(A.skeleton.pose.footL.every(Number.isFinite) && A.skeleton.pose.footR.every(Number.isFinite));
+  const soleY = Math.min(A.skeleton.pose.footL[1], A.skeleton.pose.footR[1]) - DIM.ankleH;
+  assert.ok(Math.abs(soleY - yTop) < 0.5 * BLOCK_M + 0.05, `suela ${soleY} vs tope ${yTop} (cada pie puede estar en una columna distinta ±1 bloque)`);
+});
