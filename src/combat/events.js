@@ -60,6 +60,7 @@ export function createCombatTranslator(opt = {}) {
       const type = KAGE_TO_COMBAT[ev.type];
       if (!type) return [];
       const out = { type, tick: ev.tick, src: ev.type };
+      if (ev.round != null) out.round = ev.round;   // contrato v0.4: round (1-based) del evento
       if (ev.attacker != null) out.attacker = ids[ev.attacker];
       if (ev.defender != null) out.target = ids[ev.defender];
       if (type === 'getUp' && ev.attacker != null) { delete out.attacker; out.target = ids[ev.attacker]; } // KAGE: attacker = el que se levanta
