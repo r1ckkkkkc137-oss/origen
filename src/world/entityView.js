@@ -1,7 +1,7 @@
 // VISTA de las entidades del mundo (árbol que cae + items). No importa three: recibe THREE por parámetro (igual que threeAdapter.js).
 //   const ev = createEntityView(THREE, scene, world, atlas, { tileNames: TILES });   // atlas = createAtlas(seed)
 //   // cada frame, DESPUÉS de world.updateEntities(dt):
-//   ev.update();                       // sincroniza: una malla por árbol cayendo (se malla UNA vez) + cubitos de items (InstancedMesh por tipo de tile)
+//   ev.update();                       // sincroniza: una malla por árbol cayendo (se malla UNA vez) + cubitos de items (una sola malla dinámica)
 //   ev.stats() -> { trees, items, triangles, drawCalls }
 // Un árbol se malla una sola vez al aparecer (caras visibles entre SUS bloques, en metros, relativas al pivote) y después solo cambia el
 // transform del grupo: position = pivote (m), quaternion = giro θ alrededor del eje horizontal a = up x d. Los items son cubos de 0.2 m.
@@ -9,7 +9,7 @@ import { IS_OPAQUE, LAYER_OF, IS_LEAF } from './blocks.js';
 import { TILE_OF } from './tilemap.js';
 import { BLOCK_SIZE_M as S } from './units.js';
 import { buildTileMap, createGeometry, createVoxelMaterial } from './threeAdapter.js';
-import { ITEM_SIZE_M, ITEM_STICK } from './entities.js';
+import { ITEM_SIZE_M, ITEM_STICK, MAX_ITEMS } from './entities.js';
 import { ATLAS_COLS, ATLAS_ROWS, TILE_NAMES } from './tilemap.js';
 
 const FACE_DIR = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
@@ -67,10 +67,8 @@ export function createEntityView(THREE, scene, world, atlas, opts = {}) {
   const matOpaque = createVoxelMaterial(THREE, atlas.texture, 'opaque', grid), matCutout = createVoxelMaterial(THREE, atlas.texture, 'cutout', grid);
   const group = new THREE.Group(); group.name = 'entities'; scene.add(group);
   const trees = new Map();          // treeId -> { group, geos }
-  const itemGroups = new Map();     // tile -> { mesh, geo }
-  const axis = new THREE.Vector3(), cap = opts.maxItemsPerTile ?? 256;
+    const axis = new THREE.Vector3();
   let triangles = 0, drawCalls = 0;
-  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), pos = new THREE.Vector3(), one = new THREE.Vector3(1, 1, 1);   // el cubo ya está en metros
 
   function addTree(t) {
     const g = new THREE.Group(), geos = [];
@@ -85,18 +83,21 @@ export function createEntityView(THREE, scene, world, atlas, opts = {}) {
   }
   function dropTree(id) { const e = trees.get(id); group.remove(e.group); e.geos.forEach((x) => x.dispose()); triangles -= e.tris; trees.delete(id); }
 
-  // item = cubo de ITEM_SIZE_M con el tile (cara lateral) del bloque; un InstancedMesh por tile
-  function itemMesh(tile) {
-    let e = itemGroups.get(tile);
-    if (e) return e;
-    const buf = new Buf(), h = ITEM_SIZE_M / S;
-    for (let f = 0; f < 6; f++) emitFace(buf, -h / 2, -h / 2, -h / 2, f, tile);   // cubo centrado de lado ITEM_SIZE_M (ya en metros)
-    const geo = createGeometry(THREE, buf.finish(), { tileMap });
-    const mesh = new THREE.InstancedMesh(geo, matOpaque, cap); mesh.count = 0; mesh.frustumCulled = false;
-    group.add(mesh); e = { mesh, geo }; itemGroups.set(tile, e);
-    return e;
-  }
-  const tileOfItem = (id) => (id === ITEM_STICK ? TILE_OF[4 * 6 + 0] : TILE_OF[id * 6 + 0]);
+  // items: UNA sola malla dinámica (el ShaderMaterial de voxel no soporta instancing): cubos de ITEM_SIZE_M con el tile lateral del bloque.
+  // Plantilla de un cubo (24 vértices, ya en metros, centrado) y buffers preasignados para MAX_ITEMS cubos; por frame solo se reescriben posiciones/tiles.
+  const tpl = new Buf(), isc = ITEM_SIZE_M / S;   // la cara base es 1 bloque: se centra y se escala a ITEM_SIZE_M
+  for (let f = 0; f < 6; f++) emitFace(tpl, -0.5, -0.5, -0.5, f, 0);
+  const CAP = MAX_ITEMS, VPI = 24, IPI = 36;
+  const iPos = new Float32Array(CAP * VPI * 3), iNor = new Float32Array(CAP * VPI * 3), iUv = new Float32Array(CAP * VPI * 2), iTile = new Uint8Array(CAP * VPI), iIdx = new Uint16Array(CAP * IPI);
+  for (let i = 0; i < CAP; i++) { iNor.set(tpl.nor, i * VPI * 3); iUv.set(tpl.uv, i * VPI * 2); for (let k = 0; k < IPI; k++) iIdx[i * IPI + k] = tpl.idx[k] + i * VPI; }
+  const iGeo = new THREE.BufferGeometry();
+  const aPos = new THREE.BufferAttribute(iPos, 3), aTile = new THREE.BufferAttribute(iTile, 1);
+  aPos.setUsage?.(THREE.DynamicDrawUsage); aTile.setUsage?.(THREE.DynamicDrawUsage);
+  iGeo.setAttribute('position', aPos); iGeo.setAttribute('normal', new THREE.BufferAttribute(iNor, 3)); iGeo.setAttribute('uv', new THREE.BufferAttribute(iUv, 2)); iGeo.setAttribute('tile', aTile);
+  iGeo.setIndex(new THREE.BufferAttribute(iIdx, 1)); iGeo.setDrawRange(0, 0);
+  const itemMesh = new THREE.Mesh(iGeo, matOpaque); itemMesh.frustumCulled = false; itemMesh.name = 'items'; group.add(itemMesh);
+  let itemCount = 0;
+  const tileOfItem = (id) => tileMap[id === ITEM_STICK ? TILE_OF[4 * 6 + 0] : TILE_OF[id * 6 + 0]];
 
   return {
     group, missingTiles: missing,
@@ -110,24 +111,25 @@ export function createEntityView(THREE, scene, world, atlas, opts = {}) {
         trees.get(t.id).group.quaternion.setFromAxisAngle(axis, t.theta);
       }
       for (const id of [...trees.keys()]) if (!live.has(id)) dropTree(id);
-      for (const e of itemGroups.values()) e.mesh.count = 0;
+      let n = 0;
       for (const it of st.items) {
-        const tile = tileOfItem(it.id), e = itemMesh(tile), i = e.mesh.count;
-        if (i >= cap) continue;
-        pos.set(it.x, it.y + ITEM_SIZE_M / 2, it.z);
-        const spin = it.rest >= 30 ? 0 : it.age * 2.0;                       // gira mientras se mueve; dormido, quieto
-        q.setFromAxisAngle(axis.set(0, 1, 0), spin + it.uid * 0.9);
-        m4.compose(pos, q, one); e.mesh.setMatrixAt(i, m4); e.mesh.count = i + 1;
+        if (n >= CAP) break;
+        const ang = (it.rest >= 30 ? 0 : it.age * 2.0) + it.uid * 0.9, c = Math.cos(ang), sn = Math.sin(ang), tl = tileOfItem(it.id);
+        const cx = it.x, cy = it.y + ITEM_SIZE_M / 2, cz = it.z, o = n * VPI * 3;
+        for (let v = 0; v < VPI; v++) {
+          const px = tpl.pos[v * 3] * isc, py = tpl.pos[v * 3 + 1] * isc, pz = tpl.pos[v * 3 + 2] * isc;
+          iPos[o + v * 3] = cx + px * c + pz * sn; iPos[o + v * 3 + 1] = cy + py; iPos[o + v * 3 + 2] = cz - px * sn + pz * c;
+          iTile[n * VPI + v] = tl;
+        }
+        n++;
       }
-      let dc = trees.size * 2;
-      for (const e of itemGroups.values()) { e.mesh.instanceMatrix.needsUpdate = true; if (e.mesh.count) dc++; }
-      drawCalls = dc;
+      itemCount = n; iGeo.setDrawRange(0, n * IPI); aPos.needsUpdate = true; aTile.needsUpdate = true;
+      drawCalls = trees.size * 2 + (n ? 1 : 0);
     },
-    stats() { let items = 0; for (const e of itemGroups.values()) items += e.mesh.count; return { trees: trees.size, items, triangles, drawCalls }; },
+    stats() { return { trees: trees.size, items: itemCount, triangles: triangles + itemCount * 12, drawCalls }; },
     dispose() {
       for (const id of [...trees.keys()]) dropTree(id);
-      for (const e of itemGroups.values()) { group.remove(e.mesh); e.geo.dispose(); e.mesh.dispose?.(); }
-      itemGroups.clear(); scene.remove(group); matOpaque.dispose?.(); matCutout.dispose?.();
+      group.remove(itemMesh); iGeo.dispose(); scene.remove(group); matOpaque.dispose?.(); matCutout.dispose?.();
     },
   };
 }
