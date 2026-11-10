@@ -421,7 +421,7 @@ function endAction(F, f) {
     F.note(f, kind);
   }
   // reset tras el intercambio: los dos se reacomodan (tanteo) antes de la próxima ráfaga
-  if (F.phase === 'stand' && MOVES[act.move].kind !== 'clinch') tempoReset(F, f, o);
+  if (F.phase === 'stand' && MOVES[act.move].kind !== 'clinch') tempoReset(F, f, o, F.reach && act.result === 'miss');
 }
 
 // Ritmo de pelea pro: tanteo al empezar cada round (R1 más largo), reset de ambos tras cada intercambio.
@@ -433,13 +433,13 @@ function studyPhase(F) {
   const [lo, hi] = STUDY[Math.min(F.round, STUDY.length) - 1];
   for (const f of F.fighters) f.calmUntil = F.t + Math.round(F.aiRng[f.id].int(lo, hi) * (1 - 0.6 * AI.urgency(F, f)));
 }
-function tempoReset(F, f, o) {
+function tempoReset(F, f, o, missed = false) { // 3D: si el que cierra el intercambio falló, el rival NO se calma (castiga)
   const rng = F.aiRng[f.id];
   const tired = condition(f).stamina < 0.45 ? 1.25 : 1;
   if (!rng.chance(RESET.p * (F.round === 1 ? 1.1 : 1) * (1 - 0.5 * AI.urgency(F, f)))) return;
   const n = rng.int(RESET.min, RESET.max) * tired * (F.round === 1 ? 1.15 : 1);
   f.calmUntil = Math.max(f.calmUntil ?? 0, F.t + Math.round(n * (1 - 0.6 * AI.urgency(F, f))));
-  o.calmUntil = Math.max(o.calmUntil ?? 0, F.t + Math.round(n * 0.85 * (1 - 0.6 * AI.urgency(F, o))));
+  if (!missed) o.calmUntil = Math.max(o.calmUntil ?? 0, F.t + Math.round(n * 0.85 * (1 - 0.6 * AI.urgency(F, o))));
 }
 
 function thinkTicks(F, f) {
@@ -581,7 +581,11 @@ function moveFighters(F) {
       // pivot: sale en ángulo; en 1D el par gira -> se recentra (cerca de la reja) o retrocede poco (afuera)
       const wall = geo.wallDistance(f) < 60 && geo.backToWall(f);
       if (wall) geo.recenterPair(f, o, sp * 1.05 * cut);
-      else geo.moveAlong(f, dir * sp * 0.35);
+      else { geo.moveAlong(f, dir * sp * 0.35); if (F.reach) geo.orbit(f, o, (f.foot.dir ?? 1) * sp * 0.9); } // 3D: sale de la línea de verdad
+      continue;
+    }
+    if (F.reach && dir < 0 && (foot === 'exit' || foot === 'stepOut') && !geo.exceedsWall(f, dir * sp, 2)) {
+      geo.moveAlong(f, dir * sp * 0.8); geo.orbit(f, o, (f.foot.dir ?? 1) * sp * 0.6);  // 3D: salida en diagonal, no en línea recta
       continue;
     }
     if (foot === 'circle') {                     // orbita: en 1D casi no cambia la distancia
