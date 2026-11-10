@@ -53,7 +53,7 @@ if (params.get('floor') === 'flat') {
 
 // Pelea en vivo: la sim de Combate (KAGE a 60 Hz fijos) es dueña de root.pos/yaw; Animador solo viste el esqueleto.
 const spot = world ? findFightSpot(world, Math.floor(spawn[0] / BLOCK_M), Math.floor(spawn[1] / BLOCK_M), 6) : { origin: [0, 0, 0] };
-let fightSeed = SEED;
+let fightSeed = Number(params.get('fseed') ?? SEED);                // ?fseed= elige la pelea sin cambiar el mundo
 const live = createLiveFight({ seed: fightSeed, origin: spot.origin, ground: getBlock });
 const la = createLiveAnimation(live, { createAnimator3D: pairedAnimatorFactory(createAnimator3D), getBlock, blockM: BLOCK_M, seed: SEED, clipMap: MOVE_CLIP });
 bindCombatEvents(live, la.anims);                          // bloqueos (guard) -> animador
