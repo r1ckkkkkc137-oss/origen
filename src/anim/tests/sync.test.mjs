@@ -2,6 +2,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createAnimator3D } from '../animator3d.js';
+import { CLIPS } from '../clips.js';
+const JD = CLIPS.jab.duration, JI = CLIPS.jab.impactT;   // ronda 4: tiempos de la sim (6+3+10 ticks)
 
 const DT = 1 / 60, ROOT = { pos: [0, 0, 0], yaw: 0 };
 const mk = () => { const a = createAnimator3D({ seed: 3 }); for (let i = 0; i < 90; i++) a.update(DT, ROOT); return a; };
@@ -14,19 +16,19 @@ function run(a, seconds, each) {
   return evs;
 }
 
-test('play(name) sin opciones: compatible (1x, 0.46 s, bloquea mientras hay clip)', () => {
+test('play(name) sin opciones: compatible (1x, duración del clip, bloquea mientras hay clip)', () => {
   const a = mk(); assert.equal(a.play('jab'), true); assert.equal(a.play('jab'), false);
   const ev = run(a, 0.6); const end = ev.find((e) => e.type === 'clipEnd'); const imp = ev.find((e) => e.type === 'impact');
-  assert.ok(Math.abs(end.t - 0.46) < 0.03, `fin ${end.t}`); assert.ok(Math.abs(imp.t - 0.152) < 0.03, `impacto ${imp.t}`);
+  assert.ok(Math.abs(end.t - JD) < 0.03, `fin ${end.t}`); assert.ok(Math.abs(imp.t - JI) < 0.03, `impacto ${imp.t}`);
   assert.equal(a.play('nope'), false);
 });
 
 test('play(name,{speed}) y {duration}: escalan el clip entero', () => {
   let a = mk(); a.play('jab', { speed: 2 }); let ev = run(a, 0.5);
-  assert.ok(Math.abs(ev.find((e) => e.type === 'clipEnd').t - 0.23) < 0.03);
+  assert.ok(Math.abs(ev.find((e) => e.type === 'clipEnd').t - JD / 2) < 0.03);
   a = mk(); a.play('jab', { duration: 0.32 }); ev = run(a, 0.5);
   assert.ok(Math.abs(ev.find((e) => e.type === 'clipEnd').t - 0.32) < 0.03);
-  assert.ok(Math.abs(ev.find((e) => e.type === 'impact').t - 0.152 * 0.32 / 0.46) < 0.03);
+  assert.ok(Math.abs(ev.find((e) => e.type === 'impact').t - JI * 0.32 / JD) < 0.03);
 });
 
 test('play(name,{impactIn,duration}): el impacto cae donde la sim lo pide (fin del windup) y el clip termina con la sim', () => {
@@ -66,7 +68,7 @@ test('cancel(): fundido a la guardia sin salto mayor que la velocidad del propio
 
 test('play(...,{force:true}) interrumpe el clip activo con fundido; clipInfo da duración e impacto', () => {
   const a = mk(); a.play('jab'); run(a, 0.1); assert.equal(a.play('jab', { force: true }), true);
-  const i = a.clipInfo('jab'); assert.equal(i.duration, 0.46); assert.ok(i.impact01 > 0.2 && i.impact01 < 0.45); assert.ok(i.active01[0] < i.impact01 && i.active01[1] > i.impact01);
+  const i = a.clipInfo('jab'); assert.equal(i.duration, JD); assert.ok(i.impact01 > 0.2 && i.impact01 < 0.45); assert.ok(i.active01[0] < i.impact01 && i.active01[1] > i.impact01);
 });
 
 test('determinismo con clips sincronizados', () => {

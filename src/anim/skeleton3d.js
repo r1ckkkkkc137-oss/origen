@@ -100,7 +100,14 @@ export function solveRig(sk, rig) {
     const shoulder = add(clavP, qRot(qClav, [sx * D.clav, 0, 0]));
     set('shoulder' + s, clavP, shoulder, qClav);
     const wrist = a.rel ? add(shoulder, qRot(qFromYPR(yaw, 0, 0), a.rel), [0, 0, 0]) : a.wrist;
-    const ik = solveTwoBone(shoulder, wrist, D.upperArm, D.foreArm, qRot(chestYaw, a.pole, _t1), sk._ik['upperArm' + s], sk.diag['bendA' + s]);
+    // polo: el normal va en el marco del pecho; `poleFace` (marco de cara = yaw del cuerpo) lo reemplaza con peso `poleW` (gancho: polo = dirección
+    // deseada del húmero => el codo cae EXACTAMENTE ahí; con IK de 2 huesos el codo queda en el círculo y el polo elige el punto).
+    let pole = qRot(chestYaw, a.pole, _t1);
+    if (a.poleW > 1e-4 && a.poleFace) {
+      norm(pole, pole); const pf = norm(qRot(qFromYPR(yaw, 0, 0), a.poleFace, _t2), _t2), w = a.poleW > 1 ? 1 : a.poleW;
+      pole[0] += (pf[0] - pole[0]) * w; pole[1] += (pf[1] - pole[1]) * w; pole[2] += (pf[2] - pole[2]) * w;
+    }
+    const ik = solveTwoBone(shoulder, wrist, D.upperArm, D.foreArm, pole, sk._ik['upperArm' + s], sk.diag['bendA' + s]);
     sk.diag['bendA' + s] = ik.bend.slice();
     const dirU = norm(addScaled(ik.mid, shoulder, -1, [0, 0, 0])), dirF = norm(addScaled(ik.end, ik.mid, -1, [0, 0, 0]));
     const hintArm = [ik.bend[0], ik.bend[1], ik.bend[2]];   // dirección hacia la que dobla el codo (reposo: -Z)

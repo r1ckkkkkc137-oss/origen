@@ -95,68 +95,83 @@ export const ROCKED = {
   },
 };
 
-// ------------------------------------------------------------------ KO: se desploma hacia atrás y queda tendido boca arriba (hold).
+// ------------------------------------------------------------------ KO (ronda 4): PESO MUERTO, sin pelear con la IK.
+// En el instante del KO se cortan la guardia y el tono (las manos caen), las piernas pasan a FK (kw: 0 -> 1 en 0.12 s) y las RODILLAS se doblan
+// hacia adelante y abajo: la pelvis cae casi en caída libre (ease-in) hasta quedar sentada sobre los talones con las piernas PLEGADAS debajo;
+// después el tronco se vuelca de espaldas y queda tendido con las piernas plegadas (rodillas a la altura de la cadera, no hacia arriba). Hold.
 // Valores finales (deltas sobre la guardia) — getUp arranca desde ellos.
 export const KO_END = Object.freeze({
-  dy: -0.66, pz: -0.44, px: 0.0, hipPitch: -1.58, spPitch: 0.02, hdPitch: -0.20, hdRoll: 0.12, hdYaw: 0.1, hipYaw: 0.5, hipRoll: 0.04, spYaw: -0.1,
-  hLx: 0.48, hLy: -0.07, hLz: -0.08, hRx: -0.38, hRy: -0.05, hRz: 0.30, elbL: -0.2, elbR: 0.25,
-  fLz: 0.0, fLy: 0, fRx: -0.04, fRz: 0.30, fRy: 0.0, shrugL: -0.08, shrugR: -0.08, elvL: 1, elvR: 1,
+  dy: -0.67, pz: -0.12, px: 0.0, hipPitch: -1.45, spPitch: -0.04, hdPitch: -0.20, hdRoll: 0.14, hdYaw: 0.3, hipYaw: 0.25, hipRoll: 0.06, spYaw: -0.1,
+  hLx: 0.48, hLy: -0.07, hLz: -0.08, hRx: -0.38, hRy: -0.05, hRz: 0.30, elbL: -0.2, elbR: 0.25, shrugL: -0.08, shrugR: -0.08, elvL: 1, elvR: 1,
+  kw: 1, kHL: 0.20, kKL: 2.90, kAL: 0.20, kFL: 1.0, kHR: 0.12, kKR: 2.92, kAR: 0.28, kFR: 1.0,
 });
-const ko = (c, a) => a;   // (azúcar)
+const E0 = KO_END, LN = 'linear', EI = 'easeInQuad';
 export const KO = {
-  name: 'ko', duration: 1.15, impactT: 0.0, tip: 'L', hold: true, feet: true,
-  phases: [{ name: 'snap', t0: 0, t1: 0.12 }, { name: 'fall', t0: 0.12, t1: 0.75 }, { name: 'settle', t0: 0.75, t1: 1.15 }],
+  name: 'ko', duration: 1.20, impactT: 0.0, tip: 'L', hold: true, feet: true,
+  phases: [{ name: 'snap', t0: 0, t1: 0.08 }, { name: 'buckle', t0: 0.08, t1: 0.42 }, { name: 'topple', t0: 0.42, t1: 0.85 }, { name: 'settle', t0: 0.85, t1: 1.20 }],
   tracks: {
-    // 0-0.12 latigazo de cabeza (como hurt_head); 0.12-0.7 las rodillas ceden y cae de espaldas; rebota levemente al llegar
-    hdPitch: [K(0, 0), K(0.11, -0.65, Q), K(0.30, -0.45), K(0.75, -0.33), K(0.92, -0.12), K(1.15, KO_END.hdPitch)],
-    hdYaw:   [K(0, 0), K(0.11, -0.25, Q), K(0.5, -0.1), K(1.15, KO_END.hdYaw)],
-    hdRoll:  [K(0, 0), K(0.2, 0.1), K(1.15, KO_END.hdRoll)],
-    dy:      [K(0, 0), K(0.08, -0.04, Q), K(0.30, -0.28, 'easeInQuad'), K(0.55, -0.60, 'easeInQuad'), K(0.70, -0.67, 'easeOutQuad'), K(0.85, -0.65), K(1.15, KO_END.dy)],
-    pz:      [K(0, 0), K(0.1, -0.06, Q), K(0.35, -0.16), K(0.65, -0.52, 'easeInQuad'), K(0.80, -0.46), K(1.15, KO_END.pz)],
-    hipPitch:[K(0, 0), K(0.1, -0.1, Q), K(0.35, -0.12), K(0.55, -0.86, 'easeInQuad'), K(0.72, -1.66, 'easeInQuad'), K(0.86, -1.52, 'easeOutQuad'), K(1.15, KO_END.hipPitch)],
-    spPitch: [K(0, 0), K(0.1, -0.25, Q), K(0.45, -0.18), K(0.72, 0.04), K(1.15, KO_END.spPitch)],
-    hipYaw:  [K(0, 0), K(0.5, 0.15), K(1.15, KO_END.hipYaw)],
-    hipRoll: [K(0, 0), K(0.5, 0.06), K(1.15, KO_END.hipRoll)],
-    spYaw:   [K(0, 0), K(1.15, KO_END.spYaw)],
-    shrugL:  [K(0, 0), K(0.75, -0.04), K(1.15, KO_END.shrugL)], shrugR: [K(0, 0), K(0.75, -0.04), K(1.15, KO_END.shrugR)],
-    // brazos: la guardia se cae (cuelgan) y al llegar abren a los lados
-    hLy: [K(0, 0), K(0.2, -0.12, Q), K(0.5, -0.22), K(0.75, 0.0), K(1.15, KO_END.hLy)], hRy: [K(0, 0), K(0.2, -0.12, Q), K(0.5, -0.22), K(0.75, 0.0), K(1.15, KO_END.hRy)],
-    hLx: [K(0, 0), K(0.25, 0.30), K(0.8, 0.40), K(1.15, KO_END.hLx)], hRx: [K(0, 0), K(0.25, -0.10), K(0.8, -0.34), K(1.15, KO_END.hRx)],
-    hLz: [K(0, 0), K(0.8, -0.04), K(1.15, KO_END.hLz)], hRz: [K(0, 0), K(0.8, 0.10), K(1.15, KO_END.hRz)],
-    elbL: [K(0, 0), K(0.5, 0.1), K(1.15, KO_END.elbL)], elbR: [K(0, 0), K(0.5, 0.1), K(1.15, KO_END.elbR)],
-    elvL: [K(0, 0), K(0.20, 0.0), K(0.75, 1, 'linear'), K(1.15, 1)], elvR: [K(0, 0), K(0.20, 0.0), K(0.75, 1, 'linear'), K(1.15, 1)],
-    // pies: el de apoyo se arrastra levemente, el trasero se queda (rodilla doblada hacia arriba)
-    fLz: [K(0, 0), K(1.15, KO_END.fLz)], fRz: [K(0, 0), K(0.28, 0.0), K(0.58, 0.22), K(0.85, 0.30), K(1.15, KO_END.fRz)], fRx: [K(0, 0), K(1.15, KO_END.fRx)],
+    // piernas FK: arranca en la flexión de la guardia (cadera ≈0.56, rodilla ≈1.15 rad) y se pliega
+    kw:  [K(0, 0), K(0.12, 1, EI), K(1.2, 1, LN)],
+    kHL: [K(0, 0), K(0.02, 0.56, LN), K(0.12, 0.72), K(0.26, 1.10), K(0.42, 1.45), K(0.56, 1.15), K(0.72, 0.55), K(0.86, 0.22), K(1.0, 0.20), K(1.2, E0.kHL)],
+    kKL: [K(0, 0), K(0.02, 1.15, LN), K(0.12, 1.35), K(0.26, 2.00), K(0.42, 2.55), K(0.60, 2.70), K(0.86, 2.86), K(1.2, E0.kKL)],
+    kHR: [K(0, 0), K(0.02, 0.50, LN), K(0.12, 0.66), K(0.26, 1.02), K(0.42, 1.38), K(0.56, 1.08), K(0.72, 0.44), K(0.86, 0.12), K(1.0, 0.12), K(1.2, E0.kHR)],
+    kKR: [K(0, 0), K(0.02, 1.15, LN), K(0.12, 1.30), K(0.26, 1.95), K(0.42, 2.52), K(0.60, 2.70), K(0.86, 2.88), K(1.2, E0.kKR)],
+    kAL: [K(0, 0), K(0.42, 0.12), K(1.2, E0.kAL)], kAR: [K(0, 0), K(0.42, 0.18), K(1.2, E0.kAR)],
+    kFL: [K(0, 0), K(0.20, 0), K(0.42, 0.9), K(1.2, E0.kFL)], kFR: [K(0, 0), K(0.20, 0), K(0.42, 0.9), K(1.2, E0.kFR)],
+    // pelvis: cae como peso muerto (ease-in) hasta sentarse sobre los talones, mínimo rebote, y se va de espaldas
+    dy:      [K(0, 0), K(0.06, -0.02), K(0.42, -0.50, EI), K(0.50, -0.47), K(0.84, -0.68, EI), K(0.94, -0.65), K(1.2, E0.dy)],
+    pz:      [K(0, 0), K(0.42, 0.04), K(0.80, -0.14), K(1.2, E0.pz)],
+    hipPitch:[K(0, 0), K(0.26, 0.24), K(0.42, 0.20), K(0.50, 0.02), K(0.60, -0.45), K(0.82, -1.50, EI), K(0.94, -1.40), K(1.2, E0.hipPitch)],
+    spPitch: [K(0, 0), K(0.12, 0.15), K(0.42, 0.34), K(0.76, 0.02), K(1.2, E0.spPitch)],
+    hipYaw:  [K(0, 0), K(0.5, 0.10), K(1.2, E0.hipYaw)], hipRoll: [K(0, 0), K(0.5, 0.04), K(1.2, E0.hipRoll)], spYaw: [K(0, 0), K(1.2, E0.spYaw)],
+    // cabeza: latigazo del golpe, cae sobre el pecho (sin tono) y golpea el suelo al volcar
+    hdPitch: [K(0, 0), K(0.06, -0.35, Q), K(0.26, 0.35), K(0.56, 0.32), K(0.70, 0.10), K(0.88, -0.26), K(1.02, -0.15), K(1.2, E0.hdPitch)],
+    hdYaw:   [K(0, 0), K(0.06, -0.20, Q), K(0.5, 0.1), K(1.2, E0.hdYaw)],
+    hdRoll:  [K(0, 0), K(0.3, 0.12), K(1.2, E0.hdRoll)],
+    shrugL:  [K(0, 0), K(0.10, -0.10, Q), K(1.2, E0.shrugL)], shrugR: [K(0, 0), K(0.10, -0.10, Q), K(1.2, E0.shrugR)],
+    // brazos: el tono se corta YA (las manos caen en 0.10 s) y al volcar quedan abiertos a los lados
+    hLy: [K(0, 0), K(0.15, -0.26, Q), K(0.42, -0.34), K(0.64, -0.40), K(0.92, -0.02), K(1.2, E0.hLy)], hRy: [K(0, 0), K(0.15, -0.26, Q), K(0.42, -0.34), K(0.64, -0.40), K(0.92, -0.02), K(1.2, E0.hRy)],
+    hLx: [K(0, 0), K(0.15, 0.06, Q), K(0.42, 0.10), K(0.66, 0.14), K(0.92, 0.42), K(1.2, E0.hLx)], hRx: [K(0, 0), K(0.15, -0.04, Q), K(0.42, -0.08), K(0.66, -0.12), K(0.92, -0.34), K(1.2, E0.hRx)],
+    hLz: [K(0, 0), K(0.15, -0.08, Q), K(0.42, -0.06), K(0.85, -0.06), K(1.2, E0.hLz)], hRz: [K(0, 0), K(0.15, -0.08, Q), K(0.42, -0.02), K(0.85, 0.20), K(1.2, E0.hRz)],
+    elbL: [K(0, 0), K(0.1, 0.1), K(1.2, E0.elbL)], elbR: [K(0, 0), K(0.1, 0.1), K(1.2, E0.elbR)],
+    elvL: [K(0, 0), K(0.30, 0.2), K(0.95, 1, LN), K(1.2, 1)], elvR: [K(0, 0), K(0.30, 0.2), K(0.95, 1, LN), K(1.2, 1)],
   },
 };
 
-// ------------------------------------------------------------------ GET UP: sienta el torso, recoge el cuerpo sobre los pies (cuclillas) y se para en guardia.
-// Los pies quedan clavados donde estaban (en el suelo); la pelvis viaja sobre ellos. Termina en 0 => guardia.
+// ------------------------------------------------------------------ GET UP: del tendido con piernas plegadas se sienta sobre los talones (FK),
+// se levanta a cuclillas mientras las piernas vuelven a la IK sobre los pies plantados (kw 1 -> 0) y se para en guardia. Termina en 0 => guardia.
 const E = KO_END;
 const GU = (c) => E[c] ?? 0;
 export const GETUP = {
   name: 'getUp', duration: 1.60, impactT: 0.0, tip: 'L', from: 'ko', feet: true,
-  phases: [{ name: 'sit', t0: 0, t1: 0.55 }, { name: 'crouch', t0: 0.55, t1: 1.05 }, { name: 'stand', t0: 1.05, t1: 1.6 }],
+  phases: [{ name: 'sit', t0: 0, t1: 0.55 }, { name: 'crouch', t0: 0.55, t1: 1.10 }, { name: 'stand', t0: 1.10, t1: 1.6 }],
   tracks: {
-    dy:      [K(0, GU('dy')), K(0.15, GU('dy')), K(0.50, -0.60), K(0.85, -0.26), K(1.15, -0.12), K(1.6, 0)],
-    pz:      [K(0, GU('pz')), K(0.15, GU('pz')), K(0.50, -0.34), K(0.85, -0.04), K(1.15, 0.0), K(1.6, 0)],
-    hipPitch:[K(0, GU('hipPitch')), K(0.15, GU('hipPitch')), K(0.55, -0.42), K(0.85, 0.38), K(1.15, 0.26), K(1.6, 0)],
-    spPitch: [K(0, GU('spPitch')), K(0.15, GU('spPitch')), K(0.55, -0.10), K(0.85, 0.30), K(1.15, 0.20), K(1.6, 0)],
+    kw:  [K(0, 1), K(0.70, 1, LN), K(1.10, 0), K(1.6, 0)],
+    kHL: [K(0, GU('kHL')), K(0.15, GU('kHL')), K(0.55, 1.45), K(0.85, 1.25), K(1.10, 0.56), K(1.6, 0)],
+    kHR: [K(0, GU('kHR')), K(0.15, GU('kHR')), K(0.55, 1.40), K(0.85, 1.20), K(1.10, 0.50), K(1.6, 0)],
+    kKL: [K(0, GU('kKL')), K(0.15, GU('kKL')), K(0.55, 2.55), K(0.85, 2.05), K(1.10, 1.15), K(1.6, 0)],
+    kKR: [K(0, GU('kKR')), K(0.15, GU('kKR')), K(0.55, 2.52), K(0.85, 2.00), K(1.10, 1.15), K(1.6, 0)],
+    kAL: [K(0, GU('kAL')), K(0.55, 0.12), K(1.10, 0), K(1.6, 0)], kAR: [K(0, GU('kAR')), K(0.55, 0.16), K(1.10, 0), K(1.6, 0)],
+    kFL: [K(0, GU('kFL')), K(0.55, 0.9), K(0.85, 0.4), K(1.05, 0), K(1.6, 0)], kFR: [K(0, GU('kFR')), K(0.55, 0.9), K(0.85, 0.4), K(1.05, 0), K(1.6, 0)],
+    dy:      [K(0, GU('dy')), K(0.10, GU('dy')), K(0.60, -0.50), K(0.85, -0.30), K(1.15, -0.12), K(1.6, 0)],
+    pz:      [K(0, GU('pz')), K(0.15, GU('pz')), K(0.55, 0.04), K(0.85, 0.02), K(1.15, 0.0), K(1.6, 0)],
+    hipPitch:[K(0, GU('hipPitch')), K(0.10, GU('hipPitch')), K(0.60, 0.22), K(0.85, 0.40), K(1.15, 0.26), K(1.6, 0)],
+    spPitch: [K(0, GU('spPitch')), K(0.10, GU('spPitch')), K(0.60, 0.20), K(0.85, 0.30), K(1.15, 0.20), K(1.6, 0)],
     hdPitch: [K(0, GU('hdPitch')), K(0.15, -0.05), K(0.55, 0.05), K(0.85, 0.0), K(1.6, 0)],
     hdRoll:  [K(0, GU('hdRoll')), K(0.55, 0.03), K(1.6, 0)],
     hdYaw:   [K(0, GU('hdYaw')), K(0.55, 0.2), K(1.6, 0)],
     hipYaw:  [K(0, GU('hipYaw')), K(0.15, GU('hipYaw')), K(0.60, 0.1), K(1.0, 0.0), K(1.6, 0)],
     hipRoll: [K(0, GU('hipRoll')), K(1.6, 0)], spYaw: [K(0, GU('spYaw')), K(0.6, 0.0), K(1.6, 0)],
     shrugL:  [K(0, GU('shrugL')), K(1.6, 0)], shrugR: [K(0, GU('shrugR')), K(1.6, 0)],
-    // manos: se apoyan adelante para empujar (suelo), luego suben a la guardia
-    hLx: [K(0, GU('hLx')), K(0.15, GU('hLx')), K(0.5, 0.20), K(0.85, 0.10), K(1.2, 0.02), K(1.6, 0)], hRx: [K(0, GU('hRx')), K(0.15, GU('hRx')), K(0.5, -0.20), K(0.85, -0.05), K(1.2, 0.0), K(1.6, 0)],
-    hLy: [K(0, GU('hLy')), K(0.15, GU('hLy')), K(0.5, -0.30), K(0.85, -0.25), K(1.2, -0.04), K(1.6, 0)], hRy: [K(0, GU('hRy')), K(0.15, GU('hRy')), K(0.5, -0.30), K(0.85, -0.25), K(1.2, -0.04), K(1.6, 0)],
-    hLz: [K(0, GU('hLz')), K(0.15, GU('hLz')), K(0.5, 0.20), K(0.85, 0.08), K(1.2, 0.0), K(1.6, 0)], hRz: [K(0, GU('hRz')), K(0.15, GU('hRz')), K(0.5, 0.18), K(0.85, 0.08), K(1.2, 0.0), K(1.6, 0)],
+    // manos: se apoyan adelante para empujar, luego suben a la guardia
+    hLx: [K(0, GU('hLx')), K(0.15, GU('hLx')), K(0.62, 0.20), K(0.85, 0.10), K(1.2, 0.02), K(1.6, 0)], hRx: [K(0, GU('hRx')), K(0.15, GU('hRx')), K(0.62, -0.20), K(0.85, -0.05), K(1.2, 0.0), K(1.6, 0)],
+    hLy: [K(0, GU('hLy')), K(0.15, GU('hLy')), K(0.62, -0.24), K(0.85, -0.22), K(1.2, -0.04), K(1.6, 0)], hRy: [K(0, GU('hRy')), K(0.15, GU('hRy')), K(0.62, -0.24), K(0.85, -0.22), K(1.2, -0.04), K(1.6, 0)],
+    hLz: [K(0, GU('hLz')), K(0.15, GU('hLz')), K(0.62, 0.20), K(0.85, 0.08), K(1.2, 0.0), K(1.6, 0)], hRz: [K(0, GU('hRz')), K(0.15, GU('hRz')), K(0.62, 0.18), K(0.85, 0.08), K(1.2, 0.0), K(1.6, 0)],
     elvL: [K(0, 1), K(0.4, 1), K(0.9, 0.2), K(1.6, 0)], elvR: [K(0, 1), K(0.4, 1), K(0.9, 0.2), K(1.6, 0)],
     elbL: [K(0, GU('elbL')), K(0.5, 0.1), K(1.6, 0)], elbR: [K(0, GU('elbR')), K(0.5, 0.1), K(1.6, 0)],
-    fLz: [K(0, GU('fLz')), K(1.6, 0)], fRz: [K(0, GU('fRz')), K(1.6, 0)], fRx: [K(0, GU('fRx')), K(1.6, 0)],
   },
 };
+for (const c in KO_END) if (!GETUP.tracks[c]) GETUP.tracks[c] = [K(0, GU(c)), K(0.15, GU(c)), K(1.3, 0), K(1.6, 0)];
 
 export const REACTIONS = { hurt_head: HURT_HEAD, hurt_body: HURT_BODY, hurt_legs: HURT_LEGS, rocked: ROCKED, ko: KO, getUp: GETUP };
 Object.assign(CLIPS, REACTIONS);
