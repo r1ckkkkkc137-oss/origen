@@ -15,7 +15,7 @@ import { GUARD, CHANNELS, makeChannels, makeIdleParams, idleLayer, walkLayer, ad
 import { ZONE_CLIP } from './reactions.js';
 import { planClimb, buildClimb, sampleClimb, wallToXZ, xzToWall, climbPathAt, CLIMB_T } from './climb.js';
 import { createRng } from '../shared/rng.js';
-import { clamp, smoothstep, smin, spring, springCritical, lerp, qRot } from './math3.js';
+import { clamp, smoothstep, smin, spring, springCritical, lerp, qRot, qFromYPR } from './math3.js';
 
 export const BLOCK_M_DEFAULT = 0.5;
 export const yawToDir = (yaw, out = [0, 0, 0]) => { out[0] = Math.cos(yaw); out[1] = 0; out[2] = -Math.sin(yaw); return out; };
@@ -25,6 +25,30 @@ const rootYawW = (y) => y;
 const smooth01 = (x) => { x = x < 0 ? 0 : x > 1 ? 1 : x; return x * x * (3 - 2 * x); };
 const BALL = 0.16;                                                                         // bola del pie respecto del tobillo (m)
 const HIP_GUARD = 0.72, HIP_WALK = 0.79;                                                  // altura cadera sobre tobillo
+
+// ---- piernas por FK (ronda 4, KO "peso muerto"): ángulos de cadera/rodilla en el marco de la PELVIS en vez de IK a los pies plantados.
+// Se mezcla con kw: tobillo = lerp(tobillo IK, tobillo FK), polo = dirección FK de la rodilla (la IK reproduce la rodilla FK exacta con kw = 1).
+const _fq = [0, 0, 0, 1];
+function fkLegs(r, c, yaw, kw, ground) {
+  const qPel = qFromYPR(yaw + c.hipYaw, c.hipPitch, c.hipRoll, _fq), P = r.pelvisPos;
+  for (const [s, sx] of [['L', 1], ['R', -1]]) {
+    const L = r.legs[s], kH = c['kH' + s], kK = c['kK' + s], kA = c['kA' + s];
+    const hip = qRot(qPel, [sx * DIM.hipHalf, 0, 0]); hip[0] += P[0]; hip[1] += P[1]; hip[2] += P[2];
+    const ca = Math.cos(kA), sa = sx * Math.sin(kA);
+    const th = qRot(qPel, [sa, -ca * Math.cos(kH), ca * Math.sin(kH)]), sh = qRot(qPel, [sa, -ca * Math.cos(kH - kK), ca * Math.sin(kH - kK)]);
+    const knee = [hip[0] + th[0] * DIM.thigh, hip[1] + th[1] * DIM.thigh, hip[2] + th[2] * DIM.thigh];
+    const ank = [knee[0] + sh[0] * DIM.shin, knee[1] + sh[1] * DIM.shin, knee[2] + sh[2] * DIM.shin];
+    for (let k = 0; k < 3; k++) { L.ankle[k] += (ank[k] - L.ankle[k]) * kw; L.pole[k] += (th[k] * 1.5 - L.pole[k]) * kw; }
+    // pie: kF = 0 plano en el suelo (como plantado), kF = 1 apuntando atrás a lo largo de la tibia, apoyado sobre el empeine (+0.35 rad hacia arriba).
+    // Se gira por ARRIBA (punta hacia arriba, cabeceo 0 -> +π): la punta nunca entra en el suelo al pasar; y se limita a no bajar del suelo.
+    const fw = Math.sin(yaw + c.hipYaw) * sh[0] + Math.cos(yaw + c.hipYaw) * sh[2];
+    let a = Math.atan2(sh[1], fw); if (a > Math.PI / 2) a -= 2 * Math.PI;
+    let pf = (a - 0.35 + 2 * Math.PI) * c['kF' + s];
+    const room = (L.ankle[1] - ground - 0.01) / DIM.foot;                  // cabeceo mínimo para que la punta quede sobre el suelo
+    if (room < 1 && Math.sin(pf) < -room) pf = Math.cos(pf) >= 0 ? -Math.asin(Math.max(-1, room)) : Math.PI + Math.asin(Math.max(-1, room));
+    L.footPitch += (pf - L.footPitch) * kw; L.footYaw += wrapPi(yaw + c.hipYaw - L.footYaw) * kw;
+  }
+}
 
 export function createAnimator3D(opts = {}) {
   const blockM = opts.blockM || BLOCK_M_DEFAULT;
@@ -250,7 +274,9 @@ export function createAnimator3D(opts = {}) {
       qx = px + (xz[0] - px) * w; qz = pz + (xz[1] - pz) * w; py += (CLm.y0 + CS.pel[1] - py) * w;
     }
     const hips = [[qx + DIM.hipHalf * cf, qz - DIM.hipHalf * sf], [qx - DIM.hipHalf * cf, qz + DIM.hipHalf * sf]];
+    const pyFree = py, kw = clamp(c.kw, 0, 1);
     for (let i = 0; i < 2; i++) py = smin(py, capHeightForFoot(hips[i], ankles[i]), 0.06);
+    if (kw > 1e-4) py += (pyFree - py) * kw;                           // piernas por FK (KO): los pies ya no sostienen la pelvis
     A.lastPelvis[0] = qx; A.lastPelvis[1] = py; A.lastPelvis[2] = qz;
     A.pelvisY = py;
     // ---- rig
@@ -277,6 +303,7 @@ export function createAnimator3D(opts = {}) {
         R: { ankle: ankles[1], pole: legPole(eff[1], 1), footYaw: eff[1].yaw, footPitch: eff[1].pitch },
       },
     };
+    if (kw > 1e-4) fkLegs(r, c, yaw, kw, Math.min(eff[0].sole, eff[1].sole));
     solveRig(rig, r);
     if (CS && CS.wH > 1e-3) {                                          // manos ancladas al borde (2.ª pasada: el blend parte de la muñeca normal)
       for (const [s, row] of [['L', CS.hL], ['R', CS.hR]]) {

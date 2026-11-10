@@ -16,7 +16,7 @@ export const CHANNELS = [
   // ronda 4: polo del codo en marco de cara (dirección deseada del húmero) con peso (0 = polo normal). Lo usa el gancho.
   'pLx', 'pLy', 'pLz', 'pLw', 'pRx', 'pRy', 'pRz', 'pRw',
   // ronda 4: piernas por FK (KO peso muerto): kw = peso FK (0 = IK a los pies plantados), kH* = flexión de cadera (rad, + = muslo adelante),
-  // kK* = flexión de rodilla (rad, + = tibia hacia atrás), kA* = apertura del muslo (rad, + = hacia afuera), kF* = cabeceo del pie vs tibia.
+  // kK* = flexión de rodilla (rad, + = tibia hacia atrás), kA* = apertura del muslo (rad, + = hacia afuera), kF* = pie 0 = plano en el suelo .. 1 = alineado con la tibia (empeine).
   'kw', 'kHL', 'kKL', 'kAL', 'kFL', 'kHR', 'kKR', 'kAR', 'kFR',
 ];
 
