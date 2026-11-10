@@ -70,10 +70,26 @@ const CAM = ['fight', 'p1', 'p3', 'free'];
 let camMode = params.get('cam') ?? 'p3';                 // por defecto juegas tú; ?cam=fight para mirar la pelea
 const rigMode = (m) => (m === 'p1' ? 'first' : m === 'free' ? 'free' : 'third');
 const rig = createCameraRig(camera, input, { mode: rigMode(camMode), pos: [p0[0], groundY + 2.2, p0[2] + 5], speed: 5,
-  cycle: [rigMode(camMode)] });
+  cycle: [rigMode(camMode)],
+  // 3.ª persona: la cámara no atraviesa bloques (se acerca al target si hay algo detrás)
+  collide: (t, d, max) => { if (!world) return max; const h = world.raycastM([t.x, t.y, t.z], [d.x, d.y, d.z], max); return h ? Math.max(0.3, h.dist - 0.15) : max; } });
 let cWas = false;
 // Jugador: física de Mundo (AABB contra vóxeles, gravedad, escalón de 1 bloque), en metros; pies en (x,y,z).
-const player = createPlayerBody({ x: spawn[0] - 2, y: groundY + 1, z: spawn[1] + 2 });
+// Spawn del jugador: columna despejada (3x3 con 5 bloques de aire encima: nada de nacer dentro de un árbol) cerca de la pelea.
+let ps = [spawn[0] - 2, groundY + 1, spawn[1] + 2];
+if (world) {
+  const bx0 = Math.floor(ps[0] / BLOCK_M), bz0 = Math.floor(ps[2] / BLOCK_M);
+  const clear = (x, z) => { const y = world.surfaceY(x, z); if (y < 0 || !world.solidAt(x, y, z)) return -1;
+    for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) for (let dy = 1; dy <= 5; dy++) if (world.getBlock(x + dx, y + dy, z + dz) !== 0) return -1;
+    return y; };
+  find: for (let r = 0; r < 24; r++) for (let x = -r; x <= r; x++) for (let z = -r; z <= r; z++) {
+    if (Math.max(Math.abs(x), Math.abs(z)) !== r) continue;
+    const y = clear(bx0 + x, bz0 + z); if (y >= 0) { ps = [(bx0 + x + 0.5) * BLOCK_M, (y + 1) * BLOCK_M, (bz0 + z + 0.5) * BLOCK_M]; break find; }
+  }
+}
+const player = createPlayerBody({ x: ps[0], y: ps[1], z: ps[2] });
+// mirar hacia la pelea al nacer
+rig.setLook(Math.atan2(-(p0[0] - ps[0]), -(p0[2] - ps[2])), -0.25);
 const playerMesh = new THREE.Mesh(new THREE.BoxGeometry(0.6, 1.8, 0.6), new THREE.MeshLambertMaterial({ color: 0x5c6b4a })); // placeholder hasta el avatar
 playerMesh.geometry.translate(0, 0.9, 0); scene.add(playerMesh);
 const eye = new THREE.Vector3();

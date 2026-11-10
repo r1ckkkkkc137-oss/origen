@@ -7,7 +7,8 @@ export function createCameraRig(camera, input, opts = {}) {
   const pos = new THREE.Vector3(...(opts.pos ?? [0, 3, 6]));
   const target = new THREE.Vector3();
   const fwd = new THREE.Vector3(), right = new THREE.Vector3();
-  let cWas = false;
+  let cWas = false, curDist = dist;
+  const back = new THREE.Vector3();
   const cycle = opts.cycle ?? ['free', 'third'];
   return {
     get mode() { return mode; },
@@ -34,7 +35,10 @@ export function createCameraRig(camera, input, opts = {}) {
         camera.position.copy(target); pos.copy(target);
         camera.lookAt(target.x + fwd.x, target.y + fwd.y, target.z + fwd.z);
       } else {
-        camera.position.copy(target).addScaledVector(fwd, -dist);
+        back.copy(fwd).negate();
+        const want = opts.collide ? opts.collide(target, back, dist) : dist;
+        curDist = want < curDist ? want : Math.min(want, curDist + dt * 6);   // entra de golpe, sale suave
+        camera.position.copy(target).addScaledVector(fwd, -curDist);
         camera.lookAt(target);
         pos.copy(camera.position);
       }
