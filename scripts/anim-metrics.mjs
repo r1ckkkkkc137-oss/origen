@@ -342,6 +342,13 @@ export function kickMetrics(name, o = {}) {
 }
 // bloqueo en duelo: distancia superficie-punta al miembro de guardia elegido (blkGap) mínima en la ventana impacto..+hit-stop+1 frame,
 // clips del defensor (sin hurt_*), y si el golpe NO bloqueado atraviesa los guantes/antebrazos (guardSeg).
+// r8: distancia superficie-superficie entre dos cápsulas (muestreo 25x25)
+export function capGap(A, B) {
+  let best = Infinity;
+  for (let i = 0; i <= 24; i++) { const u = i / 24, p = [0, 1, 2].map((k) => A.a[k] + (A.b[k] - A.a[k]) * u);
+    for (let j = 0; j <= 24; j++) { const v = j / 24, q = [0, 1, 2].map((k) => B.a[k] + (B.b[k] - B.a[k]) * v); const d = Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]) - A.r - B.r; if (d < best) best = d; } }
+  return best;
+}
 export function blockMetrics(name, block = null, o = {}) {
   const c = CLIPS[name], I3 = (w) => [-w[2], w[1], w[0]], kick = c.tip === 'kickR', rt = kick ? CONTACT.shinTip : CONTACT.fist;
   const m = { name, block, blk: -1, blkGapMin: Infinity, guardSeg: 0, bodyPenMax: 0, defClips: new Set(), events: [] };
@@ -354,7 +361,12 @@ export function blockMetrics(name, block = null, o = {}) {
     m.bodyPenMax = Math.max(m.bodyPenMax, penetration(cols.slice(0, 8), f, rt).pen);
     const O = I3(kick ? P.kneeR : P['elbow' + c.tip]), G = cols.slice(8); m.guardSeg = Math.max(m.guardSeg, segPenetration(G, O, f, rt));
     if (kick) m.guardSeg = Math.max(m.guardSeg, segPenetration(G, f, I3(P.footR), rt), segPenetration(G, I3(P.hipR), I3(P.kneeR), 0.06));   // toda la pierna: muslo, espinilla y empeine
-    if (blk >= 0 && T >= c.impactT - 1e-9 && T <= c.impactT + HITSTOP + 1 / 60 + 1e-9) m.blkGapMin = Math.min(m.blkGapMin, sdist(cols[blk], f) - rt);
+    if (m.tI == null && T >= c.impactT - 1e-9) m.tI = t;   // r8: ventana en tiempo de pared (la patada bloqueada rebota: el clip va hacia atrás)
+    if (blk >= 0 && m.tI != null && t <= m.tI + HITSTOP + 1 / 60 + 1e-9) {
+      // r8: chequeo = espinilla contra espinilla: distancia superficie-superficie entre la espinilla R del que patea y la que chequea (no la punta)
+      const g = cols[blk].limb === 'shin' ? capGap(buildColliders(sa)[5], cols[blk]) : sdist(cols[blk], f) - rt;
+      m.blkGapMin = Math.min(m.blkGapMin, g); m.blkGapLo = Math.min(m.blkGapLo ?? Infinity, g);
+    }
   } });
   m.defClips = [...m.defClips];
   return m;
