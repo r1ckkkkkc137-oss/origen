@@ -29,6 +29,13 @@ export const HURT_HEAD = {
   },
 };
 
+// ronda 6: con contacto real el primer frame del latigazo (ease-out desde 0) movía el codo/cabeza del golpeado ~0,14–0,16 m (>0,13 m/frame
+// a power 1). El primer tramo pasa a lineal: misma llegada al pico (0,07–0,09 s), la mitad de velocidad máxima.
+for (const ch in HURT_HEAD.tracks) {
+  const tr = HURT_HEAD.tracks[ch];
+  if (tr.length > 1 && tr[0][0] === 0 && tr[1][2] === Q) tr[1] = K(tr[1][0], tr[1][1], 'linear');
+}
+
 // ------------------------------------------------------------------ golpe al CUERPO: se dobla sobre el estómago, codos abajo, aire fuera
 export const HURT_BODY = {
   name: 'hurt_body', duration: 0.64, impactT: 0.0, tip: 'L', phases: ph(0.64, 0.09, 0.36), feet: true,

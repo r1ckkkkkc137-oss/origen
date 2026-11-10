@@ -18,7 +18,8 @@ test('gancho: alcance corto frente al cuerpo (pelvis→puño dentro de la ventan
   // ronda 4: el húmero va abierto al costado (Rick), así que el puño pega a ~0,2 m al costado de la línea de la raíz (cara lateral de la cabeza del rival); ver round4
   assert.ok(Math.abs(m.latImpact) < 0.30, `desvío lateral respecto del centro de los hombros ${m.latImpact.toFixed(2)} m`);
   const r = pelvisReach('hook');
-  assert.ok(r.ok, `pelvis→puño ${r.horiz.toFixed(2)} m vs ideal ${r.ideal}±${r.tol}`);
+  // ronda 6: REACH_IDEAL.hook pasó a 0,86 desde la RAÍZ (entra la pelvis); desde la pelvis el brazo sigue corto: ventana r3 local
+  assert.ok(Math.abs(r.horiz - 0.70) <= 0.08, `pelvis→puño ${r.horiz.toFixed(2)} m vs 0,70±0,08`);
   assert.ok(m.hipRot >= 25, `rotación de cadera ${m.hipRot.toFixed(0)}°`);
   assert.ok(m.tHip < m.tSh && m.tSh < m.tFistPeak, 'cadena cinética cadera → hombros → puño');
   assert.ok(m.popMax < 0.2, `salto máx del gancho ${m.popMax.toFixed(3)} m/frame`);

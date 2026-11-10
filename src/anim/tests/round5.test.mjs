@@ -48,7 +48,7 @@ test('gancho: >= 10 m/s a 60 Hz en el impacto sin perder la L; la velocidad sale
   assert.ok(v.atImpact60 >= 10 && Math.abs(v.peakClipT60 - HOOK.impactT) < 1 / 60 + 1e-6, `gancho ${v.atImpact60.toFixed(2)} m/s al impacto (pico ${v.peak60.toFixed(2)} a ${v.peakClipT60})`);
   const m = hookArmMetrics();
   assert.ok(m.abduction >= 80 && m.humerusVsFacing >= 60 && Math.abs(m.elbow - 90) <= 6, `abd ${m.abduction.toFixed(1)} húmero-rival ${m.humerusVsFacing.toFixed(1)} codo ${m.elbow.toFixed(1)}`);
-  const r = rootReach('hook'); assert.ok(Math.abs(r.rootHoriz - 0.70) <= 0.08, `alcance ${r.rootHoriz.toFixed(3)}`);
+  const r = rootReach('hook'); assert.ok(r.rootHoriz >= 0.62, `alcance ${r.rootHoriz.toFixed(3)}`);   // ronda 6: 0,85–0,88 con la entrada (round6.test.mjs)
   // el brazo es el de r4 (mismo snap de hombro y codo); lo que creció es el giro de cadera y hombros
   assert.equal(HOOK_A0, 110 * Math.PI / 180); assert.equal(HOOK_A1, 97 * Math.PI / 180); assert.equal(HOOK_E, 90 * Math.PI / 180); assert.equal(HOOK.lock.snap0, 0.13);
   const h = hookMetrics('hook', 'L');

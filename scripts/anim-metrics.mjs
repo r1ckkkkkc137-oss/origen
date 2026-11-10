@@ -1,5 +1,6 @@
 // Métricas de animación (ronda 3): hook, guardia, reacciones, KO, climb. Uso: node scripts/anim-metrics.mjs [hook|guard|hurt|ko|climb|all]
-import { simulate, FOOTWORK_SEGS, HURT_FORCE } from '../src/anim/scenarios.js';
+import { simulate, simulateDuel, DUEL_DIST, FOOTWORK_SEGS, HURT_FORCE } from '../src/anim/scenarios.js';
+import { buildColliders, segPenetration, penetration, CONTACT } from '../src/anim/contact.js';
 import { CLIPS } from '../src/anim/clips.js';
 
 const D = 180 / Math.PI;
@@ -111,7 +112,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 
 // Alcance contra la tabla de Combate (src/combat/data/reach3d.js): punta del puño/espinilla en impactT respecto de la PELVIS (horizontal y 3D)
 // ronda 5 (Rick): jab y cross a 1,0±0,05 pelvis-pelvis (Combate los lanza ~0,95 m y separa >= 0,80 m fuera del clinch)
-export const REACH_IDEAL = { jab: [1.00, 0.05], cross: [1.00, 0.05], hook: [0.70, 0.08], lowkick: [1.00, 0.07] };
+export const REACH_IDEAL = { jab: [1.00, 0.05], cross: [1.00, 0.05], hook: [0.86, 0.06], lowkick: [1.00, 0.07] };
 export function pelvisReach(name) {
   const c = CLIPS[name], R = rec(name, 240); const r = R.find((x) => x.t >= T0 + c.impactT - 1e-9);
   const v = sub(r.fist, r.P.pelvis); const h = Math.hypot(v[0], v[2]); const fw = [Math.cos(r.vis), 0, -Math.sin(r.vis)];
@@ -229,3 +230,56 @@ export function koTiltMetrics() {
   return { kneelT: R[i0].t - 1.0, tiltAtKneel: tl[0], tiltMinAfterKneel: tl[k], tiltMinT: w[k].t - 1.0, backAtKneel: -dot(v0, f), sideAtKneel: dot(v0, l), tiltMaxStanding: Math.max(...R.slice(0, i0).map(tilt)), minJointY: minY, minJoint: minJ };
 }
 if (import.meta.url === `file://${process.argv[1]}` && (which === 'all' || which === 'r5' || which === 'ko')) console.log('KO_TILT', fm(koTiltMetrics()));
+
+// ---- ronda 6: duelo (contacto). Profundidad "a través" = distancia de la punta al primer contacto en el rayo hombro/cadera->punta.
+const I3 = (w) => [-w[2], w[1], w[0]];
+function duelRec(name, o) {
+  const R = [];
+  simulateDuel(name, { ...o, onFrame: (t, sa, sb, a, b) => {
+    const cols = buildColliders(sb), kick = name === 'lowkick', s = kick ? 'R' : CLIPS[name].tip;
+    const O = I3(kick ? sa.pose.hipR : sa.pose['shoulder' + s]), T = I3(a.strike.fist), rt = kick ? CONTACT.shinTip : CONTACT.fist;
+    const M = I3(kick ? sa.pose.kneeR : sa.pose['elbow' + s]);
+    const tun = Math.max(segPenetration(cols, O, M, rt), segPenetration(cols, M, T, rt));   // por segmentos: hombro->codo->nudillos / cadera->rodilla->espinilla
+    R.push({ t, ct: a.clip ? a.clipT : -1, cn: a.clip ? a.clipMode.name : '', seg: tun, pen: Math.max(0, penetration(cols, T, rt).pen),
+      P: Object.fromEntries(Object.entries(sa.pose).map(([k, v]) => [k, v.slice()])), PB: Object.fromEntries(Object.entries(sb.pose).map(([k, v]) => [k, v.slice()])),
+      fist: a.strike.fist.slice(), root: sa.root.pos.slice(), rootB: sb.root.pos.slice(), vis: sa.visualYaw, ev: a.events.filter((e) => e.type === 'contact').map((e) => ({ ...e })), ek: a.clipMode.entryK ?? 0, corr: Math.hypot(...a.contact.d) });
+  } });
+  return R;
+}
+const maxJump = (R, key, skip = []) => { let m = 0, who = ''; for (let i = 1; i < R.length; i++) for (const k in R[i][key]) { if (skip.includes(k)) continue; const d = len(sub(R[i][key][k], R[i - 1][key][k])); if (d > m) { m = d; who = k; } } return { m, who }; };
+export function duelMetrics(name, o = {}) {
+  const c = CLIPS[name], dist = o.dist ?? DUEL_DIST[name];
+  const B = duelRec(name, { ...o, dist, link: false }), L = duelRec(name, { ...o, dist, link: true });
+  const win = (R) => R.filter((r) => r.cn === name);
+  const iImp = (R) => R.findIndex((r) => r.cn === name && r.ct >= c.impactT - 1e-9);
+  const ib = iImp(B), il = iImp(L), s = name === 'lowkick' ? 'R' : c.tip;
+  let corrJump = 0, corrWho = '';
+  for (let i = 1; i < L.length; i++) for (const k in L[i].P) { const d = len(sub(sub(L[i].P[k], B[i].P[k]), sub(L[i - 1].P[k], B[i - 1].P[k]))); if (d > corrJump) { corrJump = d; corrWho = k; } }
+  const strikeJ = name === 'lowkick' ? ['kneeR', 'footR'] : ['hand' + s, 'elbow' + s];
+  const ev = L.flatMap((r) => r.ev)[0] || null, iev = ev ? L.findIndex((r) => r.ev.length) : -1;
+  const hz = 60, sp = (R, i) => len(sub(R[i].fist, R[i - 1].fist)) * hz;
+  const rr = (r) => Math.hypot(r.rootB[0] - r.root[0], r.rootB[2] - r.root[2]);
+  const pp = (r) => Math.hypot(r.PB.pelvis[0] - r.P.pelvis[0], r.PB.pelvis[2] - r.P.pelvis[2]);
+  const out = {
+    dist, before: { segImpact: B[ib].seg, segMax: Math.max(...win(B).map((r) => r.seg)), penImpact: B[ib].pen },
+    after: { segImpact: L[il].seg, segMax: Math.max(...win(L).map((r) => r.seg)), penImpact: L[il].pen, penMax: Math.max(...win(L).map((r) => r.pen)), corrImpact: L[il].corr, corrMax: Math.max(...win(L).map((r) => r.corr)) },
+    contact: ev ? { zone: ev.zone, clipT: ev.clipT, early: ev.early, rootDist: rr(L[iev]), pelvisDist: pp(L[iev]) } : null,
+    rootDistImpact: rr(L[il]), pelvisDistImpact: pp(L[il]), entryK: L[il].ek,
+    corrJump, corrWho, jumpOther: maxJump(L, 'P', strikeJ).m, jumpOtherWho: maxJump(L, 'P', strikeJ).who, jumpOtherBefore: maxJump(B, 'P', strikeJ).m, jumpStrikeSideBefore: Math.max(...strikeJ.map((k) => { let m = 0; for (let i = 1; i < B.length; i++) m = Math.max(m, len(sub(B[i].P[k], B[i - 1].P[k]))); return m; })), jumpStrikeSide: Math.max(...strikeJ.map((k) => { let m = 0; for (let i = 1; i < L.length; i++) m = Math.max(m, len(sub(L[i].P[k], L[i - 1].P[k]))); return m; })),
+    jumpDefender: maxJump(L, 'PB').m, jumpDefenderWho: maxJump(L, 'PB').who,
+    speedImpact60: sp(L, il), speedImpact60Before: sp(B, ib),
+    reachRoot: Math.hypot(B[ib].fist[0] - B[ib].root[0], B[ib].fist[2] - B[ib].root[2]),
+  };
+  if (name === 'hook') {
+    const P = L[il].P, r = L[il], hum = sub(P.elbowL, P.shoulderL), down = sub(P.pelvis, P.neck), f = fwdV(r);
+    const angV = (a, b) => Math.acos(Math.max(-1, Math.min(1, dot(a, b) / len(a) / len(b)))) * D;
+    out.L = { abduction: angV(hum, down), humerusVsFacing: angV(hum, f), elbow: ang(P.shoulderL, P.elbowL, P.handL), elbowMinusShoulderY: P.elbowL[1] - P.shoulderL[1] };
+    out.reachRootLinked = Math.hypot(r.fist[0] - r.root[0], r.fist[2] - r.root[2]);
+  }
+  return out;
+}
+if (import.meta.url === `file://${process.argv[1]}` && (which === 'all' || which === 'r6' || which === 'duel')) {
+  for (const n of ['jab', 'cross', 'hook', 'lowkick']) console.log('DUEL', n, fm(duelMetrics(n)));
+  console.log('DUEL hook closeTo0.70', fm(duelMetrics('hook', { closeTo: 0.70 })));
+  console.log('DUEL hook power1', fm(duelMetrics('hook', { power: 1 })));
+}

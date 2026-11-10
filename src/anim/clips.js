@@ -156,11 +156,15 @@ export const CROSS = {
 // La muñeca (hLx/hLy/hLz) y el polo del codo en marco de cara (pLx/pLy/pLz, peso pLw) se HORNEAN abajo desde las pistas de cadera/pecho:
 // el polo = dirección deseada del húmero => la IK pone el codo exactamente ahí. Pie delantero: pivote sobre la bola.
 const HI = simT('hook').i, HD = simT('hook').d, HH = HI + HITSTOP;     // 0.183, 0.483, 0.225
+// ronda 6 (contacto, sólo con rival enlazado): zona, altura del blanco (centro de la cabeza + dy) y punta libre en el impacto en el marco
+// de la raíz [izq, altura, adelante] (medida sin rival, semilla 7; round6.test.mjs comprueba que sigue valiendo).
+JAB.aim = { zone: 'head', dy: -0.05, ref: [-0.035, 1.342, 1.004] };
+CROSS.aim = { zone: 'head', dy: -0.05, ref: [0.096, 1.402, 1.018] };
 export const HOOK_E = 90 * Math.PI / 180;                       // ángulo del codo (rad), constante de la carga al impacto
 const HOOK_UA = 0.31, HOOK_FA = 0.27;                             // = DIM.upperArm, DIM.foreArm (skeleton3d.js)
 export const HOOK_R = Math.sqrt(HOOK_UA * HOOK_UA + HOOK_FA * HOOK_FA - 2 * HOOK_UA * HOOK_FA * Math.cos(HOOK_E));   // |muñeca - hombro|
-export const HOOK_DROP = 5 * Math.PI / 180;                      // el húmero cae 5° bajo la horizontal (abducción ≈85° respecto del tronco)
-export const HOOK_RISE = 22 * Math.PI / 180;                     // el antebrazo sube 22° (puño a la altura del mentón del rival)
+export const HOOK_DROP = 1 * Math.PI / 180;                      // el húmero cae 1° bajo la horizontal (r6: era 5°; abducción ≈88°, el puño sube a la mandíbula)
+export const HOOK_RISE = 28 * Math.PI / 180;                     // el antebrazo sube 28° (r6: era 22°; puño a la mandíbula del rival en guardia)
 export const HOOK_A0 = 110 * Math.PI / 180, HOOK_A1 = 97 * Math.PI / 180;   // húmero en el marco del pecho (0 = adelante, 90° = costado)
 export const HOOK = {
   name: 'hook', duration: HD, impactT: HI, tip: 'L', feet: true, ball: { L: true },
@@ -187,6 +191,22 @@ export const HOOK = {
   },
 };
 HOOK.ball.R = true;
+// ronda 6: con rival enlazado, la punta apunta a la altura de la zona (mandíbula = centro de la cabeza + dy) en el impacto
+HOOK.aim = { zone: 'head', dy: -0.08, ref: [0.192, 1.474, 0.667], ref1: [0.142, 1.462, 0.852] };   // ref = entrada k=0, ref1 = k=1
+// ronda 6 (Rick + Combate combat-gap): el gancho conecta desde ~0,85 m SIN que la raíz entre (gap de pie >= 0,80 m). La entrada es un paso del pie
+// delantero (en el aire, aterriza antes del impacto) + la pelvis que entra, sólo durante el golpe, y sale en la recuperación.
+// Capa aparte (`entry`), escalada por el animador según la distancia REAL al rival prevista para el impacto: k = (d - d0) / (d1 - d0), 0..1.25.
+// Sin rival conocido k = 1 (la sim lo lanza a ~0,86). Si la raíz de la sim ya se acerca, k baja solo => no se duplica la entrada.
+HOOK.entry = {
+  d0: 0.70, d1: 0.86, kMax: 1.25, kMin: -0.35, bias: 0.0,   // con rival: k desde la profundidad de SU cabeza (ver animator3d entryFactor); kMin<0 = la pelvis queda algo atrás
+  tracks: {
+    pz:  [K(0, 0), K(0.05, 0.015), K(HI, 0.185, EI), K(HH, 0.195), K(0.36, 0.02), K(HD, 0)],
+    px:  [K(0, 0), K(0.08, 0), K(HI, -0.05, EI), K(HH, -0.05), K(0.36, 0), K(HD, 0)],   // el peso cruza hacia la línea central
+    dy:  [K(0, 0), K(HI, -0.012), K(HH, -0.02), K(0.36, 0), K(HD, 0)],
+    fLz: [K(0, 0), K(0.11, 0.19), K(0.30, 0.19, LIN), K(0.40, 0), K(HD, 0)],
+    fLy: [K(0, 0), K(0.04, 0.03, EO), K(0.11, 0, EI), K(0.30, 0, LIN), K(0.35, 0.025, EO), K(0.40, 0, EI), K(HD, 0)],
+  },
+};
 // Geometría del brazo bloqueado (marco de cara: x izq, y arriba, z adelante) para un ángulo del húmero `th` respecto de la mirada (+ = hacia la izquierda).
 // Devuelve { u: dirección del húmero, v: dirección del antebrazo, rel: muñeca − hombro }. u ⟂ v => codo = 90° exacto.
 export function hookArm(th, drop = HOOK_DROP, rise = HOOK_RISE) {
@@ -283,6 +303,7 @@ export const LOWKICK = {
     fRpitch: [K(0, 0), K(KI, -0.4), K(0.38, -0.2), K(0.50, 0), K(KD, 0)],
   },
 };
+LOWKICK.aim = { zone: 'legs', dy: null, ref: [0.130, 0.646, 0.977] };   // ronda 6: la espinilla para en el muslo más cercano, a su altura
 
 // BLOQUEO: pose sostenida (deltas sobre la guardia): codos adentro, antebrazos tapando la cara, mentón al pecho, cuerpo hundido y encogido.
 export const BLOCK_POSE = Object.freeze({

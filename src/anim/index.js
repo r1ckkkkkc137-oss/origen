@@ -1,4 +1,5 @@
-export { createAnimator3D, BLOCK_M_DEFAULT, yawToDir, dirToYaw } from './animator3d.js';
+export { createAnimator3D, BLOCK_M_DEFAULT, yawToDir, dirToYaw, pairAnimators, pairedAnimatorFactory } from './animator3d.js';
+export { CONTACT, buildColliders, penetration } from './contact.js';
 export { createHumanoid3D, solveRig, DIM, HEIGHT, STAND_PELVIS_Y } from './skeleton3d.js';
 export { solveTwoBone } from './ik.js';
 export { makeTopSampler } from './footplacement.js';
