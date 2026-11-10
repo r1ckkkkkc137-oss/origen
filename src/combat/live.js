@@ -194,6 +194,7 @@ export function createLiveFight(o = {}) {
           if (ev.type === 'hit' && ev.defender && ev.target) lastHurt[ev.defender] = { zone: ev.target, tick: fight.core.t, power: ev.power ?? 0 };
           for (const ce of translator.translate(ev, fight.core)) L.events.push(ce);
         }
+        for (const ce of translator.endTick()) L.events.push(ce);   // patada atrapada sin derribo -> release
       }
       if (acc < 0) acc = 0;
       L.alpha = fight.done ? 1 : acc / DT;

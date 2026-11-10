@@ -56,6 +56,8 @@ export const COMBAT_EVENT = Object.freeze({
   CLINCH: 'clinch', BREAK: 'break', SPRAWL: 'sprawl', ROCKED: 'rocked', POSITION: 'position', SWEEP: 'sweep',
   SUB_ESCAPE: 'subEscape', STOPPAGE: 'stoppage',
   ROUND_START: 'roundStart', ROUND_END: 'roundEnd', DECISION: 'decision', FIGHT_END: 'fightEnd',
+  // v0.5 (Combate): la patada atrapada se suelta sin derribo (derivado: block src 'catch' sin takedown 'kickCatch' en el mismo tick)
+  RELEASE: 'release',
 });
 /**
  * @typedef {Object} CombatEvent

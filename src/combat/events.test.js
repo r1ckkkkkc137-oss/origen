@@ -11,7 +11,7 @@ test('ningún tipo KAGE se descarta: todos mapeados a un COMBAT_EVENT; UNMAPPED 
   assert.deepEqual([...UNMAPPED], []);
   for (const t of all) assert.ok(t in KAGE_TO_COMBAT, `${t} sin mapear`);
   // los 22 tipos del contrato quedan cubiertos (injury sale de hit+injury)
-  const covered = new Set([...Object.values(KAGE_TO_COMBAT), 'injury']);
+  const covered = new Set([...Object.values(KAGE_TO_COMBAT), 'injury', 'release']);   // release sale de catch sin takedown kickCatch
   for (const v of Object.values(COMBAT_EVENT)) assert.ok(covered.has(v), `COMBAT_EVENT ${v} sin origen`);
   for (const t of Object.keys(KAGE_TO_COMBAT)) assert.ok(all.includes(t), `tipo KAGE desconocido ${t}`);
   const valid = new Set(Object.values(COMBAT_EVENT));
@@ -87,4 +87,24 @@ test('block: guard {limb, side} del que defiende, espejo del lado que golpea (co
   assert.deepEqual(guardOf({ type: 'catch', move: 'bodyKick' }), { limb: 'glove', side: 'L' });
   assert.deepEqual(guardOf({ type: 'catch', move: 'lowKick' }), { limb: 'glove', side: 'L' });
   assert.equal(guardOf({ type: 'block', move: 'nope' }), null);
+});
+
+test('patada atrapada: cada block src catch termina en el mismo tick con knockdown kickCatch o release (nunca ambos ni ninguno)', () => {
+  let catches = 0, tds = 0, rel = 0;
+  for (let seed = 3000; seed < 3060; seed++) {
+    const fight = m.createFight(levelSpec('muayThai', 60), levelSpec(seed % 2 ? 'wrestler' : 'kickboxer', 60), seed, { geometry: '3d' });
+    const tr = createCombatTranslator();
+    let n = 0;
+    while (!fight.done && n++ < 30000) {
+      const { events } = m.stepFight(fight);
+      const out = events.flatMap((e) => tr.translate(e, fight.core)).concat(tr.endTick());
+      const c = out.filter((e) => e.type === 'block' && e.src === 'catch');
+      const kd = out.filter((e) => e.type === 'knockdown' && e.action === 'kickCatch');
+      const r = out.filter((e) => e.type === 'release');
+      assert.equal(c.length, kd.length + r.length);
+      for (const e of r) { assert.equal(e.attacker, c[0].target); assert.equal(e.target, c[0].attacker); assert.equal(e.action, c[0].action); }
+      catches += c.length; tds += kd.length; rel += r.length;
+    }
+  }
+  assert.ok(catches > 0 && rel > 0, `catches ${catches} rel ${rel} td ${tds}`);
 });
