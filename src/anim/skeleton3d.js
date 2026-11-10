@@ -105,7 +105,15 @@ export function solveRig(sk, rig) {
     let pole = qRot(chestYaw, a.pole, _t1);
     if (a.poleW > 1e-4 && a.poleFace) {
       norm(pole, pole); const pf = norm(qRot(qFromYPR(yaw, 0, 0), a.poleFace, _t2), _t2), w = a.poleW > 1 ? 1 : a.poleW;
-      pole[0] += (pf[0] - pole[0]) * w; pole[1] += (pf[1] - pole[1]) * w; pole[2] += (pf[2] - pole[2]) * w;
+      // r8: interpolación ESFÉRICA (antes lineal: con polos casi opuestos pasaba por ~0 y el codo saltaba de lado en un frame)
+      const d = Math.max(-1, Math.min(1, pole[0] * pf[0] + pole[1] * pf[1] + pole[2] * pf[2]));
+      if (d > 0.9995) { pole[0] += (pf[0] - pole[0]) * w; pole[1] += (pf[1] - pole[1]) * w; pole[2] += (pf[2] - pole[2]) * w; }
+      else {
+        let q0 = pf[0] - pole[0] * d, q1 = pf[1] - pole[1] * d, q2 = pf[2] - pole[2] * d, ql = Math.hypot(q0, q1, q2);
+        if (ql < 1e-4) { q0 = 0; q1 = 1; q2 = 0; const k = pole[1]; q0 -= pole[0] * k; q1 -= pole[1] * k; q2 -= pole[2] * k; ql = Math.hypot(q0, q1, q2) || 1; }   // opuestos: por arriba
+        q0 /= ql; q1 /= ql; q2 /= ql; const th = Math.acos(d) * w, c = Math.cos(th), sn = Math.sin(th);
+        pole[0] = pole[0] * c + q0 * sn; pole[1] = pole[1] * c + q1 * sn; pole[2] = pole[2] * c + q2 * sn;
+      }
     }
     const ik = solveTwoBone(shoulder, wrist, D.upperArm, D.foreArm, pole, sk._ik['upperArm' + s], sk.diag['bendA' + s]);
     sk.diag['bendA' + s] = ik.bend.slice();

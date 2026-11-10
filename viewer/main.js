@@ -143,9 +143,9 @@ window.CAP.runDuel = (name, times, camNames, w = 480, h = 420, opts = {}) => {
 
 // ronda 7: suelo (ground and pound). a arriba (colores), b abajo (apagado), raíces en el mismo punto; cámaras cercanas y bajas
 const GCAMS = {
-  side: (t) => ({ pos: [t[0], t[1] + 0.75, t[2] - 2.6], look: [t[0], t[1] + 0.35, t[2]], fov: 32 }),
-  top34: (t) => ({ pos: [t[0] - 1.2, t[1] + 2.0, t[2] + 1.9], look: [t[0], t[1] + 0.3, t[2]], fov: 32 }),
-  front34: (t) => ({ pos: [t[0] + 2.0, t[1] + 1.05, t[2] - 1.7], look: [t[0], t[1] + 0.35, t[2]], fov: 32 }),
+  side: (t) => ({ pos: [t[0], t[1] + 0.85, t[2] - 3.0], look: [t[0], t[1] + 0.50, t[2]], fov: 34 }),   // r8: el de arriba va erguido
+  top34: (t) => ({ pos: [t[0] - 1.3, t[1] + 2.3, t[2] + 2.1], look: [t[0], t[1] + 0.4, t[2]], fov: 34 }),
+  front34: (t) => ({ pos: [t[0] + 2.2, t[1] + 1.2, t[2] - 1.9], look: [t[0], t[1] + 0.45, t[2]], fov: 34 }),
   overhead: (t) => ({ pos: [t[0], t[1] + 3.4, t[2] - 0.01], look: [t[0], t[1], t[2]], fov: 30 }),
 };
 window.CAP.runGround = (pos, strike, times, camNames, w = 480, h = 420, opts = {}) => {

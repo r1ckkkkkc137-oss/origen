@@ -10,7 +10,7 @@
 import { CLIPS, HITSTOP } from './clips.js';
 
 const K = (t, v, e = 'easeInOutQuad') => [t, v, e];
-const EI = 'easeInQuad', EO = 'easeOutQuad', LIN = 'linear';
+const EI = 'easeInQuad', EO = 'easeOutQuad', LIN = 'linear', EIO = 'easeInOutSine', EI3 = 'easeInCubic';
 
 // valores ABSOLUTOS de canal (los que faltan van a su valor de guardia). Pelvis: dy relativo a ~0,80 (tobillo + cadera de guardia).
 const BOT_BASE = {
@@ -28,21 +28,34 @@ const TOP_BASE = {
 };
 export const GROUND_POSES = {
   bottom: {
-    mount: { ...BOT_BASE },
-    guard: { ...BOT_BASE, pz: 0.08, hipPitch: -1.35, kHL: 1.45, kKL: 1.35, kAL: 0.55, kFL: 0.6, kHR: 1.45, kKR: 1.35, kAR: 0.55, kFR: 0.6 },
+    mount: { ...BOT_BASE, kHL: 0.30, kKL: 0.50, kAL: 0.12, kHR: 0.30, kKR: 0.50, kAR: 0.12 },   // r8: piernas casi tendidas (el de arriba apoya las tibias a sus lados)
+    guard: { ...BOT_BASE, pz: 0.08, hipPitch: -1.35, kHL: 1.45, kKL: 1.35, kAL: 0.75, kFL: 0.6, kHR: 1.45, kKR: 1.35, kAR: 0.75, kFR: 0.6 },
     half:  { ...BOT_BASE, pz: 0.0, kHL: 1.20, kKL: 1.40, kAL: 0.40, kHR: 0.30, kKR: 0.60, kAR: 0.15 },
     side:  { ...BOT_BASE, kHL: 1.00, kKL: 1.50, kAL: -0.10, kHR: 1.00, kKR: 1.50, kAR: 0.30, hipRoll: 0.20 },
     back:  { ...BOT_BASE },
   },
   top: {
-    mount: { ...TOP_BASE },
-    guard: { ...TOP_BASE, dy: -0.33, pz: -0.16, hipPitch: 0.55, spPitch: 0.50, kHL: 0.15, kKL: 1.65, kAL: 0.25, kHR: 0.15, kKR: 1.65, kAR: 0.25 },
-    half:  { ...TOP_BASE, dy: -0.36, pz: -0.05, kAL: 0.35, kAR: 0.45 },
+    mount: { ...TOP_BASE, hipPitch: 0.12, spPitch: 0.22, hdPitch: -0.20 },   // r8: a horcajadas, tronco casi erguido (las piernas las pone kneelIK)
+    guard: { ...TOP_BASE, dy: -0.33, pz: -0.28, hipPitch: 0.55, spPitch: 0.50, kHL: 0.15, kKL: 1.65, kAL: 0.25, kHR: 0.15, kKR: 1.65, kAR: 0.25 },
+    half:  { ...TOP_BASE, dy: -0.36, pz: -0.15, kAL: 0.35, kAR: 0.45 },
     side:  { ...TOP_BASE, dy: -0.44, px: 0.40, pz: 0.56, hipYaw: -1.45, hipPitch: 0.55, spPitch: 0.45, kHL: 0.55, kKL: 2.10, kAL: 0.35, kHR: 0.55, kKR: 2.10, kAR: 0.35 },
     back:  { ...TOP_BASE, pz: -0.10 },
   },
 };
 export const GROUND_KEYS = ['guard', 'half', 'side', 'mount', 'back'];
+// r8: inclinación que el golpe de suelo suma por posición (canal gLean del clip, 0..1): en mount el tronco va erguido y se deja caer al golpear
+export const GROUND_LEAN = {
+  mount: { hipPitch: 0.34, spPitch: 0.30, dy: -0.05 },
+  guard: { hipPitch: 0.08, spPitch: 0.12 },
+  half: {}, side: {}, back: { hipPitch: 0.2, spPitch: 0.2 },
+  // por golpe (búsqueda: hueco en el impacto ~0, sin atravesar): el codo carga el peso con la cadera
+  'gnp_punch:mount': { hipPitch: 0.75, spPitch: 0.15 },
+  'gnp_body:mount': { hipPitch: 0.30 },
+  'gnp_elbow:mount': { hipPitch: 0.60 },
+  'gnp_elbow:guard': { hipPitch: 0.60 },
+  'gnp_elbow:half': { hipPitch: 0.45 },
+  'gnp_elbow:side': { hipPitch: 0.30 },
+};
 
 // ---- golpes de suelo (deltas sobre la capa del de arriba). Tiempos de la sim: gnpPunch [9,3,12], gnpElbow [11,3,14], gnpBody [9,3,12] ticks.
 export const GNP_TICKS = Object.freeze({ gnp_punch: [9, 3, 12], gnp_elbow: [11, 3, 14], gnp_body: [9, 3, 12] });
@@ -62,6 +75,7 @@ function gnpPunch() {
       spPitch:[K(0, 0), K(tW, -0.10), K(I, 0.15, EI), K(H, 0.15), K(D, 0)],
       dy:    [K(0, 0), K(tW, 0.04), K(I, -0.03, EI), K(H, -0.03), K(D, 0)],
       hLy:   [K(0, 0), K(I, -0.05), K(D, 0)],
+      gLean: [K(0, 0), K(tW, 0.3), K(I, 1, EI), K(H, 1), K(D, 0)],
     },
     aim: { zone: 'head', center: true, dy: 0 },
   };
@@ -74,17 +88,19 @@ function gnpElbow() {
     tracks: {
       // carga: el codo sube por encima del hombro (mano junto a la oreja, polo arriba/afuera); golpe: el antebrazo plegado, el polo apunta
       // abajo/adelante y el tronco cae con el peso => la PUNTA DEL CODO baja sobre la cara
-      hRx:   [K(0, 0), K(tW, -0.04), K(I, 0.17, EI), K(H, 0.17), K(D, 0)],
-      hRy:   [K(0, 0), K(tW, 0.12, EO), K(I, -0.02, EI), K(H, -0.02), K(D, 0)],
-      hRz:   [K(0, 0), K(tW, -0.18, EO), K(I, -0.30, EI), K(H, -0.30), K(D, 0)],
-      pRw:   [K(0, 0), K(tW * 0.6, 1), K(H, 1), K(D, 0)],
-      pRx:   [K(0, 0), K(tW, -0.35), K(I, 0.05, EI), K(H, 0.05), K(D, 0)],
-      pRy:   [K(0, 0), K(tW, 0.35), K(I, -0.8, EI), K(H, -0.8), K(D, 0)],
-      pRz:   [K(0, 0), K(tW, 0.9), K(I, 0.9, EI), K(H, 0.9), K(D, 0)],
-      spYaw: [K(0, 0), K(tW, -0.25, EO), K(I, 0.25, EI), K(H, 0.25), K(D, 0)],
-      spPitch:[K(0, 0), K(tW, -0.15), K(I, 0.10, EI), K(H, 0.10), K(D, 0)],
-      hipPitch:[K(0, 0), K(tW, -0.05), K(I, 0.05, EI), K(H, 0.05), K(D, 0)],
-      dy:    [K(0, 0), K(tW, 0.06), K(I, -0.04, EI), K(H, -0.04), K(D, 0)],
+      hRx:   [K(0, 0), K(tW, -0.04), K(I, 0.17, EI3), K(H, 0.17), K(D, 0)],
+      hRy:   [K(0, 0), K(tW, 0.12, EIO), K(I, -0.02, EI3), K(H, -0.02), K(D, 0)],
+      hRz:   [K(0, 0), K(tW, -0.18, EIO), K(I, -0.30, EI3), K(H, -0.30), K(D, 0)],
+      // r8: el polo parte del polo natural del brazo (afuera/abajo) y gira de forma continua (antes saltaba 0->arriba: codo a 16 m/s al arrancar)
+      pRw:   [K(0, 0), K(tW * 0.8, 1), K(H, 1), K(D, 0)],
+      pRx:   [K(0, -0.33), K(tW, -0.35), K(I, 0.05, EI3), K(H, 0.05), K(D, -0.33)],
+      pRy:   [K(0, -0.70), K(tW, 0.35), K(I, -0.8, EI3), K(H, -0.8), K(D, -0.70)],
+      pRz:   [K(0, -0.15), K(tW, 0.9), K(I, 0.9, EI3), K(H, 0.9), K(D, -0.15)],
+      spYaw: [K(0, 0), K(tW, -0.25, EIO), K(I, 0.25, EI3), K(H, 0.25), K(D, 0)],
+      spPitch:[K(0, 0), K(tW, -0.15), K(I, 0.10, EI3), K(H, 0.10), K(D, 0)],
+      hipPitch:[K(0, 0), K(tW, -0.05), K(I, 0.05, EI3), K(H, 0.05), K(D, 0)],
+      dy:    [K(0, 0), K(tW, 0.06), K(I, -0.04, EI3), K(H, -0.04), K(D, 0)],
+      gLean: [K(0, 0), K(tW, 0.3), K(I, 1, EI3), K(H, 1), K(D, 0)],
     },
     aim: { zone: 'head', center: true, dy: 0 },
   };
@@ -102,6 +118,7 @@ function gnpBody() {
       elbL:  [K(0, 0), K(tW, 0.25), K(I, 0.05), K(D, 0)],
       spYaw: [K(0, 0), K(tW, 0.20, EO), K(I, -0.25, EI), K(H, -0.25), K(D, 0)],
       dy:    [K(0, 0), K(I, -0.03, EI), K(H, -0.03), K(D, 0)],
+      gLean: [K(0, 0), K(tW, 0.3), K(I, 1, EI), K(H, 1), K(D, 0)],
     },
     aim: { zone: 'body', center: true, u: 0.8, dy: 0 },
   };
@@ -133,9 +150,9 @@ export const HURT_GROUND_BODY = {
 };
 CLIPS.hurt_ground_body = HURT_GROUND_BODY;
 // punta LIBRE prevista en el impacto por posición (marco raíz [izq, altura, adelante]; medida con link:false) para el ajuste al blanco
-GNP_PUNCH.aim.refPos = {mount: [-0.01, 0.23, 0.69], guard: [-0.012, 0.35, 0.404], side: [0.004, 0.276, 0.685], half: [-0.01, 0.27, 0.52], back: [-0.01, 0.23, 0.47]};
-GNP_ELBOW.aim.refPos = {mount: [0.031, 0.364, 0.727], guard: [0.029, 0.479, 0.426], side: [0.113, 0.382, 0.608], half: [0.031, 0.404, 0.557], back: [0.031, 0.364, 0.507]};
-GNP_BODY.aim.refPos = {mount: [-0.028, 0.137, 0.422], guard: [-0.03, 0.25, 0.126], side: [-0.116, 0.153, 0.554], half: [-0.028, 0.177, 0.252], back: [-0.028, 0.137, 0.202]};
+GNP_PUNCH.aim.refPos = {mount: [-0.021, 0.153, 0.711], guard: [-0.011, 0.3, 0.279], side: [0.004, 0.316, 0.685], half: [-0.01, 0.25, 0.42], back: [-0.156, 0.064, 0.428]};
+GNP_ELBOW.aim.refPos = {mount: [0.017, 0.405, 0.721], guard: [0.029, 0.209, 0.379], side: [0.05, 0.279, 0.615], half: [0.031, 0.157, 0.507], back: [0.039, 0.23, 0.54]};
+GNP_BODY.aim.refPos = {mount: [-0.021, 0.295, 0.328], guard: [-0.026, 0.214, 0.022], side: [-0.116, 0.193, 0.554], half: [-0.028, 0.157, 0.152], back: [0.035, 0.002, 0.198]};
 for (const c of [GNP_PUNCH, GNP_ELBOW, GNP_BODY]) CLIPS[c.name] = c;
 CLIPS.hurt_ground = HURT_GROUND;
 // moves de la sim -> clips (para opts.clipMap de createLiveAnimation; el animador además remapea 'jab'/'lowkick' por state.move)

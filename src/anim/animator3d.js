@@ -14,8 +14,8 @@ import { makeTopSampler, createFoot, initFeet, updateFeet, capHeightForFoot, wra
 import { GUARD, CHANNELS, makeChannels, makeIdleParams, idleLayer, walkLayer, addClip, phaseAt, CLIPS, BLOCK_POSE, HITSTOP, sampleTrack } from './clips.js';
 import { ZONE_CLIP } from './reactions.js';
 import './kicks.js';
-import { GROUND_POSES, GROUND_KEYS, GROUND_MOVE_CLIP } from './ground.js';
-import { buildColliders, extrapolate, firstContact, penetration, pushOut, pushIn, sdist, axisU, axisAt, CONTACT, COL, guardIndex } from './contact.js';
+import { GROUND_POSES, GROUND_KEYS, GROUND_MOVE_CLIP, GROUND_LEAN } from './ground.js';
+import { buildColliders, extrapolate, firstContact, penetration, segPenetration, pushOut, pushIn, sdist, axisU, axisAt, CONTACT, COL, guardIndex } from './contact.js';
 import { planClimb, buildClimb, sampleClimb, wallToXZ, xzToWall, climbPathAt, CLIMB_T } from './climb.js';
 import { createRng } from '../shared/rng.js';
 import { clamp, smoothstep, smin, spring, springCritical, lerp, qRot, qFromYPR } from './math3.js';
@@ -338,6 +338,63 @@ export function createAnimator3D(opts = {}) {
     }
   }
   const GROUND_STANCE = { groundTop: 'top', groundBottom: 'bottom' };
+  // ---- r8: de rodillas con IK (el de arriba). Rodillas SOBRE el piso real de vóxeles (sampler top(), r = espinilla), a los lados del de
+  // abajo (se empujan fuera de sus colisores), tibias tendidas hacia atrás sobre el piso, empeine apoyado. La pelvis baja lo que haga falta para
+  // que el muslo llegue (|cadera-rodilla| = muslo exacto => la IK de dos huesos deja la rodilla en el punto pedido).
+  //   kx: rodilla a un lado del centro de la pelvis (m), kz: adelante(+)/atrás(-) de la pelvis, ph: pelvis sobre el piso (m), sb: tibia hacia afuera
+  const KNEEL = {
+    mount: { kx: 0.30, kz: -0.16, ph: 0.40, sb: 0.30 },   // a horcajadas: rodillas junto a la cadera del de abajo, pelvis sobre su abdomen
+    guard: { kx: 0.17, kz: 0.08, ph: 0.50, sb: 0.05 },    // de rodillas entre sus piernas
+    half:  { kx: 0.24, kz: -0.08, ph: 0.42, sb: 0.20 },
+    side:  { kx: 0.20, kz: 0.10, ph: 0.40, sb: 0.10 },    // en el marco de la pelvis girada 90°: rodillas contra su costado
+    back:  { kx: 0.26, kz: -0.06, ph: 0.42, sb: 0.20 },
+  };
+  const KNEE_R = CONTACT.shin + 0.004, _kq = [0, 0, 0, 1];
+  A.kneel = { L: null, R: null, w: 0 };
+  function kneelIK(r, c, yaw) {
+    let w = 0, pos = null, bw = 0;
+    for (const k of GROUND_KEYS) { const x = GW['top:' + k].x; w += x; if (x > bw) { bw = x; pos = k; } }
+    A.kneel.w = w; if (w < 1e-3 || !pos) { A.kneel.L = A.kneel.R = null; return; }
+    const K = KNEEL[pos], P0 = GROUND_POSES.top[pos], P = r.pelvisPos, y0 = _root[1];
+    const hy = yaw + c.hipYaw, fx = Math.sin(hy), fz = Math.cos(hy), lx = Math.cos(hy), lz = -Math.sin(hy);   // adelante / izquierda (pelvis)
+    const fl = (x, z, yh) => top(x, z, yh);
+    // pelvis: altura sobre el piso bajo ella + lo que el clip suma a dy (golpes)
+    const fp = fl(P[0], P[2], y0 + 0.3), pyT = fp + K.ph + (c.dy - P0.dy);
+    const osk = oppSkel(), oc = osk ? (CT.kcols = buildColliders(osk, CT.kcols)).slice(0, 8) : null;   // cuerpo + piernas del de abajo
+    const qPel = qFromYPR(hy, c.hipPitch, c.hipRoll, _kq);
+    // una pierna con la pelvis a altura pY: la rodilla en el piso a |muslo| exacto de la cadera, en la dirección horizontal pedida (kx, kz)
+    // girada `da` rad; tibia hacia atrás sobre el piso. pen = cuánto entran muslo/tibia en el de abajo.
+    const leg = (s, sx, pY, da) => {
+      const hip = qRot(qPel, [sx * DIM.hipHalf, 0, 0]); hip[0] += P[0]; hip[1] += pY; hip[2] += P[2];
+      let ux = lx * sx * (K.kx - DIM.hipHalf) + fx * K.kz, uz = lz * sx * (K.kx - DIM.hipHalf) + fz * K.kz; const u0 = Math.hypot(ux, uz) || 1; ux /= u0; uz /= u0;
+      if (da) { const cs = Math.cos(da * sx), sn = Math.sin(da * sx), x2 = ux * cs + uz * sn; uz = -ux * sn + uz * cs; ux = x2; }
+      let kf = fl(hip[0] + ux * 0.3, hip[2] + uz * 0.3, y0 + 0.3) + KNEE_R;
+      const dy = hip[1] - kf, hh = Math.sqrt(Math.max(0.0004, DIM.thigh * DIM.thigh - Math.min(dy * dy, DIM.thigh * DIM.thigh)));
+      const knee = [hip[0] + ux * hh, kf, hip[2] + uz * hh];
+      kf = fl(knee[0], knee[2], y0 + 0.3) + KNEE_R; knee[1] = kf;
+      let bx = -fx + lx * sx * K.sb, bz = -fz + lz * sx * K.sb; const bl = Math.hypot(bx, bz); bx /= bl; bz /= bl;
+      const ay = fl(knee[0] + bx * DIM.shin, knee[2] + bz * DIM.shin, y0 + 0.3) + KNEE_R, sdy = ay - knee[1], sh = Math.sqrt(Math.max(1e-6, DIM.shin * DIM.shin - Math.min(sdy * sdy, DIM.shin * DIM.shin * 0.999)));
+      const ank = [knee[0] + bx * sh * 0.999, ay, knee[2] + bz * sh * 0.999];
+      const pen = oc ? Math.max(segPenetration(oc, hip, knee, CONTACT.thigh), segPenetration(oc, knee, ank, CONTACT.shin), penetration(oc, knee, 0.06).pen) : 0;
+      return { hip, knee, ank, pen, floor: kf - KNEE_R, maxY: pY + (kf + DIM.thigh * 0.985 - hip[1]) };
+    };
+    // la pierna no atraviesa al de abajo: se gira la dirección de la rodilla (afuera/atrás/adelante) hasta que muslo y tibia quedan libres
+    const DA = [0, 0.2, -0.2, 0.4, -0.4, 0.6, -0.6, 0.8, -0.8, 1.0, -1.0];
+    const solve = (pY) => { const o = {}; for (const [s, sx] of [['L', 1], ['R', -1]]) { let g = null, gs = Infinity;
+      for (const da of DA) { const h = leg(s, sx, pY, da), sc = Math.max(0, h.pen - 0.004) * 10 + Math.abs(da) * 0.02; if (sc < gs) { gs = sc; g = h; } if (h.pen <= 0.004 && da === 0) break; }
+      o[s] = g; } return o; };
+    let G = solve(pyT);
+    const pyFit = Math.min(pyT, G.L.maxY, G.R.maxY);
+    if (pyFit < pyT - 1e-4) G = solve(pyFit);
+    const py = P[1] + (pyFit - P[1]) * w; P[1] = py; A.lastPelvis[1] = py; A.pelvisY = py;
+    for (const s of ['L', 'R']) {
+      const L = r.legs[s], g = G[s], th = [g.knee[0] - g.hip[0], g.knee[1] - g.hip[1], g.knee[2] - g.hip[2]], tl = Math.hypot(...th) || 1;
+      for (let k = 0; k < 3; k++) { L.ankle[k] += (g.ank[k] - L.ankle[k]) * w; L.pole[k] += (th[k] / tl * 1.5 - L.pole[k]) * w; }
+      // pie: apunta atrás a lo largo de la tibia, apoyado en el empeine (como kF = 1 de fkLegs)
+      L.footYaw += wrapPi(hy - L.footYaw) * w; L.footPitch += (Math.PI - 0.35 - L.footPitch) * w;
+      A.kneel[s] = { knee: g.knee, ankle: g.ank, floor: g.floor, pen: g.pen };
+    }
+  }
   // cabeza del que está abajo: nunca entra en el suelo (esfera de la cabeza del colisor, r = CONTACT.head). Se corrige con el cabeceo del
   // cuello (pendiente medida en la pose actual) -> el latigazo de hurt_ground "choca" con el suelo y rebota sin atravesarlo.
   A.headFloor = { pen: 0, hits: 0 };
@@ -442,6 +499,9 @@ export function createAnimator3D(opts = {}) {
     }
     // ---- altura de pelvis
     const sf = Math.sin(yaw), cf = Math.cos(yaw);                       // adelante visual (marco interno)
+    if (c.gLean && A.ground && A.ground.role === 'top') for (const k of GROUND_KEYS) {   // r8: inclinación del golpe de suelo por posición
+      const gw = GW['top:' + k].x, sn = isStrike(A.clip) ? A.clip.name : A.fade && isStrike(A.fade.clip) ? A.fade.clip.name : '', L = GROUND_LEAN[sn + ':' + k] || GROUND_LEAN[k]; if (gw > 0 && L) for (const n in L) c[n] += c.gLean * gw * L[n];
+    }
     const px = _root[0] + c.px * cf + c.pz * sf, pz = _root[2] - c.px * sf + c.pz * cf;
     const wf = clamp(1 - A.walkAmt * 1.5, 0, 1);                        // los clips de pies solo mandan con el cuerpo quieto
     const eff = A.eff;
@@ -515,6 +575,7 @@ export function createAnimator3D(opts = {}) {
       },
     };
     if (kw > 1e-4) fkLegs(r, c, yaw, kw, Math.min(eff[0].sole, eff[1].sole));
+    kneelIK(r, c, yaw);
     solveRig(rig, r);
     if (c.ptR > 1e-3) {                                                // r7: pie de la patada en punta (empeine alineado con la tibia)
       const sh = rig.pose.shinR, dx = sh.t[0] - sh.p[0], dy = sh.t[1] - sh.p[1], dz = sh.t[2] - sh.p[2], dl = Math.hypot(dx, dy, dz) || 1, w = clamp(c.ptR, 0, 1), L = r.legs.R;

@@ -61,6 +61,10 @@ function plan() {
     const T = (x) => +(1.0 + x).toFixed(4), ts = [-0.1, imp * 0.5, imp - 0.017, imp, imp + 0.05, imp + 0.10, imp + 0.18, imp + 0.30];
     P.push({ ground: true, pos, sc: st, label: `gnp_${pos}_${st.slice(4)}`, times: ts.map(T), keys: [T(imp), T(imp + 0.05), T(imp + 0.10)], keyNames: ['impact', 'head_floor', 'bounce'] });
   }
+  // ronda 8: poses de suelo (las 5 posiciones, en reposo) + codo desde la guardia + chequeo + patada atrapada
+  for (const pos of ['mount', 'guard', 'side', 'half', 'back']) P.push({ ground: true, pos, sc: 'gnp_punch', label: `pose_${pos}`, times: [0.5, 0.75], keys: [0.75], keyNames: ['rest'] });
+  { const T = (x) => +(1.0 + x).toFixed(4), imp = 11 / 60, ts = [-0.1, imp * 0.5, imp - 0.017, imp, imp + 0.05, imp + 0.10, imp + 0.18, imp + 0.30];
+    P.push({ ground: true, pos: 'guard', sc: 'gnp_elbow', label: 'gnp_guard_elbow', times: ts.map(T), keys: [T(imp), T(imp + 0.05)], keyNames: ['impact', 'hitstop'] }); }
   P.push({ sc: 'turn90', label: 'turn90', times: [1.4, 1.55, 1.7, 1.85, 2.0, 2.2, 2.6, 3.2], keys: [1.7, 2.2] });
   return P;
 }
