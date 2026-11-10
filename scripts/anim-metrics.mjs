@@ -14,8 +14,10 @@ export function rec(name, hz = 240, extra = {}) {
 }
 export const T0 = 1.5;
 // instante en que una señal con carga cruza el punto medio entre el extremo de la carga (lo opuesto al golpe) y el extremo del golpe
-export function halfCross(sig, ts, frac = 0.5) {
+// ronda 5: iEnd (opcional) = índice del impacto: el golpe va de la carga al valor EN EL IMPACTO (con una carga grande, el extremo global puede ser la carga)
+export function halfCross(sig, ts, frac = 0.5, iEnd = -1) {
   const a0 = sig[0]; let m = 0, im = 0; sig.forEach((v, i) => { if (Math.abs(v - a0) > Math.abs(m)) { m = v - a0; im = i; } });
+  if (iEnd >= 0) { im = iEnd; m = sig[im] - a0; }
   let lo = a0, il = 0; for (let i = 0; i < im; i++) if ((sig[i] - lo) * Math.sign(m) < 0) { lo = sig[i]; il = i; }
   const tgt = lo + (sig[im] - lo) * frac; for (let i = il; i <= im; i++) if ((sig[i] - tgt) * Math.sign(m) >= 0) return ts[i];
   return ts[im];
@@ -44,7 +46,7 @@ export function hookMetrics(name = 'hook', side = 'L') {
   const sp = w.map((r, i) => i ? len(sub(r.fist, w[i - 1].fist)) * 240 : 0);
   const rng = (a) => Math.max(...a) - Math.min(...a);
   // ronda 4: con carga (wind-up) la señal primero va al revés; el cruce se mide entre el extremo de la carga y el extremo del golpe (después de la carga)
-  const tHalf = (sig) => halfCross(sig, w.map((r) => r.t - T0));
+  const tHalf = (sig) => halfCross(sig, w.map((r) => r.t - T0), 0.5, iImp);
   const fk = sp.indexOf(Math.max(...sp));
   // pops a 60 Hz
   const R60 = rec(name, 60).filter((r) => r.t >= T0 - 0.05 && r.t <= T0 + c.duration + 0.02); const pops = {}; for (let i = 1; i < R60.length; i++) for (const k in R60[i].P) pops[k] = Math.max(pops[k] || 0, len(sub(R60[i].P[k], R60[i - 1].P[k])));

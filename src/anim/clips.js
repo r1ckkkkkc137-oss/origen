@@ -170,7 +170,7 @@ export const HOOK = {
     dy:      [K(0, 0), K(0.05, -0.035, EO), K(HI, -0.04), K(HH, -0.058), K(0.33, -0.01), K(HD, 0)],
     pz:      [K(0, 0), K(0.05, 0.01), K(HI, 0.05, EI), K(HH, 0.07), K(0.32, 0.01), K(HD, 0)],
     px:      [K(0, 0), K(HI, -0.03), K(0.38, 0), K(HD, 0)],
-    hipYaw:  [K(0, 0), K(0.055, 0.20, EO), K(0.165, -0.34), K(HI, -0.36, LIN), K(HH, -0.38), K(0.33, -0.08), K(0.40, 0.02), K(HD, 0)],
+    hipYaw:  [K(0, 0), K(0.07, 0.34, EO), K(0.165, -0.34), K(HI, -0.36, LIN), K(HH, -0.38), K(0.33, -0.08), K(0.40, 0.02), K(HD, 0)],
     spYaw:   [K(0, 0), K(0.07, 0.08, EO), K(HI, 0.13), K(HH, 0.12), K(0.34, 0.02), K(HD, 0)],
     spRoll:  [K(0, 0), K(HI, -0.05), K(HD, 0)],
     spPitch: [K(0, 0), K(HI, 0.10, EI), K(HH, 0.125), K(0.32, 0.04), K(HD, 0)],
@@ -217,7 +217,7 @@ export function bakeHookArm(clip, tImpact) {
 // el PECHO (cadera + columna) gira con ease-in desde la carga hasta el impacto: la cadera ya pasó su pico (≈0.11 s) y el tronco "latiguea"
 // => el pico de velocidad del puño cae en el impacto. spYaw se hornea = pecho deseado − cadera.
 (function bakeHookChest() {
-  const T = HOOK.tracks, t0 = 0.07, dt = 0.005, G = GUARD;
+  const T = HOOK.tracks, t0 = 0.09, dt = 0.005, G = GUARD;
   const c0 = sampleTrack(T.hipYaw, t0) + sampleTrack(T.spYaw, t0), c1 = sampleTrack(T.hipYaw, HI) + sampleTrack(T.spYaw, HI);
   const keys = T.spYaw.filter((k) => k[0] <= t0 + 1e-9);
   for (let t = t0 + dt; t < HI - 1e-9; t += dt) { const u = (t - t0) / (HI - t0); keys.push(K(+t.toFixed(4), c0 + (c1 - c0) * u * u - sampleTrack(T.hipYaw, t), LIN)); }
