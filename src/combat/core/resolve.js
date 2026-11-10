@@ -104,6 +104,21 @@ export const stepInPerTick = (mv, startup) => stepInReach(mv) / Math.max(1, star
 /** ¿Puede este golpe impactar dentro de su ventana desde la distancia d? (paso adentro / atrás del startup incluidos) */
 /** Igual que inStrikeWindow y además alcanzable de pie sin bajar de minGap. */
 export const reachable = (F, mv, d) => { mv = rw(F, mv); return inStrikeWindow(mv, d) && (F.phase !== 'stand' || mv.rangeMax == null || mv.rangeMax >= F.opt.minGap); };
+/** 3D: golpes cortos (hook/uppercut/codo) sueltos sólo DENTRO de su ventana, sin crédito de paso; encadenados tras jab/cross
+ *  (chained) o contra un rival que entra sí usan el paso del startup. En 2D (F.reach null) = reachable de KAGE. */
+export const CLOSE_ONLY = new Set(['hook', 'bodyHook', 'uppercut', 'standElbow']);
+export const reachableAI = (F, mv, d, chained = false, self = null) => {
+  if (!F.reach || !CLOSE_ONLY.has(mv.id) || F.phase !== 'stand') return reachable(F, mv, d);
+  if (chained) { // encadenado: vale el paso, salvo que el rival se esté yendo (ahí se tira al aire)
+    const o = self && F.fighters.find((x) => x !== self);
+    const leaving = o && !o.action && (o.intent?.dir ?? 0) < 0 && F.t < (o.intent?.until ?? 0);
+    const kb = o && o.slide && o.slide.n > 0 ? Math.abs(o.slide.v) * o.slide.n : 0; // el knockback del golpe anterior lo aleja
+    const dp = d + kb;
+    return reachable(F, mv, dp) && (!leaving || dp <= rw(F, mv).rangeIdeal);
+  }
+  const w = rw(F, mv);
+  return reachable(F, mv, d) && d <= w.rangeMax;
+};
 export const inStrikeWindow = (mv, d) => d <= mv.rangeMax + (mv.short ? SHORT_STEP_PX : stepInReach(mv)) && d >= mv.rangeMin - STEP_BACK_PX * 0.6;
 export const cornered = (F, f) => F.geo.cornered(f, 0.15 * U);
 
