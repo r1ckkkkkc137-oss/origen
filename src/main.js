@@ -13,7 +13,7 @@ import { createInteraction } from './engine/interact.js';
 import { createTouchUI } from './engine/touchUI.js';
 import { createRegionView } from './engine/regionView.js';
 import { createAdaptiveRadius } from './engine/adaptive.js';
-import { createAnimator3D } from './anim/index.js';
+import { createAnimator3D, pairedAnimatorFactory } from './anim/index.js';
 import { BLOCK_M } from './shared/contracts.js';
 import { createLiveFight, createLiveAnimation, findFightSpot } from './combat/index.js';
 
@@ -55,7 +55,7 @@ if (params.get('floor') === 'flat') {
 const spot = world ? findFightSpot(world, Math.floor(spawn[0] / BLOCK_M), Math.floor(spawn[1] / BLOCK_M), 6) : { origin: [0, 0, 0] };
 let fightSeed = SEED;
 const live = createLiveFight({ seed: fightSeed, origin: spot.origin, ground: getBlock });
-const la = createLiveAnimation(live, { createAnimator3D, getBlock, blockM: BLOCK_M, seed: SEED });
+const la = createLiveAnimation(live, { createAnimator3D: pairedAnimatorFactory(createAnimator3D), getBlock, blockM: BLOCK_M, seed: SEED });
 groundY = spot.origin[1] * BLOCK_M;
 const fighters = [[0xd8d2c4, 'a'], [0x9a3b34, 'b']].map(([color, side]) => {
   const view = createHumanView(color); scene.add(view.group);
