@@ -236,10 +236,11 @@ const I3 = (w) => [-w[2], w[1], w[0]];
 function duelRec(name, o) {
   const R = [];
   simulateDuel(name, { ...o, onFrame: (t, sa, sb, a, b) => {
-    const cols = buildColliders(sb), kick = name === 'lowkick', s = kick ? 'R' : CLIPS[name].tip;
+    const cols = buildColliders(sb), kick = CLIPS[name].tip === 'kickR', s = kick ? 'R' : CLIPS[name].tip;
     const O = I3(kick ? sa.pose.hipR : sa.pose['shoulder' + s]), T = I3(a.strike.fist), rt = kick ? CONTACT.shinTip : CONTACT.fist;
     const M = I3(kick ? sa.pose.kneeR : sa.pose['elbow' + s]);
-    const tun = Math.max(segPenetration(cols, O, M, rt), segPenetration(cols, M, T, rt));   // por segmentos: hombro->codo->nudillos / cadera->rodilla->espinilla
+    let tun = Math.max(segPenetration(cols, O, M, rt), segPenetration(cols, M, T, rt));
+    if (kick) { const An = I3(sa.pose.footR), To = I3(sa.tips.toeR); tun = Math.max(tun, segPenetration(cols, T, An, rt), segPenetration(cols, An, To, 0.035)); }   // r7: tobillo y empeine tampoco entran   // por segmentos: hombro->codo->nudillos / cadera->rodilla->espinilla
     R.push({ t, ct: a.clip ? a.clipT : -1, cn: a.clip ? a.clipMode.name : '', seg: tun, pen: Math.max(0, penetration(cols, T, rt).pen),
       P: Object.fromEntries(Object.entries(sa.pose).map(([k, v]) => [k, v.slice()])), PB: Object.fromEntries(Object.entries(sb.pose).map(([k, v]) => [k, v.slice()])),
       fist: a.strike.fist.slice(), root: sa.root.pos.slice(), rootB: sb.root.pos.slice(), vis: sa.visualYaw, ev: a.events.filter((e) => e.type === 'contact').map((e) => ({ ...e })), ek: a.clipMode.entryK ?? 0, corr: Math.hypot(...a.contact.d) });
@@ -252,10 +253,10 @@ export function duelMetrics(name, o = {}) {
   const B = duelRec(name, { ...o, dist, link: false }), L = duelRec(name, { ...o, dist, link: true });
   const win = (R) => R.filter((r) => r.cn === name);
   const iImp = (R) => R.findIndex((r) => r.cn === name && r.ct >= c.impactT - 1e-9);
-  const ib = iImp(B), il = iImp(L), s = name === 'lowkick' ? 'R' : c.tip;
+  const kk = c.tip === 'kickR', ib = iImp(B), il = iImp(L), s = kk ? 'R' : c.tip;
   let corrJump = 0, corrWho = '';
   for (let i = 1; i < L.length; i++) for (const k in L[i].P) { const d = len(sub(sub(L[i].P[k], B[i].P[k]), sub(L[i - 1].P[k], B[i - 1].P[k]))); if (d > corrJump) { corrJump = d; corrWho = k; } }
-  const strikeJ = name === 'lowkick' ? ['kneeR', 'footR'] : ['hand' + s, 'elbow' + s];
+  const strikeJ = kk ? ['kneeR', 'footR'] : ['hand' + s, 'elbow' + s];
   const ev = L.flatMap((r) => r.ev)[0] || null, iev = ev ? L.findIndex((r) => r.ev.length) : -1;
   const hz = 60, sp = (R, i) => len(sub(R[i].fist, R[i - 1].fist)) * hz;
   const rr = (r) => Math.hypot(r.rootB[0] - r.root[0], r.rootB[2] - r.root[2]);
