@@ -71,6 +71,7 @@ export const COMBAT_EVENT = Object.freeze({
  * @property {number} [round]  número de round (1-based) en que ocurre el evento
  * @property {[number,number,number]} [point]  punto de contacto en coords MUNDO, en BLOQUES (×BLOCK_M = metros)
  * @property {string} [src]       tipo de evento de origen (KAGE), para depurar
+ * @property {{kind:'slip'|'roll'|'pull'|'parry', side:'L'|'R'}} [evade]  miss por precisión: defensa visible que lo explica (Combate, v0.5)
  * @property {string} [result]    submission: 'attempt'|'tap'|'break'|'escape'; decision/fightEnd: método
  */
 

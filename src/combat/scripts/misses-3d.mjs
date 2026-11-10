@@ -13,7 +13,7 @@ const cases = Array.from({ length: n }, (_, i) => { const [a, b] = pairs[i % pai
 const X = m.FIGHT_EVENTS_EXT, FE = m.FIGHT_EVENTS;
 const OUT = { [FE.HIT]: 'hit', [FE.BLOCK]: 'block', [X.PARRY]: 'parry', [X.CHECK]: 'check', [X.CATCH]: 'catch', [FE.DODGE]: 'dodge', [X.WHIFF]: 'whiff' };
 const tot = {}, byPhase = {}, byMove = {}, shortOver = [];
-let feints = 0, catches = 0, catchTd = 0, catchRel = 0, fights = 0;
+const evade = {}; let feints = 0, catches = 0, catchTd = 0, catchRel = 0, fights = 0;
 const inc = (o, k, v = 1) => { o[k] = (o[k] || 0) + v; };
 for (const c of cases) {
   const f = m.createFight(levelSpec(c.a, c.level), levelSpec(c.b, c.level), c.seed, { record: false, geometry, tailSeconds: 0 });
@@ -32,7 +32,7 @@ for (const c of cases) {
       if (ev.kind === 'short' && F.geo.reachTable) { const w = F.geo.reachTable[ev.move]; if (w) shortOver.push(F.geo.distance(F.fighters[0], F.fighters[1]) / PX_PER_M - (w.rangeMax ?? 0) / PX_PER_M); }
     }
     const ces = events.flatMap((e) => tr.translate(e, F)).concat(tr.endTick());
-    for (const e of ces) { if (e.type === 'block' && e.src === 'catch') catches++; if (e.type === 'knockdown' && e.action === 'kickCatch') catchTd++; if (e.type === 'release') catchRel++; }
+    for (const e of ces) { if (e.type === 'miss' && e.evade) inc(evade, e.action + ':' + e.evade.kind); if (e.type === 'block' && e.src === 'catch') catches++; if (e.type === 'knockdown' && e.action === 'kickCatch') catchTd++; if (e.type === 'release') catchRel++; }
   }
 }
 const all = Object.values(tot).reduce((s, v) => s + v, 0);
@@ -44,4 +44,5 @@ console.log(JSON.stringify({ geometry, fights, seeds: [seed0, seed0 + n - 1], re
   byPhase: Object.fromEntries(Object.entries(byPhase).map(([k, v]) => [k, line(v)])),
   byMove: Object.fromEntries(Object.entries(byMove).filter(([, v]) => Object.values(v).reduce((s, x) => s + x, 0) > 2000).map(([k, v]) => [k, line(v)])),
   shortOverM: shortOver.length ? { n: shortOver.length, median: +shortOver.sort((a, b) => a - b)[shortOver.length >> 1].toFixed(3), p90: +shortOver[Math.floor(shortOver.length * 0.9)].toFixed(3) } : null,
+  evade: (() => { const t = Object.values(evade).reduce((s, v) => s + v, 0); const k = {}; for (const [kk, v] of Object.entries(evade)) inc(k, kk.split(':')[1], v); return { n: t, missRoll: tot['whiff:miss'] || 0, byKind: Object.fromEntries(Object.entries(k).map(([a, b]) => [a, pct(b, t)])) }; })(),
   kickCatch: { catches, takedown: catchTd, release: catchRel } }, null, 1));

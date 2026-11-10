@@ -70,6 +70,33 @@ export function guardOf(ev) {
   return { limb: 'forearm', side };
 }
 
+/**
+ * Defensa VISIBLE que explica un fallo por precisión (whiff kind 'miss'), para que ningún golpe falle "al aire" (orden de Rick, 2026-11-10).
+ * Determinista: depende sólo del golpe y del estilo del que defiende. side = lado hacia el que se mueve la cabeza o la mano del que defiende
+ * (fuera de la línea del golpe: espejo del miembro que golpea, como guardOf).
+ * - jab -> parry (la mano de atrás lo desvía).
+ * - rectos y golpes por encima (cross, overhand, superman, codos, gnp a la cabeza) -> slip.
+ * - hook o giro a la cabeza (hook, clinchElbow, backfist) -> roll (agacharse por debajo).
+ * - uppercut y patada alta -> pull (echar la cabeza atrás).
+ * - al cuerpo o a las piernas (bodyHook, bodyCross, bodyKick, teep, lowKick, calfKick, rodillas): pull (cadera o pierna atrás);
+ *   muayThai y kickboxer desvían con la mano lo que va al cuerpo de frente (teep, bodyCross, gnpBody) -> parry.
+ * @returns {{kind:'slip'|'roll'|'pull'|'parry', side:'L'|'R'}|null}
+ */
+export function evadeOf(ev, styleId) {
+  if (ev.type !== X.WHIFF || ev.kind !== 'miss') return null;
+  const mv = MOVES[ev.move]; if (!mv) return null;
+  const limb = mv.limb || ev.limb || '';
+  const side = limb.endsWith('L') ? 'R' : 'L';
+  const zone = mv.zone ?? ev.target;
+  const handFighter = styleId === 'muayThai' || styleId === 'kickboxer';
+  let kind;
+  if (mv.id === 'jab') kind = 'parry';
+  else if (mv.id === 'uppercut' || mv.id === 'dirtyUppercut' || mv.id === 'highKick') kind = 'pull';
+  else if (zone === 'head') kind = mv.arc === 'hook' || mv.arc === 'spin' ? 'roll' : mv.arc === 'knee' ? 'pull' : 'slip';
+  else kind = handFighter && (mv.arc === 'push' || mv.arc === 'straight' || mv.arc === 'over') ? 'parry' : 'pull';
+  return { kind, side };
+}
+
 export function createCombatTranslator(opt = {}) {
   const ids = opt.ids ?? { a: 0, b: 1 };
   // Patada atrapada: la sim decide en el MISMO tick (onCatch) si derriba (TAKEDOWN move 'kickCatch') o suelta (A.action = null, sin evento).
@@ -112,6 +139,7 @@ export function createCombatTranslator(opt = {}) {
         default: break;
       }
       if (type === 'block') { const g = guardOf(ev); if (g) out.guard = g; }
+      if (type === 'miss') { const e = evadeOf(ev, F?.byId?.[ev.defender]?.style?.id); if (e) out.evade = e; }   // fallo por precisión: defensa visible
       if ((type === 'hit' || type === 'block') && F && F.geo && F.geo.units === 'm' && ev.attacker && ev.defender) {
         const mv = MOVES[ev.move];
         const p = mv && F.byId?.[ev.attacker] && F.byId?.[ev.defender] ? F.geo.contactPoint(F.byId[ev.attacker], F.byId[ev.defender], mv) : null;
