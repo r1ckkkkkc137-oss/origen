@@ -307,6 +307,8 @@ export function groundMetrics(pos = 'mount', strike = 'gnp_punch', o = {}) {
     m.penMax = Math.max(m.penMax, penetration(cols, f, rt).pen); m.segMax = Math.max(m.segMax, segPenetration(cols, P, f, rt));
     if (pf && T > 2 / 60 + 1e-9) { const v = Math.hypot(f[0] - pf[0], f[1] - pf[1], f[2] - pf[2]) * 60; if (v > m.vPeak) { m.vPeak = v; m.vPeakT = T; } if (Math.abs(T - cl.impactT) < 1 / 120) m.vImpact = v; m.tipJump = Math.max(m.tipJump, v / 60); }
     if (Math.abs(T - cl.impactT) < 1 / 120) { const c = cols[zoneCol]; m.gapImpact = sdist(c, f) - rt; }
+    if (m.tImp == null && T >= cl.impactT - 1e-9) { m.tImp = t; m.fImp = f; }   // r8: hit-stop: cuánto se mueve la punta en HITSTOP (tiempo de pared)
+    if (m.tImp != null && t <= m.tImp + HITSTOP + 1e-9) m.hitStopMove = Math.max(m.hitStopMove || 0, Math.hypot(f[0] - m.fImp[0], f[1] - m.fImp[1], f[2] - m.fImp[2]));
     if (!m.contact && a.contact.last && a.contact.last.name === strike) m.contact = { ...a.contact.last };
     pf = f;
   } });
