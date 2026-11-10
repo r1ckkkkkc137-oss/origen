@@ -20,8 +20,10 @@ function rec(name, hz = HZ) {
 }
 // instante (rel. a T0) en que una señal alcanza la fracción f de su recorrido total en la ventana del clip
 // ronda 4: con carga (wind-up) la señal primero va al revés: el cruce se mide entre el extremo de la carga y el extremo del golpe
-function cross(sig, R, f) {
+// ronda 5: iEnd = índice del impacto (el gancho carga la cadera más de lo que gira al golpe: el extremo global sería la carga)
+function cross(sig, R, f, iEnd = -1) {
   const a0 = sig[0]; let m = 0, im = 0; sig.forEach((v, i) => { if (Math.abs(v - a0) > Math.abs(m)) { m = v - a0; im = i; } });
+  if (iEnd >= 0) { im = iEnd; m = sig[im] - a0; }
   let lo = a0, il = 0; for (let i = 0; i < im; i++) if ((sig[i] - lo) * Math.sign(m) < 0) { lo = sig[i]; il = i; }
   const tgt = lo + (sig[im] - lo) * f; for (let i = il; i <= im; i++) if ((sig[i] - tgt) * Math.sign(m) >= 0) return R[i].t - T0;
   return R[im].t - T0;
@@ -33,7 +35,8 @@ test('cadena cinética jab/cross/gancho: cadera -> hombros -> puño (orden y no 
     const R = window(rec(name), dur);
     const hip = unwrap(R.map((r) => lineYaw(r.P, 'hipL', 'hipR'))), sh = unwrap(R.map((r) => lineYaw(r.P, 'shoulderL', 'shoulderR')));
     const sp = R.map((r, i) => (i && r.t > T0 + 0.03) ? len(sub(r.fist, R[i - 1].fist)) * HZ : 0);
-    const tHip = cross(hip, R, 0.5), tSh = cross(sh, R, 0.5);
+    const iImp = R.findIndex((r) => r.t >= T0 + CLIPS[name].impactT - 1e-9);
+    const tHip = cross(hip, R, 0.5, iImp), tSh = cross(sh, R, 0.5, iImp);
     let k = 0; sp.forEach((v, i) => { if (v > sp[k]) k = i; }); const tFist = R[k].t - T0;
     assert.ok(tHip < tSh + 1e-9, `${name}: cadera ${tHip.toFixed(3)} antes que hombros ${tSh.toFixed(3)}`);
     assert.ok(tSh < tFist, `${name}: hombros ${tSh.toFixed(3)} antes que el pico del puño ${tFist.toFixed(3)}`);

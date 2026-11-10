@@ -5,9 +5,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { simulate } from '../src/anim/scenarios.js';
 
-const OUT = process.argv[2] || '/workspace/origen-shots/anim-r2';
+const OUT = process.argv[2] || '/workspace/origen-shots/anim-r6';
 fs.mkdirSync(OUT, { recursive: true });
-const CAMS = ['front', 'side', 'top34'];
+const CAMS = ['front', 'side', 'top34'], DCAMS = ['side', 'front34', 'top34'];
 const W = 440, H = 400;
 
 // escenas: [nombre del escenario, etiqueta, tiempos[], tiempos "clave" para PNG individual]
@@ -39,6 +39,14 @@ function plan() {
   P.push({ sc: 'ko', label: 'ko', times: [0.98, 1.10, 1.22, 1.32, 1.42, 1.60, 1.84, 2.4], keys: [1.22, 1.42, 1.84, 2.4], keyNames: ['buckle', 'kneel', 'topple', 'lying'] });
   P.push({ sc: 'ko', label: 'getup', times: [3.0, 3.3, 3.6, 3.85, 4.1, 4.35, 4.6, 5.0], keys: [3.6, 4.1] });
   P.push({ sc: 'climb1m', label: 'climb1m', times: [0.1, 0.4, 0.75, 1.05, 1.3, 1.55, 1.8, 2.15].map((x) => +(3.6 + x).toFixed(3)), keys: [3.6 + 0.4, 3.6 + 1.05, 3.6 + 1.55], keyNames: ['grab', 'knee', 'push'] });
+  // ronda 6: duelos a la distancia de conexión de combat-gap (jab 0,97 / cross 0,95 / hook 0,85 / low kick 1,00), con y sin contacto
+  for (const [sc, imp, ts] of [['jab', 0.10, [-0.05, 0.05, 0.083, 0.10, 0.125, 0.15, 0.20, 0.30]], ['cross', 0.15, [-0.05, 0.10, 0.133, 0.15, 0.175, 0.20, 0.25, 0.40]],
+    ['hook', 0.1833, [-0.05, 0.10, 0.15, 0.1833, 0.2083, 0.233, 0.30, 0.45]], ['lowkick', 0.2333, [-0.05, 0.15, 0.20, 0.2333, 0.2583, 0.283, 0.35, 0.55]]]) {
+    const T = (x) => +(1.0 + x).toFixed(4);
+    P.push({ duel: true, sc, label: 'duel_' + sc, times: ts.map(T), keys: [T(ts[2]), T(imp), T(ts[5])], keyNames: ['pre', 'impact', 'hitstop_end'] });
+    P.push({ duel: true, sc, label: 'duel_' + sc + '_nolink', opts: { link: false }, times: [T(imp - 0.017), T(imp), T(imp + 0.017), T(imp + 0.033)], keys: [T(imp)], keyNames: ['impact'] });
+  }
+  P.push({ duel: true, sc: 'hook', label: 'duel_hook_close070', opts: { closeTo: 0.70 }, times: [1.0, 1.1, 1.15, 1.1833, 1.2083, 1.25, 1.3, 1.45], keys: [1.1833], keyNames: ['impact'] });
   P.push({ sc: 'turn90', label: 'turn90', times: [1.4, 1.55, 1.7, 1.85, 2.0, 2.2, 2.6, 3.2], keys: [1.7, 2.2] });
   return P;
 }
@@ -60,10 +68,12 @@ const ONLY = process.argv[3] ? process.argv[3].split(',') : null;   // p.ej. nod
 for (const p of plan()) {
   if (ONLY && !ONLY.includes(p.label)) continue;
   const allTimes = [...new Set([...p.times, ...p.keys])];
-  const res = await page.evaluate((sc, times, cams, w, h) => window.CAP.run(sc, times, cams, w, h), p.sc, allTimes, CAMS, W, H);
+  const cams = p.duel ? DCAMS : CAMS;
+  const res = p.duel ? await page.evaluate((sc, times, cams, w, h, o) => window.CAP.runDuel(sc, times, cams, w, h, o), p.sc, allTimes, cams, W, H, p.opts || {})
+    : await page.evaluate((sc, times, cams, w, h) => window.CAP.run(sc, times, cams, w, h), p.sc, allTimes, CAMS, W, H);
   // PNG individuales
   p.keys.forEach((t, k) => { const i = allTimes.indexOf(t); const nm = p.keyNames ? p.keyNames[k] : 't' + t.toFixed(2);
-    for (const c of CAMS) save(`${p.label}_${nm}_${c}.png`, res[c][i]); });
+    for (const c of cams) save(`${p.label}_${nm}_${c}.png`, res[c][i]); });
   // contact sheets: global (filas = cámaras) y una por cámara (4 columnas)
   const mk = (camList, perRow, scale, label) => sheetPage.evaluate(async (res, times, allTimes, cams, perRow, cw, ch, label) => {
     const rowsPer = Math.ceil(times.length / perRow);
@@ -76,8 +86,8 @@ for (const p of plan()) {
     }
     return cv.toDataURL('image/png');
   }, res, p.times, allTimes, camList, perRow, Math.round(W * scale), Math.round(H * scale), label);
-  save(`sheet_${p.label}.png`, await mk(CAMS, p.times.length, 0.5, `${p.sc} (filas: ${CAMS.join(' / ')})`));
-  for (const c of CAMS) save(`sheet_${p.label}_${c}.png`, await mk([c], 4, 0.9, `${p.sc} cámara ${c}`));
+  save(`sheet_${p.label}.png`, await mk(cams, p.times.length, 0.5, `${p.label} (filas: ${cams.join(' / ')})`));
+  for (const c of cams) save(`sheet_${p.label}_${c}.png`, await mk([c], 4, 0.9, `${p.label} cámara ${c}`));
   console.log('ok', p.sc, allTimes.length, 'frames');
 }
 // fps de render (swiftshader, NO representativo de GPU)

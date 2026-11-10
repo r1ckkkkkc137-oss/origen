@@ -15,14 +15,20 @@ const W = 480, H = 400;
 // acciones: { t, who: 0|1, play, opts }.  who 0 = beige (mira +X), 1 = rojo (mira -X)
 const SCENES = {
   guard: { times: [1.0, 1.7, 2.4, 3.1], actions: [] },
-  jab: { times: [1.40, 1.50, 1.58, 1.65, 1.75, 1.90, 2.10, 2.40], actions: [{ t: 1.5, who: 0, play: 'jab' }] },
+  // ronda 5: Combate lanza jab/cross a ~0,95 m y separa >= 0,80 m fuera del clinch
+  jab: { sep: 0.475, times: [1.50, 1.55, 1.5667, 1.60, 1.6417, 1.70, 1.76, 1.82], actions: [{ t: 1.5, who: 0, play: 'jab' }] },
   jabsync: { times: [1.50, 1.56, 1.60, 1.64, 1.70, 1.76, 1.82, 1.95], actions: [{ t: 1.5, who: 0, play: 'jab', opts: { impactIn: 0.10, duration: 0.32 } }, { t: 1.5, who: 1, play: 'jab', opts: { speed: 0.6 } }] },   // KAGE: impacto a 0.10 s, total 0.32 s
-  cross: { times: [1.50, 1.58, 1.62, 1.65, 1.68, 1.71, 1.76, 1.90], actions: [{ t: 1.5, who: 0, play: 'cross' }] },
+  cross: { sep: 0.475, times: [1.50, 1.567, 1.60, 1.65, 1.6917, 1.75, 1.82, 1.93], actions: [{ t: 1.5, who: 0, play: 'cross' }] },
   // ronda 4: tiempos de la sim; sep = media distancia pelvis-pelvis (el alcance de reach3d: gancho 0.70, low kick 1.00)
-  hook: { sep: 0.35, times: [1.50, 1.55, 1.62, 1.6833, 1.7333, 1.78, 1.86, 1.98], actions: [{ t: 1.5, who: 0, play: 'hook' }] },
-  ko: { sep: 0.55, times: [1.48, 1.62, 1.72, 1.82, 1.92, 2.10, 2.34, 2.90], actions: [{ t: 1.5, who: 1, play: 'hook' }, { t: 1.5 + 11 / 60, who: 0, play: 'ko', opts: { force: true } }] },
+  hook: { sep: 0.40, times: [1.50, 1.55, 1.62, 1.6833, 1.7333, 1.78, 1.86, 1.98], actions: [{ t: 1.5, who: 0, play: 'hook' }] },
+  ko: { sep: 0.45, times: [1.48, 1.62, 1.72, 1.82, 1.92, 2.10, 2.34, 2.90], actions: [{ t: 1.5, who: 1, play: 'hook' }, { t: 1.5 + 11 / 60, who: 0, play: 'ko', opts: { force: true } }] },
   feint_hook: { sep: 0.45, times: [1.50, 1.53, 1.56, 1.60, 1.63, 1.68, 1.75, 1.88], actions: [{ t: 1.5, who: 0, play: 'feint_hook' }] },
   block: { times: [1.0, 1.15, 1.3, 1.5, 1.6, 1.7, 2.2, 2.6], actions: [{ t: 1.1, who: 0, guard: 1 }, { t: 1.5, who: 1, play: 'jab' }, { t: 2.3, who: 0, guard: 0 }] },
+  // ronda 6: contacto (animadores enlazados con setOpponent) a las distancias de conexión de combat-gap; el rival recibe state.hurt {zone, age, power}
+  jab_contact: { link: true, sep: 0.485, times: [1.50, 1.567, 1.5833, 1.60, 1.6167, 1.6417, 1.70, 1.80], actions: [{ t: 1.5, who: 0, play: 'jab' }, { t: 1.6, who: 1, hurt: { zone: 'head', power: 0.6 } }] },
+  cross_contact: { link: true, sep: 0.475, times: [1.50, 1.60, 1.6333, 1.65, 1.6667, 1.6917, 1.75, 1.90], actions: [{ t: 1.5, who: 0, play: 'cross' }, { t: 1.65, who: 1, hurt: { zone: 'head', power: 0.7 } }] },
+  hook_contact: { link: true, sep: 0.425, times: [1.50, 1.60, 1.65, 1.6833, 1.70, 1.725, 1.80, 1.95], actions: [{ t: 1.5, who: 0, play: 'hook' }, { t: 1.6833, who: 1, hurt: { zone: 'head', power: 0.8 } }] },
+  lowkick_contact: { link: true, sep: 0.50, times: [1.50, 1.65, 1.70, 1.7333, 1.75, 1.7833, 1.86, 2.05], actions: [{ t: 1.5, who: 0, play: 'lowkick' }, { t: 1.7333, who: 1, hurt: { zone: 'legs', power: 0.7 } }] },
   lowkick: { sep: 0.50, times: [1.50, 1.56, 1.64, 1.7333, 1.7667, 1.86, 1.96, 2.10], actions: [{ t: 1.5, who: 0, play: 'lowkick' }] },
 };
 
@@ -51,14 +57,19 @@ for (const [name, sc] of Object.entries(SCENES)) {
     fighters[0].root.yaw = 0; fighters[1].root.yaw = Math.PI;
     const dt = 1 / 60, out = {}; for (const c of cams) out[c] = [];
     const times = sc.times, last = Math.max(...times);
-    const acts = sc.actions.slice(); let ti = 0;
+    const acts = sc.actions.slice(); let ti = 0; const hurts = [];
+    if (sc.link) { fighters[0].anim.setOpponent(fighters[1].anim); fighters[1].anim.setOpponent(fighters[0].anim); }
     renderer.setSize(480, 400); camera.aspect = 480 / 400; camera.updateProjectionMatrix();
     const target = [cx, gy + 0.95, cz];
     const camDef = { front: [cx - 1.3, gy + 1.15, cz + 3.0], side: [cx, gy + 1.1, cz - 3.0], top34: [cx - 1.5, gy + 2.5, cz - 2.2] };   // front = 3/4 por el lado derecho de beige
     for (let i = 0; i * dt <= last + dt; i++) {
       const t = i * dt;
-      while (acts.length && acts[0].t <= t + 1e-9) { const a = acts.shift(); if (a.play) fighters[a.who].anim.play(a.play, a.opts); if (a.guard !== undefined) fighters[a.who].anim.setGuardLevel(a.guard); }
-      for (const f of fighters) f.anim.update(dt, f.root);
+      while (acts.length && acts[0].t <= t + 1e-9) { const a = acts.shift(); if (a.play) fighters[a.who].anim.play(a.play, a.opts); if (a.guard !== undefined) fighters[a.who].anim.setGuardLevel(a.guard); if (a.hurt) hurts.push({ who: a.who, ...a.hurt, age: 0 }); }
+      for (let k = 0; k < fighters.length; k++) {
+        const f = fighters[k];
+        for (const h of hurts) if (h.who === k) { f.anim.setState({ hurt: { zone: h.zone, age: h.age, power: h.power } }); h.age += dt; }
+        f.anim.update(dt, f.root);
+      }
       if (ti < times.length && Math.abs(t - times[ti]) < dt / 2) {
         for (const f of fighters) f.view.update(f.anim.skeleton);
         for (const c of cams) { camera.position.set(...camDef[c]); camera.lookAt(...target); camera.fov = 32; camera.updateProjectionMatrix(); renderer.render(G.scene, camera); out[c].push(renderer.domElement.toDataURL('image/png')); }

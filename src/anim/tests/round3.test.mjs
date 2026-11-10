@@ -18,14 +18,17 @@ test('gancho: alcance corto frente al cuerpo (pelvis→puño dentro de la ventan
   // ronda 4: el húmero va abierto al costado (Rick), así que el puño pega a ~0,2 m al costado de la línea de la raíz (cara lateral de la cabeza del rival); ver round4
   assert.ok(Math.abs(m.latImpact) < 0.30, `desvío lateral respecto del centro de los hombros ${m.latImpact.toFixed(2)} m`);
   const r = pelvisReach('hook');
-  assert.ok(r.ok, `pelvis→puño ${r.horiz.toFixed(2)} m vs ideal ${r.ideal}±${r.tol}`);
+  // ronda 6: REACH_IDEAL.hook pasó a 0,86 desde la RAÍZ (entra la pelvis); desde la pelvis el brazo sigue corto: ventana r3 local
+  assert.ok(Math.abs(r.horiz - 0.70) <= 0.08, `pelvis→puño ${r.horiz.toFixed(2)} m vs 0,70±0,08`);
   assert.ok(m.hipRot >= 25, `rotación de cadera ${m.hipRot.toFixed(0)}°`);
   assert.ok(m.tHip < m.tSh && m.tSh < m.tFistPeak, 'cadena cinética cadera → hombros → puño');
   assert.ok(m.popMax < 0.2, `salto máx del gancho ${m.popMax.toFixed(3)} m/frame`);
 });
 
 test('jab y cross: la distancia 3D pelvis→puño al impacto cae en la ventana de Combate; low kick ≥ 0,7 m (limitado por la longitud de la pierna)', () => {
-  for (const n of ['jab', 'cross']) { const r = pelvisReach(n); assert.ok(Math.abs(r.d3 - r.ideal) <= r.tol, `${n}: d3 ${r.d3.toFixed(2)} vs ${r.ideal}±${r.tol}`); }
+  // ronda 5: REACH_IDEAL pasó a ser el alcance HORIZONTAL raíz→puño (1,0±0,05, round5); la ventana 3D de r3 se conserva acá
+  const R3 = { jab: [1.10, 0.07], cross: [1.05, 0.07] };
+  for (const n of ['jab', 'cross']) { const r = pelvisReach(n), [id, tol] = R3[n]; assert.ok(Math.abs(r.d3 - id) <= tol, `${n}: d3 ${r.d3.toFixed(2)} vs ${id}±${tol}`); }
   // ronda 4: el low kick se mide desde la RAÍZ (pelvis de la sim) con el paso del pie de apoyo: ver round4
   const k = rootReach('lowkick');
   assert.ok(k.ok, `lowkick raíz→espinilla ${k.rootHoriz.toFixed(2)}`);

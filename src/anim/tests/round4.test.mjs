@@ -17,7 +17,7 @@ test('gancho: húmero abducido 80–90° (paralelo al suelo, abierto al costado)
   assert.ok(Math.abs(m.elbowMinusShoulderY) <= 0.06, `codo a la altura del hombro: ${m.elbowMinusShoulderY.toFixed(3)} m`);
 });
 
-test('alcance horizontal raíz→puño/espinilla (= pelvis de la sim, como reach3d.js): gancho 0.70±0.08, low kick 1.00±0.07', () => {
+test('alcance horizontal raíz→puño/espinilla (= pelvis de la sim, como reach3d.js): gancho 0.86±0.06 (ronda 6: entra con paso, combat-gap), low kick 1.00±0.07', () => {
   for (const n of ['hook', 'lowkick']) { const r = rootReach(n); assert.ok(r.ok, `${n}: ${r.rootHoriz.toFixed(3)} m (ideal ${r.ideal}±${r.tol})`); }
   assert.ok(rootReach('lowkick').pelvisFwd >= 0.2, 'el low kick avanza la pelvis con el paso del pie de apoyo');
 });

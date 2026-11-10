@@ -91,7 +91,7 @@ export const JAB = {
   phases: [{ name: 'anticipation', t0: 0, t1: 0.035 }, { name: 'strike', t0: 0.035, t1: JH }, { name: 'recovery', t0: JH, t1: JD }],
   tracks: {
     dy:      [K(0, 0), K(0.03, -0.02, EO), K(JI, -0.03, EI), K(JH, -0.045), K(0.23, -0.01), K(JD, 0)],
-    pz:      [K(0, 0), K(0.03, -0.015), K(JI, 0.07, EI), K(JH, 0.09), K(0.23, 0.015), K(JD, 0)],
+    pz:      [K(0, 0), K(0.03, -0.015), K(JI, 0.11, EI), K(JH, 0.125), K(0.23, 0.02), K(JD, 0)],
     px:      [K(0, 0), K(JI, 0.02, EO), K(JD, 0)],
     hipYaw:  [K(0, 0), K(0.03, 0.07, EO), K(0.085, -0.30, EI), K(JH, -0.32), K(0.22, -0.05), K(0.26, 0.02), K(JD, 0)],
     hipRoll: [K(0, 0), K(0.09, -0.04), K(0.22, 0), K(JD, 0)],
@@ -102,7 +102,7 @@ export const JAB = {
     hdYaw:   [K(0, 0), K(JI, 0.20), K(0.26, 0.02), K(JD, 0)],
     shrugL:  [K(0, 0), K(0.09, 0.05, EO), K(0.22, 0.01), K(JD, 0)],
     protL:   [K(0, 0), K(JI, 0.07, EO), K(0.22, 0.01), K(JD, 0)],
-    hLz: [K(0, 0), K(0.015, -0.005, EO), K(JI, 0.385, EI), K(JH, 0.39, LIN), K(0.20, 0.01, EO), K(0.25, -0.005), K(JD, 0)],
+    hLz: [K(0, 0), K(0.015, -0.005, EO), K(JI, 0.405, EI), K(JH, 0.41, LIN), K(0.21, 0.03, EO), K(0.25, -0.005), K(JD, 0)],
     hLx: [K(0, 0), K(JI, -0.055, EI), K(JH, -0.055, LIN), K(0.20, 0, EO), K(JD, 0)],
     hLy: [K(0, 0), K(0.035, 0.010), K(JI, 0.005), K(0.20, 0), K(JD, 0)],
     elbL: [K(0, 0), K(0.04, 0.2), K(JI, 0.0), K(JD, 0)],
@@ -110,7 +110,7 @@ export const JAB = {
     hRz: [K(0, 0), K(JI, 0.030, EO), K(0.24, 0.003), K(JD, 0)],
     hRx: [K(0, 0), K(JI, -0.020, EO), K(0.24, 0), K(JD, 0)],
     // paso: el pie adelantado sale, avanza 13 cm en el aire y aterriza a 0.075 s; vuelve levantándose en 0.17–0.25
-    fLz: [K(0, 0), K(0.075, 0.13), K(0.17, 0.13, LIN), K(0.25, 0), K(JD, 0)],
+    fLz: [K(0, 0), K(0.075, 0.24), K(0.17, 0.24, LIN), K(0.25, 0), K(JD, 0)],
     fLy: [K(0, 0), K(0.03, 0.03, EO), K(0.075, 0, EI), K(0.17, 0, LIN), K(0.205, 0.025, EO), K(0.25, 0, EI), K(JD, 0)],
     // el pie trasero EMPUJA: el talón sube sobre la bola hasta el hit-stop
     fRpitch: [K(0, 0), K(0.05, -0.08), K(JI, -0.30, EI), K(JH, -0.34), K(0.24, 0), K(JD, 0)],
@@ -125,21 +125,24 @@ export const CROSS = {
   phases: [{ name: 'anticipation', t0: 0, t1: 0.065 }, { name: 'strike', t0: 0.065, t1: CH }, { name: 'recovery', t0: CH, t1: CD }],
   tracks: {
     dy:      [K(0, 0), K(0.045, -0.03, EO), K(CI, -0.035, EI), K(CH, -0.052), K(0.30, -0.01), K(CD, 0)],
-    pz:      [K(0, 0), K(0.045, -0.03), K(CI, 0.09, EI), K(CH, 0.115), K(0.31, 0.01), K(CD, 0)],
-    hipYaw:  [K(0, 0), K(0.045, -0.08, EO), K(0.12, 0.62, EI), K(CH, 0.65), K(0.29, 0.10), K(0.35, -0.03), K(CD, 0)],
-    spYaw:   [K(0, 0), K(0.05, -0.04, EO), K(0.142, 0.14, EI), K(CH, 0.16), K(0.30, 0.02), K(CD, 0)],
-    spPitch: [K(0, 0), K(0.045, -0.03), K(CI, 0.10, EI), K(CH, 0.135), K(0.30, 0.03), K(CD, 0)],
+    pz:      [K(0, 0), K(0.045, -0.03), K(CI, 0.20, LIN), K(CH, 0.215), K(0.31, 0.02), K(CD, 0)],
+    hipYaw:  [K(0, 0), K(0.045, -0.08, EO), K(0.12, 0.70, EI), K(CH, 0.73), K(0.29, 0.10), K(0.35, -0.03), K(CD, 0)],
+    spYaw:   [K(0, 0), K(0.05, -0.04, EO), K(0.142, 0.20, EI), K(CH, 0.22), K(0.30, 0.02), K(CD, 0)],
+    spPitch: [K(0, 0), K(0.045, -0.03), K(CI, 0.12, EI), K(CH, 0.15), K(0.30, 0.03), K(CD, 0)],
     hdYaw:   [K(0, 0), K(CI, -0.45), K(0.30, -0.05), K(CD, 0)],
     hdPitch: [K(0, 0), K(CI, 0.05), K(CD, 0)],
     shrugR:  [K(0, 0), K(0.14, 0.07, EO), K(0.28, 0.01), K(CD, 0)],
     protR:   [K(0, 0), K(CI, 0.10, EO), K(0.30, 0.01), K(CD, 0)],
-    hRz: [K(0, 0), K(0.065, -0.03, EO), K(CI, 0.38, EI), K(CH, 0.385, LIN), K(0.25, 0.02, EO), K(0.31, -0.005), K(CD, 0)],
+    hRz: [K(0, 0), K(0.065, -0.03, EO), K(CI, 0.395, EI), K(CH, 0.40, LIN), K(0.25, 0.02, EO), K(0.31, -0.005), K(CD, 0)],
     hRx: [K(0, 0), K(CI, 0.04, EI), K(CH, 0.04, LIN), K(0.25, 0), K(CD, 0)],
     hRy: [K(0, 0), K(0.05, 0.01), K(CI, 0.025), K(0.25, 0), K(CD, 0)],
     elbR: [K(0, 0), K(0.06, 0.12), K(0.14, 0), K(CD, 0)],
     hLy: [K(0, 0), K(CI, 0.03), K(0.30, 0), K(CD, 0)],
     hLz: [K(0, 0), K(CI, -0.02), K(0.30, 0), K(CD, 0)],
     hLx: [K(0, 0), K(CI, 0.03), K(0.30, 0), K(CD, 0)],
+    // ronda 5: desliz del pie delantero (en el aire, aterriza antes del impacto) para que la pelvis entre y el cross llegue a 1,0 m
+    fLz: [K(0, 0), K(0.10, 0.21), K(0.24, 0.21, LIN), K(0.33, 0), K(CD, 0)],
+    fLy: [K(0, 0), K(0.04, 0.025, EO), K(0.10, 0, EI), K(0.24, 0, LIN), K(0.285, 0.02, EO), K(0.33, 0, EI), K(CD, 0)],
     fRyaw:   [K(0, 0), K(0.045, -0.05, EO), K(0.125, 0.70, EI), K(0.25, 0.55), K(0.36, 0), K(CD, 0)],
     fRpitch: [K(0, 0), K(0.05, -0.15), K(0.125, -0.55, EO), K(CH, -0.62), K(0.25, -0.45), K(0.36, 0), K(CD, 0)],
   },
@@ -153,11 +156,15 @@ export const CROSS = {
 // La muñeca (hLx/hLy/hLz) y el polo del codo en marco de cara (pLx/pLy/pLz, peso pLw) se HORNEAN abajo desde las pistas de cadera/pecho:
 // el polo = dirección deseada del húmero => la IK pone el codo exactamente ahí. Pie delantero: pivote sobre la bola.
 const HI = simT('hook').i, HD = simT('hook').d, HH = HI + HITSTOP;     // 0.183, 0.483, 0.225
+// ronda 6 (contacto, sólo con rival enlazado): zona, altura del blanco (centro de la cabeza + dy) y punta libre en el impacto en el marco
+// de la raíz [izq, altura, adelante] (medida sin rival, semilla 7; round6.test.mjs comprueba que sigue valiendo).
+JAB.aim = { zone: 'head', dy: -0.02, ref: [-0.035, 1.342, 1.004], sref: [0.032, 1.293, 0.311] };   // sref: hombro libre en el impacto (la pelvis entra menos si el blanco está cerca)
+CROSS.aim = { zone: 'head', dy: -0.03, ref: [0.096, 1.402, 1.018], sref: [-0.121, 1.314, 0.362] };
 export const HOOK_E = 90 * Math.PI / 180;                       // ángulo del codo (rad), constante de la carga al impacto
 const HOOK_UA = 0.31, HOOK_FA = 0.27;                             // = DIM.upperArm, DIM.foreArm (skeleton3d.js)
 export const HOOK_R = Math.sqrt(HOOK_UA * HOOK_UA + HOOK_FA * HOOK_FA - 2 * HOOK_UA * HOOK_FA * Math.cos(HOOK_E));   // |muñeca - hombro|
-export const HOOK_DROP = 5 * Math.PI / 180;                      // el húmero cae 5° bajo la horizontal (abducción ≈85° respecto del tronco)
-export const HOOK_RISE = 22 * Math.PI / 180;                     // el antebrazo sube 22° (puño a la altura del mentón del rival)
+export const HOOK_DROP = 1 * Math.PI / 180;                      // el húmero cae 1° bajo la horizontal (r6: era 5°; abducción ≈88°, el puño sube a la mandíbula)
+export const HOOK_RISE = 28 * Math.PI / 180;                     // el antebrazo sube 28° (r6: era 22°; puño a la mandíbula del rival en guardia)
 export const HOOK_A0 = 110 * Math.PI / 180, HOOK_A1 = 97 * Math.PI / 180;   // húmero en el marco del pecho (0 = adelante, 90° = costado)
 export const HOOK = {
   name: 'hook', duration: HD, impactT: HI, tip: 'L', feet: true, ball: { L: true },
@@ -167,7 +174,7 @@ export const HOOK = {
     dy:      [K(0, 0), K(0.05, -0.035, EO), K(HI, -0.04), K(HH, -0.058), K(0.33, -0.01), K(HD, 0)],
     pz:      [K(0, 0), K(0.05, 0.01), K(HI, 0.05, EI), K(HH, 0.07), K(0.32, 0.01), K(HD, 0)],
     px:      [K(0, 0), K(HI, -0.03), K(0.38, 0), K(HD, 0)],
-    hipYaw:  [K(0, 0), K(0.055, 0.20, EO), K(0.165, -0.34), K(HI, -0.36, LIN), K(HH, -0.38), K(0.33, -0.08), K(0.40, 0.02), K(HD, 0)],
+    hipYaw:  [K(0, 0), K(0.07, 0.34, EO), K(0.165, -0.34), K(HI, -0.36, LIN), K(HH, -0.38), K(0.33, -0.08), K(0.40, 0.02), K(HD, 0)],
     spYaw:   [K(0, 0), K(0.07, 0.08, EO), K(HI, 0.13), K(HH, 0.12), K(0.34, 0.02), K(HD, 0)],
     spRoll:  [K(0, 0), K(HI, -0.05), K(HD, 0)],
     spPitch: [K(0, 0), K(HI, 0.10, EI), K(HH, 0.125), K(0.32, 0.04), K(HD, 0)],
@@ -184,6 +191,22 @@ export const HOOK = {
   },
 };
 HOOK.ball.R = true;
+// ronda 6: con rival enlazado, la punta apunta a la altura de la zona (mandíbula = centro de la cabeza + dy) en el impacto
+HOOK.aim = { zone: 'head', dy: -0.08, ref: [0.192, 1.474, 0.667], ref1: [0.142, 1.462, 0.852] };   // ref = entrada k=0, ref1 = k=1
+// ronda 6 (Rick + Combate combat-gap): el gancho conecta desde ~0,85 m SIN que la raíz entre (gap de pie >= 0,80 m). La entrada es un paso del pie
+// delantero (en el aire, aterriza antes del impacto) + la pelvis que entra, sólo durante el golpe, y sale en la recuperación.
+// Capa aparte (`entry`), escalada por el animador según la distancia REAL al rival prevista para el impacto: k = (d - d0) / (d1 - d0), 0..1.25.
+// Sin rival conocido k = 1 (la sim lo lanza a ~0,86). Si la raíz de la sim ya se acerca, k baja solo => no se duplica la entrada.
+HOOK.entry = {
+  d0: 0.70, d1: 0.86, kMax: 1.25, kMin: -0.35, bias: 0.015,   // con rival: k desde la profundidad de SU cabeza (ver animator3d entryFactor); kMin<0 = la pelvis queda algo atrás
+  tracks: {
+    pz:  [K(0, 0), K(0.05, 0.015), K(HI, 0.185, EI), K(HH, 0.195), K(0.36, 0.02), K(HD, 0)],
+    px:  [K(0, 0), K(0.08, 0), K(HI, -0.05, EI), K(HH, -0.05), K(0.36, 0), K(HD, 0)],   // el peso cruza hacia la línea central
+    dy:  [K(0, 0), K(HI, -0.012), K(HH, -0.02), K(0.36, 0), K(HD, 0)],
+    fLz: [K(0, 0), K(0.11, 0.19), K(0.30, 0.19, LIN), K(0.40, 0), K(HD, 0)],
+    fLy: [K(0, 0), K(0.04, 0.03, EO), K(0.11, 0, EI), K(0.30, 0, LIN), K(0.35, 0.025, EO), K(0.40, 0, EI), K(HD, 0)],
+  },
+};
 // Geometría del brazo bloqueado (marco de cara: x izq, y arriba, z adelante) para un ángulo del húmero `th` respecto de la mirada (+ = hacia la izquierda).
 // Devuelve { u: dirección del húmero, v: dirección del antebrazo, rel: muñeca − hombro }. u ⟂ v => codo = 90° exacto.
 export function hookArm(th, drop = HOOK_DROP, rise = HOOK_RISE) {
@@ -214,7 +237,7 @@ export function bakeHookArm(clip, tImpact) {
 // el PECHO (cadera + columna) gira con ease-in desde la carga hasta el impacto: la cadera ya pasó su pico (≈0.11 s) y el tronco "latiguea"
 // => el pico de velocidad del puño cae en el impacto. spYaw se hornea = pecho deseado − cadera.
 (function bakeHookChest() {
-  const T = HOOK.tracks, t0 = 0.07, dt = 0.005, G = GUARD;
+  const T = HOOK.tracks, t0 = 0.09, dt = 0.005, G = GUARD;
   const c0 = sampleTrack(T.hipYaw, t0) + sampleTrack(T.spYaw, t0), c1 = sampleTrack(T.hipYaw, HI) + sampleTrack(T.spYaw, HI);
   const keys = T.spYaw.filter((k) => k[0] <= t0 + 1e-9);
   for (let t = t0 + dt; t < HI - 1e-9; t += dt) { const u = (t - t0) / (HI - t0); keys.push(K(+t.toFixed(4), c0 + (c1 - c0) * u * u - sampleTrack(T.hipYaw, t), LIN)); }
@@ -280,6 +303,7 @@ export const LOWKICK = {
     fRpitch: [K(0, 0), K(KI, -0.4), K(0.38, -0.2), K(0.50, 0), K(KD, 0)],
   },
 };
+LOWKICK.aim = { zone: 'legs', dy: null, ref: [0.130, 0.646, 0.977] };   // ronda 6: la espinilla para en el muslo más cercano, a su altura
 
 // BLOQUEO: pose sostenida (deltas sobre la guardia): codos adentro, antebrazos tapando la cara, mentón al pecho, cuerpo hundido y encogido.
 export const BLOCK_POSE = Object.freeze({
