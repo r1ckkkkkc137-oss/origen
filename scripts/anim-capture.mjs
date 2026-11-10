@@ -16,11 +16,17 @@ function plan() {
   const P = [];
   P.push({ sc: 'guard', label: 'guard', times: [0.6, 1.3, 2.0, 2.7, 3.4], keys: [2.0] });
   P.push({ sc: 'walk', label: 'walk', times: range(3.0, 3.7, 8), keys: [3.0, 3.175, 3.35, 3.525] });
-  const j0 = 1.5; P.push({ sc: 'jab', label: 'jab', times: [j0 - 0.05, j0 + 0.06, j0 + 0.10, j0 + 0.152, j0 + 0.22, j0 + 0.30, j0 + 0.40, j0 + 0.55],
-    keys: [j0 + 0.06, j0 + 0.152, j0 + 0.26] , keyNames: ['anticipation', 'impact', 'recoil'] });
-  for (const [sc, imp, ts] of [['cross', 0.17, [-0.05, 0.05, 0.10, 0.14, 0.17, 0.22, 0.30, 0.50]], ['hook', 0.17, [-0.05, 0.06, 0.10, 0.14, 0.17, 0.22, 0.30, 0.50]], ['lowkick', 0.30, [-0.05, 0.10, 0.20, 0.26, 0.30, 0.36, 0.50, 0.75]]]) {
-    P.push({ sc, label: sc, times: ts.map((x) => +(1.5 + x).toFixed(3)), keys: [1.5 + ts[2], 1.5 + imp, 1.5 + ts[6]], keyNames: ['load', 'impact', 'recoil'] });
+  // ronda 4: tiempos de la sim (impactT jab 0.100, cross 0.150, hook 0.183, lowkick 0.233; hit-stop +0.042)
+  for (const [sc, imp, ts] of [['jab', 0.10, [-0.05, 0.03, 0.07, 0.10, 0.14, 0.20, 0.26, 0.32]], ['cross', 0.15, [-0.05, 0.05, 0.10, 0.15, 0.19, 0.25, 0.32, 0.43]],
+    ['hook', 0.1833, [-0.05, 0.05, 0.12, 0.1833, 0.225, 0.28, 0.36, 0.48]], ['lowkick', 0.2333, [-0.05, 0.06, 0.14, 0.2333, 0.275, 0.36, 0.46, 0.60]]]) {
+    P.push({ sc, label: sc, times: ts.map((x) => +(1.5 + x).toFixed(4)), keys: [+(1.5 + ts[2]).toFixed(4), +(1.5 + imp).toFixed(4), +(1.5 + ts[5]).toFixed(4)], keyNames: ['load', 'impact', 'recoil'] });
   }
+  P.push({ sc: 'feint_hook', label: 'feint_hook', times: [1.45, 1.53, 1.56, 1.60, 1.63, 1.68, 1.75, 1.88], keys: [1.56, 1.63, 1.75], keyNames: ['shared', 'load_cut', 'back'] });
+  P.push({ sc: 'feintSwitch', label: 'feint_switch', times: [1.45, 1.53, 1.567, 1.60, 1.63, 1.68, 1.75, 1.88], keys: [1.63], keyNames: ['load_cut'] });
+  for (const [lb, t0] of [['hurt_head_weak', 1.0], ['hurt_head_strong', 2.5], ['hurt_body_weak', 4.0], ['hurt_body_strong', 5.5]]) P.push({ sc: 'hurtForce', label: lb, times: [-0.05, 0.04, 0.08, 0.12, 0.18, 0.26, 0.40, 0.60].map((x) => +(t0 + x).toFixed(3)), keys: [+(t0 + 0.10).toFixed(3)], keyNames: ['peak'] });
+  P.push({ sc: 'footwork', label: 'footwork_stepin', times: [0.98, 1.03, 1.07, 1.11, 1.16, 1.22, 1.30, 1.40], keys: [1.11, 1.30], keyNames: ['root_stop', 'planted'] });
+  P.push({ sc: 'footwork', label: 'footwork_stepout', times: [1.88, 1.93, 1.97, 2.01, 2.06, 2.12, 2.20, 2.30], keys: [2.06] });
+  P.push({ sc: 'footwork', label: 'footwork_circle', times: [2.8, 3.0, 3.2, 3.4, 3.6, 3.8, 4.0, 4.3], keys: [3.4] });
   P.push({ sc: 'block', label: 'block', times: [0.9, 1.05, 1.15, 1.3, 1.5, 1.7, 1.9, 2.3], keys: [1.3] });
   // pasos sobre el bloque: buscar el primer plant sobre el bloque alto
   for (const [sc, hMin] of [['step', 0.3], ['step1m', 0.6]]) {
@@ -30,8 +36,8 @@ function plan() {
   }
   for (const [lb, t0] of [['hurt_head', 1.0], ['hurt_body', 2.5], ['hurt_legs', 4.0]]) P.push({ sc: 'hurt', label: lb, times: [-0.05, 0.04, 0.08, 0.14, 0.22, 0.32, 0.44, 0.60].map((x) => +(t0 + x).toFixed(3)), keys: [t0 + 0.08, t0 + 0.22] , keyNames: ['peak', 'hold'] });
   P.push({ sc: 'rocked', label: 'rocked', times: [0.9, 1.15, 1.4, 1.8, 2.1, 2.6, 3.3, 4.2], keys: [1.4, 2.1] });
-  P.push({ sc: 'ko', label: 'ko', times: [0.95, 1.08, 1.25, 1.45, 1.65, 1.85, 2.2, 2.9], keys: [1.45, 2.9] });
-  P.push({ sc: 'ko', label: 'getup', times: [2.95, 3.25, 3.55, 3.85, 4.15, 4.45, 4.8, 5.3], keys: [3.55, 4.15] });
+  P.push({ sc: 'ko', label: 'ko', times: [0.98, 1.10, 1.22, 1.32, 1.42, 1.60, 1.84, 2.4], keys: [1.22, 1.42, 1.84, 2.4], keyNames: ['buckle', 'kneel', 'topple', 'lying'] });
+  P.push({ sc: 'ko', label: 'getup', times: [3.0, 3.3, 3.6, 3.85, 4.1, 4.35, 4.6, 5.0], keys: [3.6, 4.1] });
   P.push({ sc: 'climb1m', label: 'climb1m', times: [0.1, 0.4, 0.75, 1.05, 1.3, 1.55, 1.8, 2.15].map((x) => +(3.6 + x).toFixed(3)), keys: [3.6 + 0.4, 3.6 + 1.05, 3.6 + 1.55], keyNames: ['grab', 'knee', 'push'] });
   P.push({ sc: 'turn90', label: 'turn90', times: [1.4, 1.55, 1.7, 1.85, 2.0, 2.2, 2.6, 3.2], keys: [1.7, 2.2] });
   return P;

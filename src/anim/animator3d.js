@@ -158,9 +158,9 @@ export function createAnimator3D(opts = {}) {
   //                         hurt nuevo -> hurt_<zona>; rocked -> 'rocked' sostenido; down/ko -> 'ko' (cae y queda); al salir de down/ko -> 'getUp'; guard -> setGuardLevel.
   // ronda 4: retroceso proporcional a la fuerza. power 0..1 = daño/16 (la misma normalización que KAGE powerNorm). Fuentes, en orden:
   // o.power, o.damage (CombatEvent 'hit'.damage), o el salto de state.damage[zona] en el frame del golpe (lo estima setState). Sin dato => 1 (= r3).
-  // Cuerpo/pelvis (torso, cadera, pz, dy, brazos) escalan fuerte; la cabeza menos (el latigazo r3 ya está al límite de "cuello roto").
+  // Cuerpo/pelvis (torso, cadera, pz, dy, brazos) escalan fuerte; la cabeza menos y con tope 1 (el latigazo r3 ya está al límite de "cuello roto").
   // El golpe fuerte además dura más (speed < 1: el pico llega ~igual de rápido por frame, sin pops) y el débil se recupera antes.
-  A.reactAmp = (power) => { const p = clamp(power, 0, 1.3), amp = 0.40 + 0.90 * p; return { amp, ampHead: 0.65 + 0.35 * p, speed: clamp(1 / Math.sqrt(amp), 0.78, 1.15) }; };
+  A.reactAmp = (power) => { const p = clamp(power, 0, 1.3), amp = 0.40 + 0.90 * p; return { amp, ampHead: Math.min(1, 0.65 + 0.35 * p), speed: clamp(1 / Math.sqrt(amp), 0.78, 1.15) }; };
   A.react = (zone, o = {}) => {
     const n = ZONE_CLIP[zone] || 'hurt_body';
     const pw = o.power ?? (o.damage != null ? o.damage / 16 : null);
