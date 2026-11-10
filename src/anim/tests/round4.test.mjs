@@ -74,14 +74,20 @@ test('finta de gancho: carga cadera/hombros y abre el codo, pero el puño no va 
 });
 
 test('finta de gancho en una pelea real (sim abortando el hook): el animador pasa a feint_hook y el gancho no impacta', () => {
-  const live = createLiveFight({ seed: 35 }); const la = createLiveAnimation(live, { createAnimator3D, seed: 35 });
-  let seen = 0, hookImpactsDuringFeint = 0, prev = false;
-  for (let i = 0; i < 60 * 80 && !live.done; i++) {
-    la.update(1 / 60);
-    const st = live.frame.fighters.a.state, A = la.anims.a, k = st.clip === 'feint' && st.move === 'hook';
-    if (k && !prev) { seen++; assert.equal(A.clipMode.name, 'feint_hook', `frame ${i}`); }
-    if (k && A.events.some((e) => e.type === 'impact' && e.name === 'hook')) hookImpactsDuringFeint++;
-    prev = k;
+  // los hooks abortados son raros (~1 cada 20–40 peleas, depende de la IA de Combate): se recorren semillas hasta el primero
+  let seen = 0, hookImpactsDuringFeint = 0;
+  for (const seed of [7, 12, 30, 35, ...Array.from({ length: 30 }, (_, k) => k + 1)]) {
+    const live = createLiveFight({ seed }); const la = createLiveAnimation(live, { createAnimator3D, seed }); const prev = { a: false, b: false };
+    for (let i = 0; i < 60 * 120 && !live.done; i++) {
+      la.update(1 / 60);
+      for (const side of ['a', 'b']) {
+        const st = live.frame.fighters[side].state, A = la.anims[side], k = st.clip === 'feint' && st.move === 'hook';
+        if (k && !prev[side]) { seen++; assert.equal(A.clipMode.name, 'feint_hook', `seed ${seed} ${side} frame ${i}`); }
+        if (k && A.events.some((e) => e.type === 'impact' && e.name === 'hook')) hookImpactsDuringFeint++;
+        prev[side] = k;
+      }
+    }
+    if (seen) break;
   }
-  assert.ok(seen >= 1, 'la pelea seed 35 tiene un hook abortado'); assert.equal(hookImpactsDuringFeint, 0);
+  assert.ok(seen >= 1, 'ninguna pelea tuvo un hook abortado'); assert.equal(hookImpactsDuringFeint, 0);
 });
