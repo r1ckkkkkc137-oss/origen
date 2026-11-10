@@ -72,152 +72,190 @@ export function walkLayer(g, amt, fwdSpeed, out) {
 // JAB con cadena cinética: 1) anticipación: se hunde el peso y la cadera se carga hacia atrás; 2) la CADERA rota primero,
 // 3) el PECHO/hombro la sigue ~25 ms después, 4) el puño sale ÚLTIMO (extensión rápida, snap) y llega al impacto con
 // el brazo casi recto; 5) retracción rápida por la misma línea mientras el cuerpo aún está adelante; 6) retorno con overshoot leve.
+// ---------------------------------------------------------------- RONDA 4: peso y rapidez (feedback de Benja) + tiempos de la sim
+// Los cuatro golpes usan EXACTAMENTE los tiempos base de la sim (src/combat/data/moves.js, 60 ticks/s, speedMul 1): impactT = startup/60,
+// duration = (startup+active+recovery)/60. liveAnim los lanza a 1x en windupSeconds − impactT => el impacto del clip cae en el tick de impacto.
+// Estructura común: anticipación CORTA (2–3 frames) con carga de cadera -> golpe con ease-in FUERTE (el pico de velocidad llega AL impacto, no antes)
+// -> HIT-STOP de ~2,5 frames (el puño/espinilla queda clavado mientras el peso sigue entrando: pie trasero empuja, pelvis baja, torso avanza)
+// -> recuperación rápida a la guardia.
+export const SIM_TICKS = Object.freeze({ jab: [6, 3, 10], cross: [9, 3, 14], hook: [11, 3, 15], lowkick: [14, 4, 18] });   // [startup, active, recovery]
+const simT = (n) => { const [s, a, r] = SIM_TICKS[n]; return { i: s / 60, d: (s + a + r) / 60 }; };
+export const HITSTOP = 0.042;                                    // 2,5 frames a 60 fps
 const K = (t, v, e = 'easeInOutQuad') => [t, v, e];
+const EI = 'easeInQuad', EO = 'easeOutQuad', LIN = 'linear';
+
+// JAB (mano adelantada L) + paso del pie adelantado (13 cm, sólo en el aire, aterriza antes del impacto para que el peso entre).
+const JI = simT('jab').i, JD = simT('jab').d, JH = JI + HITSTOP;   // 0.100, 0.317, 0.142
 export const JAB = {
-  name: 'jab', duration: 0.46, impactT: 0.152, tip: 'L',
-  phases: [
-    { name: 'anticipation', t0: 0, t1: 0.085 },
-    { name: 'strike', t0: 0.085, t1: 0.175 },     // activo (hitbox)
-    { name: 'recovery', t0: 0.175, t1: 0.46 },
-  ],
+  name: 'jab', duration: JD, impactT: JI, tip: 'L', feet: true, ball: { R: true },
+  phases: [{ name: 'anticipation', t0: 0, t1: 0.035 }, { name: 'strike', t0: 0.035, t1: JH }, { name: 'recovery', t0: JH, t1: JD }],
   tracks: {
-    dy:      [K(0, 0), K(0.06, -0.030, 'easeOutQuad'), K(0.15, -0.022), K(0.30, -0.006), K(0.46, 0)],
-    pz:      [K(0, 0), K(0.05, -0.020), K(0.15, 0.070, 'easeOutCubic'), K(0.20, 0.070), K(0.34, 0.012), K(0.46, 0)],   // peso al pie adelantado
-    px:      [K(0, 0), K(0.15, 0.020, 'easeOutQuad'), K(0.46, 0)],
-    hipYaw:  [K(0, 0), K(0.045, 0.07, 'easeOutQuad'), K(0.120, -0.30, 'easeInOutQuad'), K(0.17, -0.31), K(0.30, -0.05), K(0.36, 0.025), K(0.46, 0)],
-    hipRoll: [K(0, 0), K(0.12, -0.04), K(0.30, 0), K(0.46, 0)],
-    spYaw:   [K(0, 0), K(0.06, 0.04, 'easeOutQuad'), K(0.145, -0.36, 'easeInOutQuad'), K(0.19, -0.37), K(0.32, -0.04), K(0.38, 0.02), K(0.46, 0)],
-    spPitch: [K(0, 0), K(0.06, -0.03), K(0.15, 0.11, 'easeOutQuad'), K(0.30, 0.03), K(0.46, 0)],
-    spRoll:  [K(0, 0), K(0.15, 0.05), K(0.46, 0)],
-    hdPitch: [K(0, 0), K(0.14, 0.07, 'easeOutQuad'), K(0.32, 0.01), K(0.46, 0)],
-    hdYaw:   [K(0, 0), K(0.16, 0.20, 'easeInOutQuad'), K(0.34, 0.02), K(0.46, 0)],   // la cabeza sigue mirando al objetivo
-    shrugL:  [K(0, 0), K(0.13, 0.05, 'easeOutQuad'), K(0.28, 0.01), K(0.46, 0)],     // hombro al mentón
-    protL:   [K(0, 0), K(0.15, 0.07, 'easeOutQuad'), K(0.30, 0.01), K(0.46, 0)],     // escápula adelante
-    // puño: sale último
-    hLz: [K(0, 0), K(0.050, -0.030, 'easeOutQuad'), K(0.095, 0.060, 'easeInQuad'), K(0.152, 0.385, 'easeOutCubic'), K(0.175, 0.385, 'linear'), K(0.230, 0.01, 'easeOutQuad'), K(0.31, -0.005), K(0.46, 0)],
-    hLx: [K(0, 0), K(0.152, -0.055, 'easeOutQuad'), K(0.175, -0.055, 'linear'), K(0.23, 0, 'easeOutQuad'), K(0.46, 0)],
-    hLy: [K(0, 0), K(0.050, 0.010), K(0.152, 0.005), K(0.23, 0), K(0.46, 0)],
-    elbL: [K(0, 0), K(0.06, 0.2), K(0.15, 0.0), K(0.46, 0)],
-    // mano trasera: sube a proteger el mentón con ligero acompañamiento
-    hRy: [K(0, 0), K(0.15, 0.025, 'easeOutQuad'), K(0.34, 0.005), K(0.46, 0)],
-    hRz: [K(0, 0), K(0.15, 0.030, 'easeOutQuad'), K(0.34, 0.003), K(0.46, 0)],
-    hRx: [K(0, 0), K(0.15, -0.020, 'easeOutQuad'), K(0.34, 0), K(0.46, 0)],
+    dy:      [K(0, 0), K(0.03, -0.02, EO), K(JI, -0.03, EI), K(JH, -0.045), K(0.23, -0.01), K(JD, 0)],
+    pz:      [K(0, 0), K(0.03, -0.015), K(JI, 0.07, EI), K(JH, 0.09), K(0.23, 0.015), K(JD, 0)],
+    px:      [K(0, 0), K(JI, 0.02, EO), K(JD, 0)],
+    hipYaw:  [K(0, 0), K(0.03, 0.07, EO), K(0.085, -0.30, EI), K(JH, -0.32), K(0.22, -0.05), K(0.26, 0.02), K(JD, 0)],
+    hipRoll: [K(0, 0), K(0.09, -0.04), K(0.22, 0), K(JD, 0)],
+    spYaw:   [K(0, 0), K(0.035, 0.04, EO), K(0.097, -0.36, EI), K(JH, -0.38), K(0.23, -0.03), K(0.27, 0.015), K(JD, 0)],
+    spPitch: [K(0, 0), K(0.03, -0.03), K(JI, 0.11, EI), K(JH, 0.145), K(0.24, 0.02), K(JD, 0)],
+    spRoll:  [K(0, 0), K(JI, 0.05), K(JD, 0)],
+    hdPitch: [K(0, 0), K(JI, 0.07, EO), K(0.24, 0.01), K(JD, 0)],
+    hdYaw:   [K(0, 0), K(JI, 0.20), K(0.26, 0.02), K(JD, 0)],
+    shrugL:  [K(0, 0), K(0.09, 0.05, EO), K(0.22, 0.01), K(JD, 0)],
+    protL:   [K(0, 0), K(JI, 0.07, EO), K(0.22, 0.01), K(JD, 0)],
+    hLz: [K(0, 0), K(0.015, -0.005, EO), K(JI, 0.385, EI), K(JH, 0.39, LIN), K(0.20, 0.01, EO), K(0.25, -0.005), K(JD, 0)],
+    hLx: [K(0, 0), K(JI, -0.055, EI), K(JH, -0.055, LIN), K(0.20, 0, EO), K(JD, 0)],
+    hLy: [K(0, 0), K(0.035, 0.010), K(JI, 0.005), K(0.20, 0), K(JD, 0)],
+    elbL: [K(0, 0), K(0.04, 0.2), K(JI, 0.0), K(JD, 0)],
+    hRy: [K(0, 0), K(JI, 0.025, EO), K(0.24, 0.005), K(JD, 0)],
+    hRz: [K(0, 0), K(JI, 0.030, EO), K(0.24, 0.003), K(JD, 0)],
+    hRx: [K(0, 0), K(JI, -0.020, EO), K(0.24, 0), K(JD, 0)],
+    // paso: el pie adelantado sale, avanza 13 cm en el aire y aterriza a 0.075 s; vuelve levantándose en 0.17–0.25
+    fLz: [K(0, 0), K(0.075, 0.13), K(0.17, 0.13, LIN), K(0.25, 0), K(JD, 0)],
+    fLy: [K(0, 0), K(0.03, 0.03, EO), K(0.075, 0, EI), K(0.17, 0, LIN), K(0.205, 0.025, EO), K(0.25, 0, EI), K(JD, 0)],
+    // el pie trasero EMPUJA: el talón sube sobre la bola hasta el hit-stop
+    fRpitch: [K(0, 0), K(0.05, -0.08), K(JI, -0.30, EI), K(JH, -0.34), K(0.24, 0), K(JD, 0)],
   },
 };
-// Paso del jab: el pie adelantado avanza 13 cm (sale del suelo, aterriza al IMPACTO, se queda, vuelve levantándose). Sólo se mueve en el aire.
-JAB.feet = true;
-Object.assign(JAB.tracks, {
-  fLz: [K(0, 0), K(0.10, 0.13), K(0.20, 0.13, 'linear'), K(0.31, 0), K(0.46, 0)],
-  fLy: [K(0, 0), K(0.045, 0.03, 'easeOutQuad'), K(0.10, 0, 'easeInQuad'), K(0.20, 0, 'linear'), K(0.25, 0.025, 'easeOutQuad'), K(0.31, 0, 'easeInQuad'), K(0.46, 0)],
-});
 
-// CROSS (mano trasera R): 1) carga: se hunde y la cadera se arma hacia atrás; 2) el talón trasero pivota sobre la bola del pie y la CADERA
-// gira entera (≈35°) primero; 3) el pecho la sigue ~30 ms después; 4) el puño sale ÚLTIMO, llega recto al impacto; 5) retorno por la misma línea.
+// CROSS (mano trasera R): carga corta (cadera atrás), talón trasero pivota sobre la bola y la cadera gira entera primero, el pecho sigue, el puño
+// sale ÚLTIMO con ease-in hasta el impacto, hit-stop con el peso entrando (pelvis baja, torso adelante) y vuelta rápida.
+const CI = simT('cross').i, CD = simT('cross').d, CH = CI + HITSTOP;   // 0.150, 0.433, 0.192
 export const CROSS = {
-  name: 'cross', duration: 0.52, impactT: 0.17, tip: 'R', feet: true, ball: { R: true },
-  phases: [{ name: 'anticipation', t0: 0, t1: 0.09 }, { name: 'strike', t0: 0.09, t1: 0.20 }, { name: 'recovery', t0: 0.20, t1: 0.52 }],
+  name: 'cross', duration: CD, impactT: CI, tip: 'R', feet: true, ball: { R: true },
+  phases: [{ name: 'anticipation', t0: 0, t1: 0.045 }, { name: 'strike', t0: 0.045, t1: CH }, { name: 'recovery', t0: CH, t1: CD }],
   tracks: {
-    dy:      [K(0, 0), K(0.07, -0.035, 'easeOutQuad'), K(0.17, -0.03), K(0.34, -0.01), K(0.52, 0)],
-    pz:      [K(0, 0), K(0.06, -0.03), K(0.17, 0.09, 'easeOutCubic'), K(0.22, 0.09), K(0.38, 0.01), K(0.52, 0)],
-    hipYaw:  [K(0, 0), K(0.05, -0.06, 'easeOutQuad'), K(0.13, 0.62), K(0.19, 0.64), K(0.34, 0.10), K(0.42, -0.03), K(0.52, 0)],
-    spYaw:   [K(0, 0), K(0.06, -0.04, 'easeOutQuad'), K(0.16, 0.14), K(0.21, 0.15), K(0.36, 0.02), K(0.52, 0)],
-    spPitch: [K(0, 0), K(0.06, -0.03), K(0.17, 0.10, 'easeOutQuad'), K(0.34, 0.03), K(0.52, 0)],
-    hdYaw:   [K(0, 0), K(0.17, -0.45), K(0.36, -0.05), K(0.52, 0)],
-    hdPitch: [K(0, 0), K(0.17, 0.05), K(0.52, 0)],
-    shrugR:  [K(0, 0), K(0.15, 0.07, 'easeOutQuad'), K(0.34, 0.01), K(0.52, 0)],
-    protR:   [K(0, 0), K(0.17, 0.10, 'easeOutQuad'), K(0.36, 0.01), K(0.52, 0)],
-    hRz: [K(0, 0), K(0.05, -0.03, 'easeOutQuad'), K(0.10, 0.05, 'easeInQuad'), K(0.17, 0.38, 'easeOutCubic'), K(0.20, 0.38, 'linear'), K(0.26, 0.02, 'easeOutQuad'), K(0.36, -0.005), K(0.52, 0)],
-    hRx: [K(0, 0), K(0.17, 0.04), K(0.20, 0.04, 'linear'), K(0.27, 0), K(0.52, 0)],
-    hRy: [K(0, 0), K(0.05, 0.01), K(0.17, 0.025), K(0.28, 0), K(0.52, 0)],
-    elbR: [K(0, 0), K(0.06, 0.12), K(0.16, 0), K(0.52, 0)],
-    hLy: [K(0, 0), K(0.17, 0.03), K(0.36, 0), K(0.52, 0)],
-    hLz: [K(0, 0), K(0.17, -0.02), K(0.36, 0), K(0.52, 0)],
-    hLx: [K(0, 0), K(0.17, 0.03), K(0.36, 0), K(0.52, 0)],
-    fRyaw:   [K(0, 0), K(0.05, -0.05, 'easeOutQuad'), K(0.14, 0.70), K(0.30, 0.55), K(0.42, 0), K(0.52, 0)],
-    fRpitch: [K(0, 0), K(0.06, -0.15), K(0.14, -0.55, 'easeOutQuad'), K(0.30, -0.45), K(0.42, 0), K(0.52, 0)],
+    dy:      [K(0, 0), K(0.045, -0.03, EO), K(CI, -0.035, EI), K(CH, -0.052), K(0.30, -0.01), K(CD, 0)],
+    pz:      [K(0, 0), K(0.045, -0.03), K(CI, 0.09, EI), K(CH, 0.115), K(0.31, 0.01), K(CD, 0)],
+    hipYaw:  [K(0, 0), K(0.045, -0.08, EO), K(0.12, 0.62, EI), K(CH, 0.65), K(0.29, 0.10), K(0.35, -0.03), K(CD, 0)],
+    spYaw:   [K(0, 0), K(0.05, -0.04, EO), K(0.142, 0.14, EI), K(CH, 0.16), K(0.30, 0.02), K(CD, 0)],
+    spPitch: [K(0, 0), K(0.045, -0.03), K(CI, 0.10, EI), K(CH, 0.135), K(0.30, 0.03), K(CD, 0)],
+    hdYaw:   [K(0, 0), K(CI, -0.45), K(0.30, -0.05), K(CD, 0)],
+    hdPitch: [K(0, 0), K(CI, 0.05), K(CD, 0)],
+    shrugR:  [K(0, 0), K(0.14, 0.07, EO), K(0.28, 0.01), K(CD, 0)],
+    protR:   [K(0, 0), K(CI, 0.10, EO), K(0.30, 0.01), K(CD, 0)],
+    hRz: [K(0, 0), K(0.045, -0.025, EO), K(CI, 0.38, EI), K(CH, 0.385, LIN), K(0.25, 0.02, EO), K(0.31, -0.005), K(CD, 0)],
+    hRx: [K(0, 0), K(CI, 0.04, EI), K(CH, 0.04, LIN), K(0.25, 0), K(CD, 0)],
+    hRy: [K(0, 0), K(0.05, 0.01), K(CI, 0.025), K(0.25, 0), K(CD, 0)],
+    elbR: [K(0, 0), K(0.06, 0.12), K(0.14, 0), K(CD, 0)],
+    hLy: [K(0, 0), K(CI, 0.03), K(0.30, 0), K(CD, 0)],
+    hLz: [K(0, 0), K(CI, -0.02), K(0.30, 0), K(CD, 0)],
+    hLx: [K(0, 0), K(CI, 0.03), K(0.30, 0), K(CD, 0)],
+    fRyaw:   [K(0, 0), K(0.045, -0.05, EO), K(0.125, 0.70, EI), K(0.25, 0.55), K(0.36, 0), K(CD, 0)],
+    fRpitch: [K(0, 0), K(0.05, -0.15), K(0.125, -0.55, EO), K(CH, -0.62), K(0.25, -0.45), K(0.36, 0), K(CD, 0)],
   },
 };
 
-// GANCHO (mano delantera L) — ronda 3: BRAZO BLOQUEADO. El codo queda fijo (~92°, ver HOOK_E) y a la altura del hombro durante TODO el golpe
-// (carga → impacto → retorno inicial): el arco horizontal lo hace la ROTACIÓN del cuerpo (cadera primero, pecho/hombros después), no la extensión del brazo.
-// El puño va colgado del hombro (vector muñeca-hombro de largo constante en el marco del pecho) y sólo gira en la articulación del hombro (aducción
-// horizontal, un "snap" final ~15° para que el puño salga último). Pie delantero: pivote sobre la bola, talón hacia afuera. Termina frente a la línea central.
-// Los canales hLx/hLy/hLz del gancho se HORNEAN abajo a partir de las pistas de cadera/pecho (la muñeca depende de la rotación del pecho).
-export const HOOK_E = 92 * Math.PI / 180;                       // ángulo del codo (rad), constante
+// GANCHO (mano delantera L) — ronda 4 (Rick: "todavía parece un brazo recto hacia adelante, el húmero apunta al rival").
+// En el impacto el HÚMERO va ABDUCIDO ~85° (paralelo al suelo) y abierto al costado: forma ≥60° con la dirección al rival. El codo queda FIJO en 90°
+// y AL LADO del puño (no detrás): el antebrazo cruza hacia adelante/adentro y un poco hacia arriba => en la vista front se lee la 'L' acostada.
+// El arco lo hace la ROTACIÓN del cuerpo (cadera primero, pecho/hombros después) con el brazo bloqueado como cuerpo rígido en el marco del pecho
+// + un "snap" final de aducción horizontal del hombro (HOOK_A0 -> HOOK_A1, ease-in: el puño sale último y llega a tope de velocidad al impacto).
+// La muñeca (hLx/hLy/hLz) y el polo del codo en marco de cara (pLx/pLy/pLz, peso pLw) se HORNEAN abajo desde las pistas de cadera/pecho:
+// el polo = dirección deseada del húmero => la IK pone el codo exactamente ahí. Pie delantero: pivote sobre la bola.
+const HI = simT('hook').i, HD = simT('hook').d, HH = HI + HITSTOP;     // 0.183, 0.483, 0.225
+export const HOOK_E = 90 * Math.PI / 180;                       // ángulo del codo (rad), constante de la carga al impacto
 const HOOK_UA = 0.31, HOOK_FA = 0.27;                             // = DIM.upperArm, DIM.foreArm (skeleton3d.js)
 export const HOOK_R = Math.sqrt(HOOK_UA * HOOK_UA + HOOK_FA * HOOK_FA - 2 * HOOK_UA * HOOK_FA * Math.cos(HOOK_E));   // |muñeca - hombro|
+export const HOOK_DROP = 5 * Math.PI / 180;                      // el húmero cae 5° bajo la horizontal (abducción ≈85° respecto del tronco)
+export const HOOK_RISE = 22 * Math.PI / 180;                     // el antebrazo sube 22° (puño a la altura del mentón del rival)
+export const HOOK_A0 = 110 * Math.PI / 180, HOOK_A1 = 97 * Math.PI / 180;   // húmero en el marco del pecho (0 = adelante, 90° = costado)
 export const HOOK = {
-  name: 'hook', duration: 0.50, impactT: 0.17, tip: 'L', feet: true, ball: { L: true },
-  phases: [{ name: 'anticipation', t0: 0, t1: 0.09 }, { name: 'strike', t0: 0.09, t1: 0.21 }, { name: 'recovery', t0: 0.21, t1: 0.50 }],
-  lock: { tLoad: 0.09, tRelease: 0.22, tFree: 0.36, y: -0.02 },
+  name: 'hook', duration: HD, impactT: HI, tip: 'L', feet: true, ball: { L: true },
+  phases: [{ name: 'anticipation', t0: 0, t1: 0.06 }, { name: 'strike', t0: 0.06, t1: HH }, { name: 'recovery', t0: HH, t1: HD }],
+  lock: { tLoad: 0.12, tRelease: HH + 0.01, tFree: 0.34, snap0: 0.10 },
   tracks: {
-    dy:      [K(0, 0), K(0.06, -0.03, 'easeOutQuad'), K(0.17, -0.035), K(0.34, -0.01), K(0.50, 0)],
-    pz:      [K(0, 0), K(0.17, 0.03), K(0.50, 0)],
-    hipYaw:  [K(0, 0), K(0.065, 0.17, 'easeOutQuad'), K(0.14, -0.30, 'easeInOutQuad'), K(0.20, -0.33), K(0.34, -0.08), K(0.42, 0.02), K(0.50, 0)],
-    spYaw:   [K(0, 0), K(0.085, 0.14, 'easeOutQuad'), K(0.165, -0.22, 'easeInOutQuad'), K(0.215, -0.24), K(0.35, -0.05), K(0.50, 0)],
-    spRoll:  [K(0, 0), K(0.17, 0.04), K(0.50, 0)],
-    spPitch: [K(0, 0), K(0.17, 0.04), K(0.50, 0)],
-    hdYaw:   [K(0, 0), K(0.17, 0.42), K(0.36, 0.04), K(0.50, 0)],
-    shrugL:  [K(0, 0), K(0.17, 0.06, 'easeOutQuad'), K(0.34, 0.01), K(0.50, 0)],
-    protL:   [K(0, 0), K(0.17, 0.05, 'easeOutQuad'), K(0.36, 0.01), K(0.50, 0)],
-    elvL: [K(0, 0), K(0.09, 0.5, 'easeInOutQuad'), K(0.21, 0.5, 'linear'), K(0.36, 0.1), K(0.50, 0)],
-    elbL: [K(0, 0), K(0.09, 0.35, 'easeInOutQuad'), K(0.21, 0.35, 'linear'), K(0.36, 0), K(0.50, 0)],
-    hRy: [K(0, 0), K(0.17, 0.02), K(0.36, 0), K(0.50, 0)],
-    fLyaw:   [K(0, 0), K(0.06, 0.05), K(0.14, -0.70), K(0.30, -0.58), K(0.42, 0), K(0.50, 0)],
-    fLpitch: [K(0, 0), K(0.06, -0.12), K(0.14, -0.50, 'easeOutQuad'), K(0.30, -0.42), K(0.42, 0), K(0.50, 0)],
+    dy:      [K(0, 0), K(0.05, -0.035, EO), K(HI, -0.04), K(HH, -0.058), K(0.33, -0.01), K(HD, 0)],
+    pz:      [K(0, 0), K(0.05, 0.01), K(HI, 0.05, EI), K(HH, 0.07), K(0.32, 0.01), K(HD, 0)],
+    px:      [K(0, 0), K(HI, -0.03), K(0.38, 0), K(HD, 0)],
+    hipYaw:  [K(0, 0), K(0.055, 0.20, EO), K(0.165, -0.34), K(HI, -0.36, LIN), K(HH, -0.38), K(0.33, -0.08), K(0.40, 0.02), K(HD, 0)],
+    spYaw:   [K(0, 0), K(0.07, 0.08, EO), K(HI, 0.13), K(HH, 0.12), K(0.34, 0.02), K(HD, 0)],
+    spRoll:  [K(0, 0), K(HI, -0.05), K(HD, 0)],
+    spPitch: [K(0, 0), K(HI, 0.10, EI), K(HH, 0.125), K(0.32, 0.04), K(HD, 0)],
+    hdYaw:   [K(0, 0), K(0.07, -0.10), K(HI, 0.26), K(0.34, 0.04), K(HD, 0)],
+    shrugL:  [K(0, 0), K(HI, 0.06, EO), K(0.32, 0.01), K(HD, 0)],
+    protL:   [K(0, 0), K(HI, 0.04, EO), K(0.34, 0.01), K(HD, 0)],
+    elvL: [K(0, 0), K(0.12, 0.5), K(HH + 0.01, 0.5, LIN), K(0.34, 0.1), K(HD, 0)],
+    elbL: [K(0, 0), K(0.12, 0.35), K(HH + 0.01, 0.35, LIN), K(0.34, 0), K(HD, 0)],
+    hRy: [K(0, 0), K(HI, 0.02), K(0.34, 0), K(HD, 0)],
+    fLyaw:   [K(0, 0), K(0.05, 0.05), K(0.15, -0.70, EI), K(0.28, -0.58), K(0.38, 0), K(HD, 0)],
+    fLpitch: [K(0, 0), K(0.05, -0.12), K(0.15, -0.50, EO), K(0.28, -0.42), K(0.38, 0), K(HD, 0)],
+    // el pie trasero también empuja un poco (talón arriba sobre la bola) en el hit-stop
+    fRpitch: [K(0, 0), K(0.10, -0.05), K(HI, -0.18, EI), K(HH, -0.20), K(0.32, 0), K(HD, 0)],
   },
 };
-// Hornea hLx/hLy/hLz: muñeca = hombro + vector de largo HOOK_R girado por el yaw del pecho (cadera+columna, rel. a la cara).
-// Ángulo del brazo en el marco del pecho: a(t) (0 = adelante, + = izquierda). Va de A0 (carga) a A1 (snap del hombro, tarde en el golpe).
-export const HOOK_A0 = 84 * Math.PI / 180, HOOK_A1 = 42 * Math.PI / 180;
-(function bakeHook() {
-  const T = HOOK.tracks, L = HOOK.lock, G = GUARD, dt = 0.01, n = Math.round(HOOK.duration / dt);
+HOOK.ball.R = true;
+// Geometría del brazo bloqueado (marco de cara: x izq, y arriba, z adelante) para un ángulo del húmero `th` respecto de la mirada (+ = hacia la izquierda).
+// Devuelve { u: dirección del húmero, v: dirección del antebrazo, rel: muñeca − hombro }. u ⟂ v => codo = 90° exacto.
+export function hookArm(th, drop = HOOK_DROP, rise = HOOK_RISE) {
+  const cd = Math.cos(drop), u = [cd * Math.sin(th), -Math.sin(drop), cd * Math.cos(th)];
+  const h = [-Math.cos(th), 0, Math.sin(th)];                    // horizontal, ⟂ al húmero, hacia adelante/adentro
+  let v = [h[0] * Math.cos(rise), Math.sin(rise), h[2] * Math.cos(rise)];
+  const k = v[0] * u[0] + v[1] * u[1] + v[2] * u[2]; v = [v[0] - k * u[0], v[1] - k * u[1], v[2] - k * u[2]];   // Gram-Schmidt contra u
+  const n = Math.hypot(v[0], v[1], v[2]); v = v.map((x) => x / n);
+  return { u, v, rel: [HOOK_UA * u[0] + HOOK_FA * v[0], HOOK_UA * u[1] + HOOK_FA * v[1], HOOK_UA * u[2] + HOOK_FA * v[2]] };
+}
+// Hornea hLx/hLy/hLz + pLx/pLy/pLz/pLw de un clip de gancho: yaw del pecho psi (cadera+columna rel. a la cara) + ángulo del brazo en el pecho a(t) => th = a + psi.
+export function bakeHookArm(clip, tImpact) {
+  const T = clip.tracks, L = clip.lock, G = GUARD, dt = 0.005, n = Math.round(clip.duration / dt);
   const sm = (x) => { x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x); };
-  const X = [], Y = [], Z = [];
+  const X = [], Y = [], Z = [], PX = [], PY = [], PZ = [], PW = [];
   for (let i = 0; i <= n; i++) {
-    const t = +(i * dt).toFixed(4);
+    const t = i === n ? clip.duration : +(i * dt).toFixed(4);
     const psi = G.hipYaw + G.spYaw + sampleTrack(T.hipYaw, t) + sampleTrack(T.spYaw, t);
-    const snap = sm((t - 0.12) / 0.065);                                   // aducción horizontal tardía: el puño sale último
+    const q = Math.max(0, Math.min(1, (t - L.snap0) / Math.max(1e-3, tImpact - L.snap0))), snap = q * q;   // ease-in: tope de velocidad al impacto
     const a = HOOK_A0 + (HOOK_A1 - HOOK_A0) * snap;
-    const lam = sm(t / L.tLoad) * (1 - sm((t - L.tRelease) / (L.tFree - L.tRelease)));   // 0 = guardia, 1 = bloqueado
-    const h = Math.sqrt(Math.max(1e-6, HOOK_R * HOOK_R - L.y * L.y));      // radio horizontal
-    const th = a + psi, lx = h * Math.sin(th), lz = h * Math.cos(th);
-    X.push(K(t, lam * (lx - G.hLx), 'linear')); Z.push(K(t, lam * (lz - G.hLz), 'linear')); Y.push(K(t, lam * (L.y - G.hLy), 'linear'));
+    const lam = i === n ? 0 : sm(t / L.tLoad) * (1 - sm((t - L.tRelease) / (L.tFree - L.tRelease)));   // 0 = guardia, 1 = bloqueado
+    const { u, rel } = hookArm(a + psi);
+    X.push(K(t, lam * (rel[0] - G.hLx), LIN)); Y.push(K(t, lam * (rel[1] - G.hLy), LIN)); Z.push(K(t, lam * (rel[2] - G.hLz), LIN));
+    PX.push(K(t, lam * u[0], LIN)); PY.push(K(t, lam * u[1], LIN)); PZ.push(K(t, lam * u[2], LIN)); PW.push(K(t, lam, LIN));
   }
-  T.hLx = X; T.hLy = Y; T.hLz = Z;
+  T.hLx = X; T.hLy = Y; T.hLz = Z; T.pLx = PX; T.pLy = PY; T.pLz = PZ; T.pLw = PW;
+}
+// el PECHO (cadera + columna) gira con ease-in desde la carga hasta el impacto: la cadera ya pasó su pico (≈0.11 s) y el tronco "latiguea"
+// => el pico de velocidad del puño cae en el impacto. spYaw se hornea = pecho deseado − cadera.
+(function bakeHookChest() {
+  const T = HOOK.tracks, t0 = 0.07, dt = 0.005, G = GUARD;
+  const c0 = sampleTrack(T.hipYaw, t0) + sampleTrack(T.spYaw, t0), c1 = sampleTrack(T.hipYaw, HI) + sampleTrack(T.spYaw, HI);
+  const keys = T.spYaw.filter((k) => k[0] <= t0 + 1e-9);
+  for (let t = t0 + dt; t < HI - 1e-9; t += dt) { const u = (t - t0) / (HI - t0); keys.push(K(+t.toFixed(4), c0 + (c1 - c0) * u * u - sampleTrack(T.hipYaw, t), LIN)); }
+  T.spYaw = keys.concat(T.spYaw.filter((k) => k[0] >= HI - 1e-9).map((k, i) => i === 0 ? K(k[0], k[1], LIN) : k)); void G;
 })();
+bakeHookArm(HOOK, HI);
 
-// PATADA BAJA TRASERA (pierna R, roundhouse): 1) el pie delantero da un pequeño paso hacia afuera y PIVOTA sobre la bola (~70°);
-// 2) la cadera gira entera; 3) la rodilla sube (chamber), 4) el tibia barre y pega a la altura del muslo (impacto 0.30 s),
-// 5) la pierna se pliega y el pie vuelve al suelo en su sitio, 6) el pie de apoyo desanda el pivote y regresa a la guardia.
+// PATADA BAJA TRASERA (pierna R) — ronda 4: el pie de apoyo (L) da un PASO adelante/afuera en el aire (0–0.08 s) y PIVOTA sobre la bola (~70°),
+// la pelvis viaja con él y el torso se INCLINA HACIA ATRÁS (contrapeso) => la espinilla llega a 1,0 m horizontales de la raíz (= pelvis de la sim).
+// Cadera carga hacia atrás, gira entera (≈65°) con ease-in; la tibia barre con ease-in y pega a la altura del muslo; hit-stop con el peso adentro;
+// la pierna se pliega rápido, baja en su sitio y el pie de apoyo desanda el paso en el aire.
+const KI = simT('lowkick').i, KD = simT('lowkick').d, KH = KI + HITSTOP;   // 0.233, 0.600, 0.275
 export const LOWKICK = {
-  name: 'lowkick', duration: 0.84, impactT: 0.30, tip: 'kickR', feet: true, ball: { L: true },
-  phases: [{ name: 'anticipation', t0: 0, t1: 0.24 }, { name: 'strike', t0: 0.24, t1: 0.37 }, { name: 'recovery', t0: 0.37, t1: 0.84 }],
+  name: 'lowkick', duration: KD, impactT: KI, tip: 'kickR', feet: true, ball: { L: true },
+  phases: [{ name: 'anticipation', t0: 0, t1: 0.08 }, { name: 'strike', t0: 0.08, t1: KH + 0.025 }, { name: 'recovery', t0: KH + 0.025, t1: KD }],
   tracks: {
-    dy:      [K(0, 0), K(0.10, -0.03), K(0.30, -0.025), K(0.62, -0.03), K(0.84, 0)],
-    px:      [K(0, 0), K(0.12, 0.02), K(0.28, 0.06), K(0.62, 0.03), K(0.84, 0)],
-    pz:      [K(0, 0), K(0.10, 0.05), K(0.30, 0.02), K(0.62, 0.02), K(0.84, 0)],
-    hipYaw:  [K(0, 0), K(0.10, -0.08), K(0.30, 1.15), K(0.40, 1.10, 'linear'), K(0.56, 0.5), K(0.72, 0.05), K(0.84, 0)],
-    spYaw:   [K(0, 0), K(0.10, 0), K(0.31, 0.18), K(0.44, 0.12), K(0.62, 0), K(0.84, 0)],
-    spRoll:  [K(0, 0), K(0.30, -0.12), K(0.62, -0.06), K(0.84, 0)],
-    spPitch: [K(0, 0), K(0.30, 0.05), K(0.84, 0)],
-    hdYaw:   [K(0, 0), K(0.30, -0.55), K(0.50, -0.30), K(0.84, 0)],
-    hRx:     [K(0, 0), K(0.30, -0.06), K(0.84, 0)],
-    hRz:     [K(0, 0), K(0.30, -0.04), K(0.84, 0)],
-    elvR:    [K(0, 0), K(0.30, 0.15), K(0.84, 0)],
-    hLx:     [K(0, 0), K(0.30, 0.04), K(0.84, 0)],
-    // pie de apoyo (L): paso hacia afuera y pivote sobre la bola
-    fLx:     [K(0, 0), K(0.02, 0), K(0.09, 0.08), K(0.64, 0.08, 'linear'), K(0.78, 0), K(0.84, 0)],
-    fLz:     [K(0, 0), K(0.02, 0), K(0.09, 0.12), K(0.64, 0.12, 'linear'), K(0.78, 0), K(0.84, 0)],
-    fLy:     [K(0, 0), K(0.02, 0.012, 'easeOutQuad'), K(0.05, 0.035, 'easeOutQuad'), K(0.09, 0, 'easeInQuad'), K(0.64, 0, 'linear'), K(0.69, 0.03, 'easeOutQuad'), K(0.78, 0, 'easeInQuad'), K(0.84, 0)],
-    fLyaw:   [K(0, 0), K(0.12, 0), K(0.30, 1.25), K(0.46, 1.25, 'linear'), K(0.64, 1.25, 'linear'), K(0.78, 0.0), K(0.84, 0)],
-    fLpitch: [K(0, 0), K(0.14, 0), K(0.24, -0.35), K(0.32, -0.6), K(0.50, -0.5), K(0.64, -0.5, 'linear'), K(0.78, 0), K(0.84, 0)],
-    // pie que patea (R): chamber -> barrido -> pliega -> baja
-    fRx: [K(0, 0), K(0.10, 0.05), K(0.20, 0.14), K(0.30, 0.29), K(0.35, 0.29, 'linear'), K(0.44, 0.15), K(0.62, 0), K(0.84, 0)],
-    fRz: [K(0, 0), K(0.10, 0.10), K(0.20, 0.22), K(0.30, 1.10, 'easeInCubic'), K(0.35, 1.10, 'linear'), K(0.44, 0.28), K(0.62, 0), K(0.84, 0)],
-    fRy: [K(0, 0), K(0.10, 0.12, 'easeOutQuad'), K(0.20, 0.26), K(0.30, 0.50, 'easeOutQuad'), K(0.35, 0.50, 'linear'), K(0.44, 0.28), K(0.58, 0.06, 'easeInQuad'), K(0.64, 0), K(0.84, 0)],
-    fRyaw: [K(0, 0), K(0.20, 0.2), K(0.30, 1.3), K(0.44, 0.6), K(0.64, 0), K(0.84, 0)],
-    fRpitch: [K(0, 0), K(0.30, -0.4), K(0.50, -0.2), K(0.64, 0), K(0.84, 0)],
+    dy:      [K(0, 0), K(0.06, -0.03), K(KI, -0.035), K(KH, -0.06), K(0.44, -0.03), K(KD, 0)],
+    px:      [K(0, 0), K(0.08, 0.04), K(KI, 0.08), K(0.44, 0.05), K(0.55, 0), K(KD, 0)],
+    pz:      [K(0, 0), K(0.08, 0.15), K(KI, 0.30, EI), K(KH, 0.32), K(0.44, 0.22), K(0.55, 0.01), K(KD, 0)],
+    hipYaw:  [K(0, 0), K(0.06, -0.10, EO), K(0.215, 1.15, EI), K(KH, 1.12), K(0.40, 0.5), K(0.52, 0.05), K(KD, 0)],
+    spYaw:   [K(0, 0), K(0.06, 0), K(KI, 0.18), K(0.33, 0.12), K(0.46, 0), K(KD, 0)],
+    spRoll:  [K(0, 0), K(KI, -0.14), K(0.44, -0.06), K(KD, 0)],
+    spPitch: [K(0, 0), K(0.08, -0.06), K(KI, -0.30), K(KH, -0.32), K(0.44, -0.10), K(0.56, 0), K(KD, 0)],
+    hdPitch: [K(0, 0), K(KI, 0.22), K(0.44, 0.06), K(KD, 0)],
+    hdYaw:   [K(0, 0), K(KI, -0.55), K(0.40, -0.30), K(KD, 0)],
+    hRx:     [K(0, 0), K(KI, -0.06), K(KD, 0)],
+    hRz:     [K(0, 0), K(KI, -0.04), K(KD, 0)],
+    elvR:    [K(0, 0), K(KI, 0.15), K(KD, 0)],
+    hLx:     [K(0, 0), K(KI, 0.04), K(KD, 0)],
+    // pie de apoyo (L): paso adelante/afuera EN EL AIRE y pivote sobre la bola; vuelve en el aire (0.44–0.54)
+    fLx:     [K(0, 0), K(0.08, 0.10), K(0.44, 0.10, LIN), K(0.54, 0), K(KD, 0)],
+    fLz:     [K(0, 0), K(0.08, 0.36), K(0.44, 0.36, LIN), K(0.54, 0), K(KD, 0)],
+    fLy:     [K(0, 0), K(0.035, 0.04, EO), K(0.08, 0, EI), K(0.44, 0, LIN), K(0.49, 0.035, EO), K(0.54, 0, EI), K(KD, 0)],
+    fLyaw:   [K(0, 0), K(0.08, 0), K(KI, 1.25, EI), K(0.44, 1.25, LIN), K(0.54, 0.0), K(KD, 0)],
+    fLpitch: [K(0, 0), K(0.09, 0), K(KI, -0.55), K(0.30, -0.5), K(0.44, -0.5, LIN), K(0.54, 0), K(KD, 0)],
+    // pie que patea (R): sale, chamber -> barrido con ease-in -> hit-stop -> pliega -> baja en su sitio
+    fRx: [K(0, 0), K(0.06, 0.03), K(0.13, 0.12), K(KI, 0.29, EI), K(KH, 0.29, LIN), K(0.36, 0.15), K(0.48, 0), K(KD, 0)],
+    fRz: [K(0, 0), K(0.06, 0.08), K(0.13, 0.30), K(KI, 1.30, EI), K(KH, 1.30, LIN), K(0.36, 0.40), K(0.48, 0), K(KD, 0)],
+    fRy: [K(0, 0), K(0.06, 0.08, EO), K(0.13, 0.24), K(KI, 0.50, EO), K(KH, 0.50, LIN), K(0.36, 0.28), K(0.45, 0.05, EI), K(0.50, 0), K(KD, 0)],
+    fRyaw: [K(0, 0), K(0.13, 0.2), K(KI, 1.3), K(0.36, 0.6), K(0.50, 0), K(KD, 0)],
+    fRpitch: [K(0, 0), K(KI, -0.4), K(0.38, -0.2), K(0.50, 0), K(KD, 0)],
   },
 };
 
