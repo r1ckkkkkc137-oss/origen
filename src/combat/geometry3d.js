@@ -16,7 +16,7 @@
 // Provider: opts.skeleton = (fighter, F) => Skeleton3D | null. Si es null/ausente: HUMAN_BONES + proceduralPose (sin animación externa).
 import { BLOCK_M, headingDir } from '../shared/contracts.js';
 import { PX_PER_M } from './data/moves.js';
-import { REACH_TABLE_3D } from './data/reach3d.js';
+import { REACH_TABLE_3D, MIN_GAP_3D_M } from './data/reach3d.js';
 import { HUMAN_PARENT, ZONE_OF, proceduralPose } from './pose.js';
 
 export { BLOCK_M, headingDir };
@@ -101,7 +101,8 @@ export function createGeometry3D(opt, spec = {}) {
   const geo = {
     kind: '3d',
     units: 'm', toBlocks, fromBlocks,
-    reachTable: REACH_TABLE_3D, // alcances 3D por golpe (data/reach3d.js): hook/uppercut cortos, jab/cross medios
+    reachTable: REACH_TABLE_3D,
+    minGapPx: MIN_GAP_3D_M * PX_PER_M, // separación mínima de pie (salvo clinch/suelo) // alcances 3D por golpe (data/reach3d.js): hook/uppercut cortos, jab/cross medios
     bind(F) { geo.F = F; },
 
     place(A, B, startGap) {

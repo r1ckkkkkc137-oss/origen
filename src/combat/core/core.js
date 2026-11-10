@@ -84,6 +84,7 @@ export function createFightCore(a, b, seed = 1, options = {}) {
   const A = createRuntime(pa, 'a', effOf());
   const B = createRuntime(pb, 'b', effOf());
   const geo = createGeometry(geoSpec, opt);
+  if (geo.minGapPx) opt.minGap = Math.max(opt.minGap, geo.minGapPx); // 3D: 0,80 m pelvis–pelvis de pie (torsos sin montarse)
   geo.place(A, B, opt.startGap);
   A.mem = AI.initMemory(); B.mem = AI.initMemory();
   const F = {

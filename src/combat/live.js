@@ -38,7 +38,7 @@ const DEFAULT_SPECS = [
  * @property {string|null} kind       strike|takedown|clinch|escape|advance|sub|sweep del movimiento; limb: handL|handR|footR|kneeR|...
  * @property {number} guard           0..1 (1 = manos arriba)
  * @property {boolean} onGround       en suelo (grappling o derribado)       position: 'top'|'bottom'|null + groundPos (guard|mount|...)
- * @property {{zone:string,age:number}|null} hurt  última zona golpeada y segundos desde el golpe (<= HURT_WINDOW) para reacciones
+ * @property {{zone:string,age:number,power:number}|null} hurt  última zona golpeada, power 0..1 del impacto (como event.power) y segundos desde el golpe (<= HURT_WINDOW) para reacciones
  * @property {boolean} rocked @property {boolean} down @property {boolean} ko  aturdido / en la lona / noqueado (resultado final)
  * @property {number} hp @property {number} stamina @property {number} fatigue @property {Object} damage  zonas 0..1
  * @property {{mode:string,speed:number}} loco   locomoción (tick.foot / animClip) y velocidad m/s (de la raíz)
@@ -135,7 +135,7 @@ export function createLiveFight(o = {}) {
       kind: mv ? mv.kind : null, limb: mv ? mv.limb : null,
       guard: tk.guard, onGround: stance === 'groundTop' || stance === 'groundBottom' || stance === 'down' || stance === 'ko',
       position: t.phase === 'ground' ? tk.groundRole : null, groundPos: tk.groundPos ?? null,
-      hurt: hu && age <= HURT_WINDOW ? { zone: hu.zone, age: r3(age) } : null,
+      hurt: hu && age <= HURT_WINDOW ? { zone: hu.zone, age: r3(age), power: hu.power } : null,
       rocked: !!tk.rocked, down: !!tk.down, ko, victory, hp: tk.hp, stamina: tk.stamina, fatigue: tk.fatigue, damage: tk.damage,
       sub: tk.sub ?? null, subProgress: tk.subProgress ?? null,
       loco: { mode: tk.foot || tk.animClip || 'idle', speed: 0 },
@@ -191,7 +191,7 @@ export function createLiveFight(o = {}) {
         cur = snapshot();
         for (const ev of r.events) {
           L.rawEvents.push(ev);
-          if (ev.type === 'hit' && ev.defender && ev.target) lastHurt[ev.defender] = { zone: ev.target, tick: fight.core.t };
+          if (ev.type === 'hit' && ev.defender && ev.target) lastHurt[ev.defender] = { zone: ev.target, tick: fight.core.t, power: ev.power ?? 0 };
           for (const ce of translator.translate(ev, fight.core)) L.events.push(ce);
         }
       }
