@@ -75,3 +75,16 @@ test('contrato v0.4: los eventos traducidos llevan round (1-based) del evento KA
   assert.ok(out.length > 20 && out.every((e) => Number.isInteger(e.round) && e.round >= 1));
   assert.equal(out.find((e) => e.type === 'roundStart').round, 1);
 });
+
+test('block: guard {limb, side} del que defiende, espejo del lado que golpea (contrato anim-r7)', async () => {
+  const { guardOf } = await import('./events.js');
+  assert.deepEqual(guardOf({ type: 'block', move: 'jab' }), { limb: 'glove', side: 'R' });
+  assert.deepEqual(guardOf({ type: 'block', move: 'cross' }), { limb: 'glove', side: 'L' });
+  assert.deepEqual(guardOf({ type: 'block', move: 'hook' }), { limb: 'forearm', side: 'R' });
+  assert.deepEqual(guardOf({ type: 'block', move: 'bodyHook' }), { limb: 'forearm', side: 'R' });
+  assert.deepEqual(guardOf({ type: 'block', move: 'highKick' }), { limb: 'forearm', side: 'L' });
+  assert.deepEqual(guardOf({ type: 'check', move: 'lowKick' }), { limb: 'shin', side: 'L' });
+  assert.deepEqual(guardOf({ type: 'catch', move: 'bodyKick' }), { limb: 'glove', side: 'L' });
+  assert.deepEqual(guardOf({ type: 'catch', move: 'lowKick' }), { limb: 'glove', side: 'L' });
+  assert.equal(guardOf({ type: 'block', move: 'nope' }), null);
+});
