@@ -108,7 +108,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 }
 
 // Alcance contra la tabla de Combate (src/combat/data/reach3d.js): punta del puño/espinilla en impactT respecto de la PELVIS (horizontal y 3D)
-export const REACH_IDEAL = { jab: [1.10, 0.07], cross: [1.05, 0.07], hook: [0.70, 0.08], lowkick: [1.00, 0.07] };
+// ronda 5 (Rick): jab y cross a 1,0±0,05 pelvis-pelvis (Combate los lanza ~0,95 m y separa >= 0,80 m fuera del clinch)
+export const REACH_IDEAL = { jab: [1.00, 0.05], cross: [1.00, 0.05], hook: [0.70, 0.08], lowkick: [1.00, 0.07] };
 export function pelvisReach(name) {
   const c = CLIPS[name], R = rec(name, 240); const r = R.find((x) => x.t >= T0 + c.impactT - 1e-9);
   const v = sub(r.fist, r.P.pelvis); const h = Math.hypot(v[0], v[2]); const fw = [Math.cos(r.vis), 0, -Math.sin(r.vis)];

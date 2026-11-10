@@ -91,10 +91,13 @@ export function createAnimator3D(opts = {}) {
   //   cancel(fade=0.12)                    corta el clip con fundido (reacciones/stun).   clipInfo(name?) -> duración, impacto, fases.
   A.fade = null;
   A.clipMode = { name: '', speed: 1, map: null, driven: false, cutAt: 0 };
+  // ronda 5: jab/cross llegan a 1,0 m (mano ~0,65 m fuera de la guardia): cortar un golpe extendido con menos de 0,14 s daría saltos >15 cm/frame
+  const STRIKE_MIN_FADE = 0.14;
+  const strikeExtended = () => !!(A.clip && A.clip.tip && A.clip.impactT > 0 && !A.clip.feint && !A.clip.hold && A.clipT > A.clip.impactT * 0.6 && A.clipT < A.clip.duration * 0.6);
   const startClip = (name, o) => {
     const clip = CLIPS[name]; if (!clip) return false;
     if (A.clip && !o.force) return false;
-    if (A.clip && o.force && clip.from !== A.clipMode.name) A.fade = { clip: A.clip, t: A.clipT, w: 1, rate: 1 / 0.08, h: A.clipMode.holding ? A.clipMode.holdT : -1, amp: A.clipMode.amp ?? 1, ampH: A.clipMode.ampHead ?? A.clipMode.amp ?? 1 };
+    if (A.clip && o.force && clip.from !== A.clipMode.name) A.fade = { clip: A.clip, t: A.clipT, w: 1, rate: 1 / (strikeExtended() ? STRIKE_MIN_FADE : 0.08), h: A.clipMode.holding ? A.clipMode.holdT : -1, amp: A.clipMode.amp ?? 1, ampH: A.clipMode.ampHead ?? A.clipMode.amp ?? 1 };
     A.clip = clip; A.clipT = clamp(o.phase ?? 0, 0, 1) * clip.duration;
     const m = A.clipMode; m.name = name; m.driven = !!o.driven; m.map = null; m.speed = o.speed > 0 ? o.speed : 1;
     if (o.duration > 0) {
@@ -150,7 +153,7 @@ export function createAnimator3D(opts = {}) {
   // nivel de guardia 0..1 (1 = bloqueo alto): sostenido mientras la sim lo pida, con resorte (≈0.08 s). Se suma bajo los clips.
   A.guard = { target: 0, sp: { x: 0, v: 0 } };
   A.setGuardLevel = (l) => { A.guard.target = clamp(+l || 0, 0, 1); };
-  A.cancel = (fade = 0.10) => { if (!A.clip) return false; A.fade = { clip: A.clip, t: A.clipT, w: 1, rate: 1 / Math.max(fade, 1e-3), h: A.clipMode.holding ? A.clipMode.holdT : -1, amp: A.clipMode.amp ?? 1, ampH: A.clipMode.ampHead ?? A.clipMode.amp ?? 1 }; A.clip = null; return true; };
+  A.cancel = (fade = 0.10) => { if (!A.clip) return false; const ext = strikeExtended(); A.fade = { clip: A.clip, t: A.clipT, w: 1, rate: 1 / Math.max(ext ? Math.max(fade, STRIKE_MIN_FADE) : fade, 1e-3), h: A.clipMode.holding ? A.clipMode.holdT : -1, amp: A.clipMode.amp ?? 1, ampH: A.clipMode.ampHead ?? A.clipMode.amp ?? 1 }; A.clip = null; return true; };
 
   // ---- reacciones y estados (zona del golpe, aturdido, KO, levantarse)
   //   react(zone,{power})   zone = 'head'|'body'|'legs'  (state.hurt.zone de la sim). Corta lo que haya con fundido de 80 ms. power ∈ (0..1.5] escala la pose.
