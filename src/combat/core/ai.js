@@ -64,7 +64,7 @@ export function observe(F, self, info) {
       m.oppWhiffs++;
       // castigar el golpe al aire
       if (!self.action && self.down <= 0) self.nextDecision = Math.min(self.nextDecision, F.t + 1);
-      self.punishUntil = F.t + 14;
+      self.punishUntil = F.t + (F.reach ? 22 : 14);
       break;
     case 'tdResult': m.td[1]++; if (info.ok) m.td[0]++; break;
     case 'tdAgainst': m.oppTd[1]++; if (info.ok) m.oppTd[0]++; break;
@@ -233,7 +233,7 @@ function decideStand(F, self, opp) {
   const tec = self.attr.technique;
   const opts = [];
   const oppRecovering = opp.action && opp.action.t >= opp.action.startup + opp.action.active;
-  const punishing = F.t < (self.punishUntil ?? -1) && oppRecovering;
+  const punishing = F.t < (self.punishUntil ?? -1) && (oppRecovering || (!!F.reach && !opp.action && opp.down <= 0)); // 3D: la ventana sigue abierta mientras el otro se recompone
   const oppLastMove = opp.lastMove;
   const exploitTell = F.t < opp.guardDropUntil && oppLastMove && (m.tells[oppLastMove] ?? 0) >= 2;
   const losingStand = m.dmgTakenStand > m.dmgDealtStand * 1.35 + 10;
@@ -354,6 +354,8 @@ function decideStand(F, self, opp) {
   // esperar / contragolpear (paciencia)
   opts.push({ kind: 'wait', u: ln(0.25 + s.counter * 1.6) + 0.6 * (1 - ag) + self.profile.quirks.patience + (c.stamina < 0.35 ? 0.6 : 0) - Math.abs(err) * 1.5 + 0.5 + (calm ? 0.5 : 0), ticks: rng.int(12, 34) });
 
+  if (F.reach) distanceIQ(F, self, opp, opts, { d, c, co, ag, calm, punishing, oppRecovering, oppJab, nearCage, rng });
+
   const temp = 0.75 - 0.35 * tec;
   const pick = rng.softmax(opts, (o) => o.u, temp);
   if (pick.kind === 'action') {
@@ -363,6 +365,46 @@ function decideStand(F, self, opp) {
     return { kind: 'action', move: pick.move, combo, exploit: pick.exploit, punish: pick.punish };
   }
   return pick;
+}
+
+// IA de distancia (sólo 3D: F.reach). Cada peleador estima si le conviene entrar: stamina y daño propios contra los
+// del rival, guardia del rival, y si el estilo del otro es más largo. Entra detrás de una finta (no caminando a pelo
+// dentro del jab rival), castiga al que se sobreextiende (golpe al aire en recovery) y, si no le conviene, sale o gira.
+export function entryEdge(self, opp, c, co) {
+  const dmg = (x) => Math.min(1, (x.dmg.head / x.attr.headCap + x.dmg.body / x.attr.bodyCap + 0.5 * x.dmg.legs / x.attr.legsCap) / 2.5);
+  return clamp(1.1 * (c.stamina - co.stamina) + 1.4 * (dmg(opp) - dmg(self)) + 0.9 * (0.75 - (opp.guard ?? 0.75))
+    + (opp.rocked > 0 ? 0.8 : 0) - (self.rocked > 0 ? 0.8 : 0) + 0.6 * (self.attr.moveSpeed / Math.max(1e-3, opp.attr.moveSpeed) - 1), -1.5, 1.5);
+}
+function distanceIQ(F, self, opp, opts, k) {
+  const { d, ag, calm, punishing, oppRecovering, oppJab, nearCage } = k;
+  const edge = entryEdge(self, opp, k.c, k.co);
+  self.entryEdge = edge;
+  const myJab = rw(F, MOVES.jab);
+  const outside = d > myJab.rangeMax;                    // fuera de mi jab: para pegar hay que entrar
+  const inOppRange = d <= oppJab + 4;                    // dentro del jab rival
+  const oppReady = !opp.action && opp.down <= 0 && !oppRecovering && F.t >= (opp.feintBit ?? -1);
+  const overext = punishing || (oppRecovering && opp.action && opp.action.result === 'miss');
+  for (const o of opts) {
+    if (o.kind === 'move' && o.dir > 0) {
+      o.u += 0.7 * edge;
+      // entrar caminando a pelo, con el rival listo y la guardia arriba, se paga: mejor detrás de una finta
+      if (outside && oppReady && !overext) o.u -= 0.4 * clamp(opp.guard ?? 0.7, 0, 1);
+      if (overext) o.u += 2.2;                           // se sobreextendió: cerrar ya
+    } else if (o.kind === 'move' && o.dir < 0) {
+      o.u -= 0.6 * edge;
+      if (inOppRange && oppReady && edge < -0.2 && !nearCage) o.u += 0.6 * -edge; // no me conviene estar acá
+    } else if (o.kind === 'wait') {
+      if (inOppRange && oppReady && edge < 0.3) o.u -= 0.8;   // quieto en su jab sin ventaja: lo peor
+    } else if (o.kind === 'feint') {
+      if (!calm && outside && d < 1.6 * U) o.u += 0.7 + 0.4 * Math.max(0, edge) + 0.3 * ag; // la finta cubre la entrada
+    } else if (o.kind === 'action' && MOVES[o.move].kind === 'strike') {
+      if (overext) o.u += 1.6 - 0.04 * MOVES[o.move].startup; // castigo: lo rápido primero
+      else if (F.t < (self.feintFollow ?? -1)) o.u += 0.4;  // la finta abrió: tirar ya
+    }
+  }
+  if (overext && !opts.some((o) => o.kind === 'action' && MOVES[o.move].kind === 'strike' && o.punish)) {
+    opts.push({ kind: 'move', dir: 1, foot: 'stepIn', u: 1.5 + 0.5 * ag, ticks: 6, next: 3 }); // sin golpe a mano: paso adentro y re-decidir
+  }
 }
 
 // Urgencia 0..1: último round y perdiendo de pie (o muy atrás en daño) -> menos pausas, más volumen.
