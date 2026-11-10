@@ -269,8 +269,8 @@ export function createAnimator3D(opts = {}) {
       hipYaw: c.hipYaw, hipPitch: c.hipPitch, hipRoll: c.hipRoll, spYaw: c.spYaw, spPitch: c.spPitch, spRoll: c.spRoll,
       hdYaw: c.hdYaw, hdPitch: c.hdPitch, hdRoll: c.hdRoll,
       arms: {
-        L: { rel: [c.hLx, c.hLy, c.hLz], pole: armPole(1, c.elbL, c.elvL), shrug: c.shrugL, prot: c.protL },
-        R: { rel: [c.hRx, c.hRy, c.hRz], pole: armPole(-1, c.elbR, c.elvR), shrug: c.shrugR, prot: c.protR },
+        L: { rel: [c.hLx, c.hLy, c.hLz], pole: armPole(1, c.elbL, c.elvL), shrug: c.shrugL, prot: c.protL, poleFace: [c.pLx, c.pLy, c.pLz], poleW: c.pLw },
+        R: { rel: [c.hRx, c.hRy, c.hRz], pole: armPole(-1, c.elbR, c.elvR), shrug: c.shrugR, prot: c.protR, poleFace: [c.pRx, c.pRy, c.pRz], poleW: c.pRw },
       },
       legs: {
         L: { ankle: ankles[0], pole: legPole(eff[0], 0), footYaw: eff[0].yaw, footPitch: eff[0].pitch },
