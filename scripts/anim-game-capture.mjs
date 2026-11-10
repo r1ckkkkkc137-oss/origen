@@ -15,12 +15,13 @@ const W = 480, H = 400;
 // acciones: { t, who: 0|1, play, opts }.  who 0 = beige (mira +X), 1 = rojo (mira -X)
 const SCENES = {
   guard: { times: [1.0, 1.7, 2.4, 3.1], actions: [] },
-  jab: { times: [1.40, 1.50, 1.58, 1.65, 1.75, 1.90, 2.10, 2.40], actions: [{ t: 1.5, who: 0, play: 'jab' }] },
+  // ronda 5: Combate lanza jab/cross a ~0,95 m y separa >= 0,80 m fuera del clinch
+  jab: { sep: 0.475, times: [1.50, 1.55, 1.5667, 1.60, 1.6417, 1.70, 1.76, 1.82], actions: [{ t: 1.5, who: 0, play: 'jab' }] },
   jabsync: { times: [1.50, 1.56, 1.60, 1.64, 1.70, 1.76, 1.82, 1.95], actions: [{ t: 1.5, who: 0, play: 'jab', opts: { impactIn: 0.10, duration: 0.32 } }, { t: 1.5, who: 1, play: 'jab', opts: { speed: 0.6 } }] },   // KAGE: impacto a 0.10 s, total 0.32 s
-  cross: { times: [1.50, 1.58, 1.62, 1.65, 1.68, 1.71, 1.76, 1.90], actions: [{ t: 1.5, who: 0, play: 'cross' }] },
+  cross: { sep: 0.475, times: [1.50, 1.567, 1.60, 1.65, 1.6917, 1.75, 1.82, 1.93], actions: [{ t: 1.5, who: 0, play: 'cross' }] },
   // ronda 4: tiempos de la sim; sep = media distancia pelvis-pelvis (el alcance de reach3d: gancho 0.70, low kick 1.00)
-  hook: { sep: 0.35, times: [1.50, 1.55, 1.62, 1.6833, 1.7333, 1.78, 1.86, 1.98], actions: [{ t: 1.5, who: 0, play: 'hook' }] },
-  ko: { sep: 0.55, times: [1.48, 1.62, 1.72, 1.82, 1.92, 2.10, 2.34, 2.90], actions: [{ t: 1.5, who: 1, play: 'hook' }, { t: 1.5 + 11 / 60, who: 0, play: 'ko', opts: { force: true } }] },
+  hook: { sep: 0.40, times: [1.50, 1.55, 1.62, 1.6833, 1.7333, 1.78, 1.86, 1.98], actions: [{ t: 1.5, who: 0, play: 'hook' }] },
+  ko: { sep: 0.45, times: [1.48, 1.62, 1.72, 1.82, 1.92, 2.10, 2.34, 2.90], actions: [{ t: 1.5, who: 1, play: 'hook' }, { t: 1.5 + 11 / 60, who: 0, play: 'ko', opts: { force: true } }] },
   feint_hook: { sep: 0.45, times: [1.50, 1.53, 1.56, 1.60, 1.63, 1.68, 1.75, 1.88], actions: [{ t: 1.5, who: 0, play: 'feint_hook' }] },
   block: { times: [1.0, 1.15, 1.3, 1.5, 1.6, 1.7, 2.2, 2.6], actions: [{ t: 1.1, who: 0, guard: 1 }, { t: 1.5, who: 1, play: 'jab' }, { t: 2.3, who: 0, guard: 0 }] },
   lowkick: { sep: 0.50, times: [1.50, 1.56, 1.64, 1.7333, 1.7667, 1.86, 1.96, 2.10], actions: [{ t: 1.5, who: 0, play: 'lowkick' }] },

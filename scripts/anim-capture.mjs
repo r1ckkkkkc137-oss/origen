@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { simulate } from '../src/anim/scenarios.js';
 
-const OUT = process.argv[2] || '/workspace/origen-shots/anim-r2';
+const OUT = process.argv[2] || '/workspace/origen-shots/anim-r5';
 fs.mkdirSync(OUT, { recursive: true });
 const CAMS = ['front', 'side', 'top34'];
 const W = 440, H = 400;

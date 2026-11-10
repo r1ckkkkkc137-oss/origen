@@ -42,3 +42,9 @@ Clip: `feet:true` congela los pasos automáticos durante el clip; `ball:{L|R}` h
 * **Reacciones según la fuerza**: `react(zone, {power | damage})`; desde `setState` la fuerza se deduce del salto de `state.damage[zona]` en el frame del golpe (`state.hurt` sólo trae zona/edad). Cuerpo/pelvis escalan `0,40 + 0,90·power`, la cabeza `0,65 + 0,35·power`; el golpe fuerte dura algo más. Sin dato => amplitud 1 (r3). `node scripts/anim-metrics.mjs force`.
 * **Juego de pies de pelea** (`state.loco.mode` ≠ exit/walk): se mantiene la estancia de guardia, el pie del lado del movimiento sale primero, el otro lo sigue a mitad de vuelo (paso-arrastre), pasos de 0,22 s que persiguen al home durante la ráfaga; giro más rápido. Guardia (subir/bajar) más seca. `node scripts/anim-metrics.mjs loco`.
 * Tests: `tests/round4.test.mjs`.
+
+## Ronda 5 (Rick)
+* **Jab y cross a 1,0 m** (alcance horizontal raíz→puño = pelvis de la sim, `REACH_IDEAL` 1,00±0,05): más giro de cadera/hombro, brazo a ~170° (la IK llega, huesos de largo fijo: sin brazo de goma), pelvis que entra (jab: paso de 24 cm del pie delantero; cross: desliz de 21 cm del pie delantero). Pico de velocidad en el impacto y hit-stop intactos. Cortar un golpe extendido (cancel/reacción) funde en ≥0,14 s para no saltar >15 cm/frame.
+* **KO**: desde que se doblan las rodillas el tronco se va hacia atrás y al costado y no vuelve a erguirse (≥35° de la vertical desde que apoya las rodillas); muslos con la misma dirección en el mundo que en r4 (`bakeKoThighs`), piernas por FK. `node scripts/anim-metrics.mjs ko` (KO_TILT).
+* **Gancho ≥10 m/s** al impacto (60 Hz): más carga de cadera (0,34 rad a 0,07 s) y el pecho gira con ease-in desde 0,09 s; el brazo (HOOK_A0/A1, codo 90°, snap0) es el de r4. La cadena cinética se mide hasta el valor en el impacto (`halfCross(..., iEnd)`).
+* Tests: `tests/round5.test.mjs`.
