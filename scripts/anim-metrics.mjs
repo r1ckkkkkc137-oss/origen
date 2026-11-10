@@ -352,7 +352,8 @@ export function blockMetrics(name, block = null, o = {}) {
     const cols = buildColliders(sb), f = I3(a.strike.fist), T = a.clipT, P = sa.pose;
     const blk = a.contact.blk && a.contact.blk.clip === a.clip ? a.contact.blk.i : -1; if (blk >= 0) m.blk = blk;
     m.bodyPenMax = Math.max(m.bodyPenMax, penetration(cols.slice(0, 8), f, rt).pen);
-    const O = I3(kick ? P.kneeR : P['elbow' + c.tip]); m.guardSeg = Math.max(m.guardSeg, segPenetration(cols.slice(8), O, f, rt));
+    const O = I3(kick ? P.kneeR : P['elbow' + c.tip]), G = cols.slice(8); m.guardSeg = Math.max(m.guardSeg, segPenetration(G, O, f, rt));
+    if (kick) m.guardSeg = Math.max(m.guardSeg, segPenetration(G, f, I3(P.footR), rt), segPenetration(G, I3(P.hipR), I3(P.kneeR), 0.06));   // toda la pierna: muslo, espinilla y empeine
     if (blk >= 0 && T >= c.impactT - 1e-9 && T <= c.impactT + HITSTOP + 1 / 60 + 1e-9) m.blkGapMin = Math.min(m.blkGapMin, sdist(cols[blk], f) - rt);
   } });
   m.defClips = [...m.defClips];

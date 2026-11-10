@@ -587,7 +587,7 @@ export function createAnimator3D(opts = {}) {
   // el resto del miembro (codo/rodilla y la mitad del segmento distal) tampoco entra: si penetra, se desplaza la punta pedida
   // (gana x2 en la articulación media) y se re-resuelve; 2 pasadas. Cubre la rodilla de la patada que vuelve y el torso que se dobla.
   const _m = [0, 0, 0], _h = [0, 0, 0];
-  const LIMB_STEP = 0.10, LIMB_STEP_KICK = 0.10, REFINE_LIMB_MAX = 0.04;                                             // m/frame (60 Hz) que puede cambiar la corrección del miembro
+  const LIMB_STEP = 0.10, LIMB_STEP_KICK = 0.10, LIMB_STEP_REC = 0.035, REFINE_LIMB_MAX = 0.04;                                             // m/frame (60 Hz) que puede cambiar la corrección del miembro
   const limbNeed = (cols, side, kick, rt, e) => {
     const P = rig.pose, J = kick ? P.thighR.t : P['upperArm' + side].t; tipOf(side, kick, _tip);
     e[0] = e[1] = e[2] = 0;
@@ -596,7 +596,9 @@ export function createAnimator3D(opts = {}) {
     // patada bloqueada (r7): el brazo/espinilla que bloquea apoya sobre la pierna; no se la empuja (sólo la punta contra él, por el clavado)
     // patada: los brazos del rival (guantes/antebrazos) ceden ante la pierna (guardYield del rival), no la empujan; sólo el cuerpo (0..7)
     const bk0 = CT.blk && kick && A.clip && CT.blk.clip === A.clip ? cols[CT.blk.i] : null, bk = bk0 && bk0.limb !== 'glove' ? bk0 : null, lc = kick ? (CT.lc || (CT.lc = [])) : cols;
-    if (kick) { lc.length = 0; for (const c of cols) if (c !== bk && (bk0 || !c.guard)) lc.push(c); }   // bloqueada: el resto de la guardia sí frena la pierna
+    const rec = kick && A.clip && A.clip.tip === 'kickR' ? A.clipT > A.clip.impactT + 0.05 && !(A.clip.aim && A.clip.aim.zone === 'legs') : false;   // recogida: la pierna rodea también los brazos (que bajan a cubrir)
+    CT.rec = rec && !bk0 && !!kick;
+    if (kick) { lc.length = 0; for (const c of cols) if (c !== bk && (bk0 || rec || !c.guard)) lc.push(c); }   // bloqueada: el resto de la guardia sí frena la pierna
     for (let q = 0; q < nq; q++) {
       if (A._elb && !kick && q < 4) continue;                         // codo: la punta ES la articulación (la lleva el clavado); sólo antebrazo lejano y húmero
       // muestras: articulación media (x2), 1/4, 1/2 y 3/4 del segmento distal, mitad del proximal; patada (r7): + tobillo y medio pie
@@ -625,14 +627,14 @@ export function createAnimator3D(opts = {}) {
     shiftTip(r, cols, side, kick, rt, L);                             // corrección del frame anterior
     const need = limbNeed(cols, side, kick, rt, _e);
     const tx = need > 1e-3 ? L[0] + _e[0] : L[0] * Math.exp(-dt / 0.06), ty = need > 1e-3 ? L[1] + _e[1] : L[1] * Math.exp(-dt / 0.06), tz = need > 1e-3 ? L[2] + _e[2] : L[2] * Math.exp(-dt / 0.06);
-    let sx = tx - L[0], sy = ty - L[1], sz = tz - L[2]; const sl = Math.hypot(sx, sy, sz), cap = (kick ? LIMB_STEP_KICK : LIMB_STEP) * dt * 60;
+    let sx = tx - L[0], sy = ty - L[1], sz = tz - L[2]; const sl = Math.hypot(sx, sy, sz), cap = (kick ? (CT.rec ? LIMB_STEP_REC : LIMB_STEP_KICK) : LIMB_STEP) * dt * 60;
     if (sl > cap) { sx *= cap / sl; sy *= cap / sl; sz *= cap / sl; }
     L[0] += sx; L[1] += sy; L[2] += sz;
     if (need > 1e-3) shiftTip(r, cols, side, kick, rt, [sx, sy, sz]);
   };
   // r7: MI guardia cede ante el miembro del rival (la pierna de su patada, su brazo que pasa entre mis guantes): si mi antebrazo/guante
   // entra en sus muslos/espinillas/antebrazos/guantes, la muñeca se aparta (<= GUARD_STEP m/frame) y vuelve sola (0,08 s) cuando se libera.
-  const GUARD_STEP = 0.06, _gy = { L: [0, 0, 0], R: [0, 0, 0] }, _gs = [0, 0, 0], _ge = [0, 0, 0];
+  const GUARD_STEP = 0.06, GUARD_STEP_KICK = 0.14, _gy = { L: [0, 0, 0], R: [0, 0, 0] }, _gs = [0, 0, 0], _ge = [0, 0, 0];
   const GUARD_OPP = [2, 3, 4, 5, 8, 9, 10, 11];
   A.guardShift = _gy;
   // r7: bloqueo -> el miembro que bloquea VA al golpe: su superficie se lleva hasta la punta del golpe del rival (muñeca para guante/antebrazo,
@@ -679,17 +681,19 @@ export function createAnimator3D(opts = {}) {
     for (const s of ['L', 'R']) {
       if (holding) { const g = _gy[s], k = 1 - Math.exp(-dt / 0.08); g[0] -= g[0] * k; g[1] -= g[1] * k; g[2] -= g[2] * k; }
       if (sc && sc.tip === s) { _gy[s][0] = _gy[s][1] = _gy[s][2] = 0; continue; }   // el brazo que golpea lo maneja el contacto
+      const meetArm = A.meet && A.meet.side === s && A.meet.limb !== 'shin' && A.t - A.meet.t0 < 0.4;   // el brazo que bloquea la patada apoya, no se aparta
       const g = _gy[s], P = rig.pose, el = P['upperArm' + s].t, wr = P['forearm' + s].t, kn = P['hand' + s].t;
       _ge[0] = _ge[1] = _ge[2] = 0; let need = 0;
-      if (ocols && !holding) for (let q = 0; q < 4; q++) {
-        const u = q < 2 ? 0.5 + 0.5 * q : 0.5 * (q - 1), A0 = q < 2 ? el : wr, B0 = q < 2 ? wr : kn, rr = q < 2 ? CONTACT.forearm : CONTACT.glove;
+      if (ocols && !holding && !meetArm) for (let q = 0; q < 6; q++) {
+        // muestras: antebrazo 1/2 y muñeca, guante 1/2 y nudillos, y (r7, el muslo de la patada entra por el codo) antebrazo 0 y 1/4
+        const u = q < 2 ? 0.5 + 0.5 * q : q < 4 ? 0.5 * (q - 1) : 0.25 * (q - 4), A0 = q < 2 || q > 3 ? el : wr, B0 = q < 2 || q > 3 ? wr : kn, rr = q < 2 || q > 3 ? CONTACT.forearm : CONTACT.glove;
         for (let k = 0; k < 3; k++) _gs[k] = A0[k] + (B0[k] - A0[k]) * u;
         const m0 = _gs.slice(), sub = GUARD_OPP.map((i) => ocols[i]);
         if (pushOut(sub, _gs, rr) > 0) { for (let k = 0; k < 3; k++) _ge[k] += (_gs[k] - m0[k]) * (q === 0 ? 1.6 : 1.1); need = 1; }
       }
       let sx, sy, sz;
       if (need) { sx = _ge[0]; sy = _ge[1]; sz = _ge[2]; } else { const k = 1 - Math.exp(-dt / 0.08); sx = -g[0] * k; sy = -g[1] * k; sz = -g[2] * k; }
-      const sl = Math.hypot(sx, sy, sz), cap = GUARD_STEP * dt * 60; if (sl > cap) { sx *= cap / sl; sy *= cap / sl; sz *= cap / sl; }
+      const sl = Math.hypot(sx, sy, sz), cap = (need && oc && oc.tip === 'kickR' ? GUARD_STEP_KICK : GUARD_STEP) * dt * 60; if (sl > cap) { sx *= cap / sl; sy *= cap / sl; sz *= cap / sl; }
       g[0] += sx; g[1] += sy; g[2] += sz;
       if (Math.hypot(g[0], g[1], g[2]) < 1e-5) { g[0] = g[1] = g[2] = 0; continue; }
       const w = r.arms[s].rel ? P['forearm' + s].t : r.arms[s].wrist; r.arms[s].rel = null; r.arms[s].wrist = [w[0] + g[0], w[1] + g[1], w[2] + g[2]]; any = true;
@@ -756,7 +760,7 @@ export function createAnimator3D(opts = {}) {
       // sin guard: lo más cercano a la trayectoria (hombro/cadera -> blanco previsto o punta actual)
       const P = rig.pose, S0 = kick ? P.thighR.p : P['upperArm' + tipSide(cl)].p, T = CT.aimQ || tipOf(tipSide(cl), kick, [0, 0, 0]);
       const low = kick && (src === 'check' || (cl.aim && cl.aim.zone === 'legs'));   // low kick: chequeo con la espinilla (la adelantada, L); media/alta: brazos
-      const cand = low ? [COL.shinL, COL.shinR] : [COL.gloveL, COL.gloveR, COL.forearmL, COL.forearmR];
+      const cand = low ? [COL.shinL, COL.shinR] : kick ? [COL.gloveL, COL.forearmL] : [COL.gloveL, COL.gloveR, COL.forearmL, COL.forearmR];   // media/alta de derecha: llega por la izquierda del rival (su brazo L)
       let bd = Infinity; const q = [0, 0, 0];
       for (const k of cand) for (let j = 4; j <= 24; j++) { const u = j / 24; for (let m = 0; m < 3; m++) q[m] = S0[m] + (T[m] - S0[m]) * u; const d = sdist(cols[k], q); if (d < bd) { bd = d; i = k; } }
     }

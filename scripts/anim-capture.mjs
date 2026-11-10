@@ -5,9 +5,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { simulate } from '../src/anim/scenarios.js';
 
-const OUT = process.argv[2] || '/workspace/origen-shots/anim-r6';
+const OUT = process.argv[2] || '/workspace/origen-shots/anim-r7';
 fs.mkdirSync(OUT, { recursive: true });
-const CAMS = ['front', 'side', 'top34'], DCAMS = ['side', 'front34', 'top34'];
+const CAMS = ['front', 'side', 'top34'], DCAMS = process.env.ANIM_CAMS ? process.env.ANIM_CAMS.split(',') : ['side', 'front34', 'top34'];
 const W = 440, H = 400;
 
 // escenas: [nombre del escenario, etiqueta, tiempos[], tiempos "clave" para PNG individual]
@@ -47,6 +47,20 @@ function plan() {
     P.push({ duel: true, sc, label: 'duel_' + sc + '_nolink', opts: { link: false }, times: [T(imp - 0.017), T(imp), T(imp + 0.017), T(imp + 0.033)], keys: [T(imp)], keyNames: ['impact'] });
   }
   P.push({ duel: true, sc: 'hook', label: 'duel_hook_close070', opts: { closeTo: 0.70 }, times: [1.0, 1.1, 1.15, 1.1833, 1.2083, 1.25, 1.3, 1.45], keys: [1.1833], keyNames: ['impact'] });
+  // ronda 7: patadas media/alta (clips propios) a la distancia de conexión, bloqueo vs no bloqueo, ground and pound
+  for (const [sc, imp] of [['bodykick', 16 / 60], ['highkick', 19 / 60]]) {
+    const T = (x) => +(1.0 + x).toFixed(4), ts = [0.05, imp * 0.56, imp - 0.033, imp, imp + 0.025, imp + 0.042, imp + 0.15, imp + 0.30];
+    P.push({ duel: true, sc, label: 'duel_' + sc, times: ts.map(T), keys: [T(ts[1]), T(imp), T(ts[6])], keyNames: ['chamber', 'impact', 'recoil'] });
+    P.push({ duel: true, sc, label: 'duel_' + sc + '_blocked', opts: { block: { at: 'impact' } }, times: [T(imp - 0.033), T(imp), T(imp + 0.025), T(imp + 0.05)], keys: [T(imp + 0.025)], keyNames: ['blocked'] });
+  }
+  { const T = (x) => +(1.0 + x).toFixed(4), imp = 0.10, ts = [0.05, 0.083, 0.10, 0.125, 0.15, 0.20];
+    P.push({ duel: true, sc: 'jab', label: 'duel_jab_blocked', opts: { block: { at: 'impact' } }, times: ts.map(T), keys: [T(imp), T(0.125)], keyNames: ['impact', 'hitstop'] });
+    P.push({ duel: true, sc: 'jab', label: 'duel_jab_unblocked', times: ts.map(T), keys: [T(imp), T(0.125)], keyNames: ['impact', 'hitstop'] });
+    P.push({ duel: true, sc: 'lowkick', label: 'duel_lowkick_checked', opts: { block: { at: 'impact', src: 'check' } }, times: [T(0.20), T(0.2333), T(0.2583), T(0.30)], keys: [T(0.2583)], keyNames: ['check'] }); }
+  for (const [pos, st, imp] of [['mount', 'gnp_punch', 0.15], ['mount', 'gnp_elbow', 11 / 60], ['guard', 'gnp_punch', 0.15], ['side', 'gnp_elbow', 11 / 60], ['mount', 'gnp_body', 0.15]]) {
+    const T = (x) => +(1.0 + x).toFixed(4), ts = [-0.1, imp * 0.5, imp - 0.017, imp, imp + 0.05, imp + 0.10, imp + 0.18, imp + 0.30];
+    P.push({ ground: true, pos, sc: st, label: `gnp_${pos}_${st.slice(4)}`, times: ts.map(T), keys: [T(imp), T(imp + 0.05), T(imp + 0.10)], keyNames: ['impact', 'head_floor', 'bounce'] });
+  }
   P.push({ sc: 'turn90', label: 'turn90', times: [1.4, 1.55, 1.7, 1.85, 2.0, 2.2, 2.6, 3.2], keys: [1.7, 2.2] });
   return P;
 }
@@ -68,8 +82,9 @@ const ONLY = process.argv[3] ? process.argv[3].split(',') : null;   // p.ej. nod
 for (const p of plan()) {
   if (ONLY && !ONLY.includes(p.label)) continue;
   const allTimes = [...new Set([...p.times, ...p.keys])];
-  const cams = p.duel ? DCAMS : CAMS;
-  const res = p.duel ? await page.evaluate((sc, times, cams, w, h, o) => window.CAP.runDuel(sc, times, cams, w, h, o), p.sc, allTimes, cams, W, H, p.opts || {})
+  const cams = p.duel || p.ground ? DCAMS : CAMS;
+  const res = p.ground ? await page.evaluate((pos, sc, times, cams, w, h, o) => window.CAP.runGround(pos, sc, times, cams, w, h, o), p.pos, p.sc, allTimes, cams, W, H, p.opts || {})
+    : p.duel ? await page.evaluate((sc, times, cams, w, h, o) => window.CAP.runDuel(sc, times, cams, w, h, o), p.sc, allTimes, cams, W, H, p.opts || {})
     : await page.evaluate((sc, times, cams, w, h) => window.CAP.run(sc, times, cams, w, h), p.sc, allTimes, CAMS, W, H);
   // PNG individuales
   p.keys.forEach((t, k) => { const i = allTimes.indexOf(t); const nm = p.keyNames ? p.keyNames[k] : 't' + t.toFixed(2);

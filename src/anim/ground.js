@@ -38,7 +38,7 @@ export const GROUND_POSES = {
     mount: { ...TOP_BASE },
     guard: { ...TOP_BASE, dy: -0.33, pz: -0.16, hipPitch: 0.55, spPitch: 0.50, kHL: 0.15, kKL: 1.65, kAL: 0.25, kHR: 0.15, kKR: 1.65, kAR: 0.25 },
     half:  { ...TOP_BASE, dy: -0.36, pz: -0.05, kAL: 0.35, kAR: 0.45 },
-    side:  { ...TOP_BASE, dy: -0.46, px: 0.40, pz: 0.56, hipYaw: -1.45, hipPitch: 0.55, spPitch: 0.45, kHL: 0.55, kKL: 2.10, kAL: 0.35, kHR: 0.55, kKR: 2.10, kAR: 0.35 },
+    side:  { ...TOP_BASE, dy: -0.44, px: 0.40, pz: 0.56, hipYaw: -1.45, hipPitch: 0.55, spPitch: 0.45, kHL: 0.55, kKL: 2.10, kAL: 0.35, kHR: 0.55, kKR: 2.10, kAR: 0.35 },
     back:  { ...TOP_BASE, pz: -0.10 },
   },
 };
@@ -133,9 +133,9 @@ export const HURT_GROUND_BODY = {
 };
 CLIPS.hurt_ground_body = HURT_GROUND_BODY;
 // punta LIBRE prevista en el impacto por posición (marco raíz [izq, altura, adelante]; medida con link:false) para el ajuste al blanco
-GNP_PUNCH.aim.refPos = {mount: [-0.01, 0.23, 0.69], guard: [-0.012, 0.35, 0.404], side: [0.004, 0.256, 0.685], half: [-0.01, 0.27, 0.52], back: [-0.01, 0.23, 0.47]};
-GNP_ELBOW.aim.refPos = {mount: [0.031, 0.364, 0.727], guard: [0.029, 0.479, 0.426], side: [0.113, 0.362, 0.608], half: [0.031, 0.404, 0.557], back: [0.031, 0.364, 0.507]};
-GNP_BODY.aim.refPos = {mount: [-0.028, 0.137, 0.422], guard: [-0.03, 0.25, 0.126], side: [-0.116, 0.133, 0.554], half: [-0.028, 0.177, 0.252], back: [-0.028, 0.137, 0.202]};
+GNP_PUNCH.aim.refPos = {mount: [-0.01, 0.23, 0.69], guard: [-0.012, 0.35, 0.404], side: [0.004, 0.276, 0.685], half: [-0.01, 0.27, 0.52], back: [-0.01, 0.23, 0.47]};
+GNP_ELBOW.aim.refPos = {mount: [0.031, 0.364, 0.727], guard: [0.029, 0.479, 0.426], side: [0.113, 0.382, 0.608], half: [0.031, 0.404, 0.557], back: [0.031, 0.364, 0.507]};
+GNP_BODY.aim.refPos = {mount: [-0.028, 0.137, 0.422], guard: [-0.03, 0.25, 0.126], side: [-0.116, 0.153, 0.554], half: [-0.028, 0.177, 0.252], back: [-0.028, 0.137, 0.202]};
 for (const c of [GNP_PUNCH, GNP_ELBOW, GNP_BODY]) CLIPS[c.name] = c;
 CLIPS.hurt_ground = HURT_GROUND;
 // moves de la sim -> clips (para opts.clipMap de createLiveAnimation; el animador además remapea 'jab'/'lowkick' por state.move)
