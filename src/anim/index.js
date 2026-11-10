@@ -1,5 +1,5 @@
 export { createAnimator3D, BLOCK_M_DEFAULT, yawToDir, dirToYaw, pairAnimators, pairedAnimatorFactory, MOVE_CLIP } from './animator3d.js';
-export { bindCombatEvents, routeBlockEvent } from './combatBind.js';
+export { bindCombatEvents, routeBlockEvent, routeCatchEvent } from './combatBind.js';
 export { BODYKICK, HIGHKICK, KICK_TICKS } from './kicks.js';
 export { GROUND_POSES, GNP_PUNCH, GNP_ELBOW, GNP_BODY, HURT_GROUND, HURT_GROUND_BODY, GROUND_MOVE_CLIP } from './ground.js';
 export { CONTACT, COL, guardIndex, buildColliders, penetration } from './contact.js';

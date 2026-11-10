@@ -355,6 +355,7 @@ export function blockMetrics(name, block = null, o = {}) {
   simulateDuel(name, { ...o, block: block ? { ...block } : null, onFrame: (t, sa, sb, a, b) => {
     if (b.clip) m.defClips.add(b.clipMode.name);
     for (const e of a.events) if (e.type === 'blocked' || e.type === 'contact') m.events.push(e.type + (e.blocked ? ':blocked' : '') + (e.limb ? ':' + e.limb + e.side : ''));
+    if (a.caught && a.contact.blk && m.blk < 0) m.blk = a.contact.blk.i;   // r8: atrapada: el clip de la patada se corta (lo sostiene catchLayer); queda el guante que atrapa
     if (!(a.clip && a.clipMode.name === name)) return;
     const cols = buildColliders(sb), f = I3(a.strike.fist), T = a.clipT, P = sa.pose;
     const blk = a.contact.blk && a.contact.blk.clip === a.clip ? a.contact.blk.i : -1; if (blk >= 0) m.blk = blk;

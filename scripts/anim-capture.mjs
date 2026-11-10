@@ -65,6 +65,13 @@ function plan() {
   for (const pos of ['mount', 'guard', 'side', 'half', 'back']) P.push({ ground: true, pos, sc: 'gnp_punch', label: `pose_${pos}`, times: [0.5, 0.75], keys: [0.75], keyNames: ['rest'] });
   { const T = (x) => +(1.0 + x).toFixed(4), imp = 11 / 60, ts = [-0.1, imp * 0.5, imp - 0.017, imp, imp + 0.05, imp + 0.10, imp + 0.18, imp + 0.30];
     P.push({ ground: true, pos: 'guard', sc: 'gnp_elbow', label: 'gnp_guard_elbow', times: ts.map(T), keys: [T(imp), T(imp + 0.05)], keyNames: ['impact', 'hitstop'] }); }
+  { const T = (x) => +(1.0 + x).toFixed(4), imp = 16 / 60;
+    P.push({ duel: true, sc: 'bodykick', label: 'duel_bodykick_caught', opts: { tail: 1.2, block: { at: 'impact', src: 'catch', guard: { limb: 'glove', side: 'L' } } },
+      times: [imp - 0.033, imp, imp + 0.05, imp + 0.15, imp + 0.30, imp + 0.45, imp + 0.55, imp + 0.75].map(T), keys: [T(imp + 0.15), T(imp + 0.30), T(imp + 0.55)], keyNames: ['catch', 'held', 'release'] });
+    P.push({ duel: true, sc: 'lowkick', label: 'duel_lowkick_check_guard', opts: { block: { at: 'impact', src: 'check', guard: { limb: 'shin', side: 'L' } } },
+      times: [0.15, 0.20, 0.2333, 0.25, 0.2583, 0.275, 0.30, 0.40].map(T), keys: [T(0.2333), T(0.2583)], keyNames: ['impact', 'check'] });
+    P.push({ duel: true, sc: 'bodykick', label: 'duel_bodykick_full', times: [0.05, 0.10, imp * 0.56, imp - 0.05, imp - 0.017, imp, imp + 0.025, imp + 0.06, imp + 0.12, imp + 0.2, imp + 0.3, imp + 0.4].map(T), keys: [T(imp * 0.56), T(imp), T(imp + 0.12)], keyNames: ['chamber', 'impact', 'recoil'] });
+    P.push({ duel: true, sc: 'bodykick', label: 'duel_bodykick_full_blocked', opts: { block: { at: 'impact', guard: { limb: 'forearm', side: 'L' } } }, times: [0.05, 0.10, imp * 0.56, imp - 0.05, imp - 0.017, imp, imp + 0.025, imp + 0.06, imp + 0.12, imp + 0.2, imp + 0.3, imp + 0.4].map(T), keys: [T(imp * 0.56), T(imp), T(imp + 0.06)], keyNames: ['chamber', 'impact', 'rebound'] }); }
   P.push({ sc: 'turn90', label: 'turn90', times: [1.4, 1.55, 1.7, 1.85, 2.0, 2.2, 2.6, 3.2], keys: [1.7, 2.2] });
   return P;
 }

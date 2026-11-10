@@ -14,9 +14,20 @@ export function routeBlockEvent(ev, anims, ids = { a: 0, b: 1 }) {
   anims[tg].blockHit?.(ev);
   return true;
 }
-/** Suscribe a live.on('*') y enruta block/blocked. Devuelve la función para desuscribir. */
+// r8: después de block{src:'catch'} Combate derriba (takedown move 'kickCatch' -> CombatEvent knockdown action 'kickCatch', y el suelo en guard)
+// o suelta (sin evento: A.action = null). Un sweep también suelta. Estos eventos terminan la pose de pierna atrapada en los dos animadores
+// (el animador además la suelta solo al empezar el suelo, con un clip nuevo del pateador o por tiempo).
+export function routeCatchEvent(ev, anims) {
+  if (!ev) return false;
+  const kc = ev.action === 'kickCatch' || ev.move === 'kickCatch';
+  const why = ev.type === 'sweep' || ev.action === 'sweep' ? 'sweep' : kc && (ev.type === 'knockdown' || ev.type === 'takedown') ? 'takedown' : ev.type === 'release' || ev.type === 'catchRelease' ? 'release' : null;
+  if (!why) return false;
+  let any = false; for (const k of ['a', 'b']) if (anims[k] && anims[k].catchSt && anims[k].catchRelease) any = anims[k].catchRelease({ why }) || any;
+  return any;
+}
+/** Suscribe a live.on('*') y enruta block/blocked (+ fin de la patada atrapada). Devuelve la función para desuscribir. */
 export function bindCombatEvents(live, anims) {
-  const fn = (ev) => routeBlockEvent(ev, anims, live.ids ?? { a: 0, b: 1 });
+  const fn = (ev) => { routeCatchEvent(ev, anims); return routeBlockEvent(ev, anims, live.ids ?? { a: 0, b: 1 }); };
   if (typeof live.on === 'function') return live.on('*', fn);
   return () => {};
 }
