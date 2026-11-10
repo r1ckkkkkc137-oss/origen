@@ -123,7 +123,7 @@ Evento de la sim (por `live.on('*')`):
   - puño: se usa el guante o antebrazo más cercano a la trayectoria del puño;
   - media/alta de derecha: el brazo izquierdo del rival;
   - `check` o low kick: espinilla contra espinilla.
-- `src: 'catch'` (patada atrapada): el pie frena contra el guante. **La pose de pierna atrapada está PENDIENTE.**
+- `src: 'catch'` (patada atrapada): pose propia (el pie queda entre el brazo y el costado, las dos manos en la pierna, el pateador en un pie). Se suelta con `routeCatchEvent` cuando Combate emite `takedown`/`knockdown` con `action|move: 'kickCatch'`, `sweep` o `release`; si no, por tiempo. `bindCombatEvents` ya lo enruta.
 - Alternativa: `state.hurt.blocked = true` (con zone/power) en el que recibe se trata igual que `blockHit` (sin dolor en la cabeza).
 
 ### API
@@ -133,14 +133,22 @@ Evento de la sim (por `live.on('*')`):
   - con brazo o espinilla contra una patada, el miembro va al encuentro de la punta;
   - no hay reacción de dolor;
   - chequeo: `check_hit` o `check_hit_R`, según el lado de la patada.
-- `bindCombatEvents(live, anims)`: se suscribe a `live.on('*')` y enruta con `routeBlockEvent(ev, anims, ids)`. Devuelve la función para
-  desuscribirse.
+- `bindCombatEvents(live, anims)`: se suscribe a `live.on('*')` y enruta bloqueos con `routeBlockEvent` y la suelta de la patada atrapada con `routeCatchEvent`. Devuelve la función para desuscribirse.
 
 **Lo que tiene que llamar Motor:** `bindCombatEvents(live, la.anims)` y, si quiere clips propios sin remapeo, `clipMap: MOVE_CLIP`.
 
+## Ronda 8
+- **Mount a horcajadas**: pelvis sobre el abdomen, rodillas en el piso (IK sobre vóxeles, radio + piel) a ambos lados de la cadera del de abajo, sin atravesarlo; el tronco queda casi erguido (~14°) y se inclina lo justo al golpear.
+- **Codo de suelo**: `gnp_elbow` conecta (hueco ≤ 0,02 m) en mount, side, half y desde la guardia, con pico de velocidad en el impacto y hit-stop.
+- **Patada media**: muslo, espinilla y empeine no atraviesan antebrazo ni guante en ningún frame del clip (≤ 0,02 m), bloqueada o no.
+- **Patada atrapada**: ver `src: 'catch'` arriba.
+- **Chequeo**: espinilla contra espinilla, hueco superficie-superficie ≤ 0,01 m, con `guard: {limb:'shin', side}` o sin él (cae a la espinilla L).
+- **Penetración en vivo**: en las semillas 3,7,8,36, todo el clip de cada golpe queda ≤ 0,02 m contra los 12 colisores del rival (jab ~1,1 cm, low kick ~1,0 cm). Fuera de esas semillas un jab puntual aún puede meter el húmero ~2–4 cm justo después del impacto.
+- Tests: `src/anim/tests/round8.test.mjs`. Métricas: `groundMetrics` / `blockMetrics` / `liveClipPen`.
+
+**Lo que tiene que llamar Motor:** nada nuevo en `main.js`. Sigue siendo `bindCombatEvents(live, la.anims)` y `clipMap: MOVE_CLIP` (ya está en master). La suelta anticipada de la patada atrapada depende de que Combate emita el evento (`takedown`/`kickCatch`, `sweep` o `release`).
+
 ### Pendiente
-- Pose de patada atrapada.
-- `guardElbow` (golpes desde abajo).
 - Reacción de dolor del de arriba en el suelo.
-- gnp desde guard, back y half menos afinado; el codo desde guard no llega.
-- El chequeo queda a ~0,03 m.
+- gnp desde back y half menos afinado (half: el muslo aún puede rozar ~2 cm al de abajo).
+- En peleas reales fuera de las semillas de test, algún jab mete el húmero 2–4 cm en la cabeza o el antebrazo ~30 ms después del impacto.
