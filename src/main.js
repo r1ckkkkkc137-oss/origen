@@ -8,7 +8,9 @@ import { createHumanView } from './engine/humanView.js';
 import { createAtlas } from './render/atlas.js';
 import { applyLook, fogForRadius } from './render/look.js';
 import { TILES } from './render/atlas.js';
-import { createWorld, createPlayerBody, stepPlayer, playerEye } from './world/index.js';
+import { createWorld, createPlayerBody, stepPlayer, playerEye, createEntityView, BLOCKS } from './world/index.js';
+import { createInteraction } from './engine/interact.js';
+import { createTouchUI } from './engine/touchUI.js';
 import { createRegionView } from './engine/regionView.js';
 import { createAdaptiveRadius } from './engine/adaptive.js';
 import { createAnimator3D } from './anim/index.js';
@@ -65,7 +67,7 @@ const input = createInput(renderer.domElement);
 // Cámara: C cicla pelea (3.ª persona sobre los peleadores) → jugador 1.ª → jugador 3.ª → libre.
 // El modo del rig es first/third/free; `follow` dice a quién sigue la 3.ª persona.
 const CAM = ['fight', 'p1', 'p3', 'free'];
-let camMode = params.get('cam') ?? 'fight';
+let camMode = params.get('cam') ?? 'p3';                 // por defecto juegas tú; ?cam=fight para mirar la pelea
 const rigMode = (m) => (m === 'p1' ? 'first' : m === 'free' ? 'free' : 'third');
 const rig = createCameraRig(camera, input, { mode: rigMode(camMode), pos: [p0[0], groundY + 2.2, p0[2] + 5], speed: 5,
   cycle: [rigMode(camMode)] });
@@ -75,6 +77,16 @@ const player = createPlayerBody({ x: spawn[0] - 2, y: groundY + 1, z: spawn[1] +
 const playerMesh = new THREE.Mesh(new THREE.BoxGeometry(0.6, 1.8, 0.6), new THREE.MeshLambertMaterial({ color: 0x5c6b4a })); // placeholder hasta el avatar
 playerMesh.geometry.translate(0, 0.9, 0); scene.add(playerMesh);
 const eye = new THREE.Vector3();
+// Cavar / talar / poner (solo con mundo real) + vista de árboles que caen e items + controles táctiles.
+const act = world ? createInteraction(world, player) : null;
+const ents = world ? createEntityView(THREE, scene, world, atlas, { tileNames: TILES }) : null;
+const touch = createTouchUI(input, { force: params.get('touch') === '1' || params.has('android') });
+const hl = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(BLOCK_M * 1.004, BLOCK_M * 1.004, BLOCK_M * 1.004)),
+  new THREE.LineBasicMaterial({ color: 0x111111, transparent: true, opacity: 0.8 }));
+hl.visible = false; scene.add(hl);
+const hud = document.getElementById('hud'), cross = document.getElementById('cross');
+const camDir = new THREE.Vector3();
+let hudTxt = '';
 const fps = createFpsMeter(document.getElementById('fps'));
 const mid = new THREE.Vector3();
 addEventListener('resize', () => { renderer.setSize(innerWidth, innerHeight); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); });
@@ -97,9 +109,27 @@ const loop = createLoop({
     if (camMode === 'fight') rig.setTarget(mid);
     else { const [ex, ey, ez] = playerEye(player); rig.setTarget(eye.set(ex, camMode === 'p1' ? ey : ey - 0.3, ez)); }
     rig.update(dt);
+    if (world) world.updateEntities(dt);
+    const playing = camMode === 'p1' || camMode === 'p3';
+    if (act) {
+      camera.getWorldDirection(camDir);
+      const [ex, ey, ez] = playerEye(player);
+      act.update(dt, [ex, ey, ez], [camDir.x, camDir.y, camDir.z], playing
+        ? { dig: input.down('Dig') || input.mouseDown(0), place: input.down('Place') || input.mouseDown(2), next: input.down('Next') || input.down('KeyE') }
+        : { dig: false, place: false, next: false });
+      const a = playing ? act.aim : null;
+      hl.visible = !!a; if (a) hl.position.set((a.pos[0] + 0.5) * BLOCK_M, (a.pos[1] + 0.5) * BLOCK_M, (a.pos[2] + 0.5) * BLOCK_M);
+    }
     if (view) view.update(camMode === 'free' ? camera.position.x : (camMode === 'fight' ? mid.x : player.x), camMode === 'free' ? camera.position.z : (camMode === 'fight' ? mid.z : player.z));
   },
-  render(now) { for (const f of fighters) f.view.update(f.anim.skeleton); renderer.render(scene, camera); fps.frame(); adapt?.frame(); },
+  render(now) {
+    ents?.update(); touch?.update();
+    const playing = camMode === 'p1' || camMode === 'p3';
+    cross.style.display = playing ? 'block' : 'none';
+    const sel = act?.selected, d = act?.dig;
+    const t = !act ? '' : `${camMode}  ·  bloque: ${sel ? BLOCKS[sel].name : '-'} x${sel ? act.inv.get(sel) : 0}` + (d ? `  ·  cavando ${Math.round(100 * d.t / d.need)}%` : '');
+    if (t !== hudTxt) { hud.textContent = hudTxt = t; }
+    for (const f of fighters) f.view.update(f.anim.skeleton); renderer.render(scene, camera); fps.frame(); adapt?.frame(); },
 });
 loop.start();
-window.__ORIGEN__ = { scene, camera, rig, loop, player, get camMode() { return camMode; }, fps, fighters, live, adapt, SEED, world, view, look, renderer, ready: true };
+window.__ORIGEN__ = { scene, camera, rig, loop, player, act, ents, input, get camMode() { return camMode; }, fps, fighters, live, adapt, SEED, world, view, look, renderer, ready: true };

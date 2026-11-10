@@ -13,6 +13,9 @@ export function createCameraRig(camera, input, opts = {}) {
     get mode() { return mode; },
     setMode(m) { mode = m; },
     get yaw() { return yaw; },
+    get pitch() { return pitch; },
+    /** fija la mirada (tests, cinemáticas) */
+    setLook(y, p) { yaw = y; pitch = Math.max(-1.5, Math.min(1.5, p)); },
     setTarget(v) { target.copy(v); },
     update(dt) {
       const c = input.down('KeyC'); if (c && !cWas) { mode = cycle[(cycle.indexOf(mode) + 1) % cycle.length]; opts.onMode?.(mode); } cWas = c;

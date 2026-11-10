@@ -2,5 +2,7 @@
 <html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
 <title>ORIGEN</title><link rel="icon" href="data:,">
 <style>html,body{margin:0;height:100%;background:#07080a;overflow:hidden;touch-action:none}
-#fps{position:fixed;top:6px;left:8px;font:12px monospace;color:#9fe870;background:#0008;padding:2px 6px;z-index:2;pointer-events:none}</style>
-</head><body><div id="fps">fps --</div><script type="module" src="./src/main.js"></script></body></html>
+#fps{position:fixed;top:6px;left:8px;font:12px monospace;color:#9fe870;background:#0008;padding:2px 6px;z-index:2;pointer-events:none}#hud{position:fixed;bottom:8px;left:50%;transform:translateX(-50%);font:12px monospace;color:#eee;background:#0008;padding:3px 8px;z-index:2;pointer-events:none;white-space:nowrap}
+#cross{position:fixed;left:50%;top:50%;width:14px;height:14px;margin:-7px 0 0 -7px;z-index:2;pointer-events:none;display:none}
+#cross:before,#cross:after{content:'';position:absolute;background:#eeeb}#cross:before{left:6px;top:0;width:2px;height:14px}#cross:after{top:6px;left:0;height:2px;width:14px}</style>
+</head><body><div id="fps">fps --</div><div id="hud"></div><div id="cross"></div><script type="module" src="./src/main.js"></script></body></html>
