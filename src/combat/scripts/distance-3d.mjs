@@ -3,13 +3,13 @@
 //   node src/combat/scripts/distance-3d.mjs [--n 1000] [--seed0 20000]
 import * as m from '../core/index.js';
 import { levelSpec, stylePairs, LEVELS } from '../digest.js';
-import { STAND_STRIKES } from '../data/moves.js';
+import { STAND_STRIKES, PX_PER_M } from '../data/moves.js';
 const arg = (k, d) => { const i = process.argv.indexOf(k); return i > 0 ? Number(process.argv[i + 1]) : d; };
 const n = arg('--n', 1000), seed0 = arg('--seed0', 20000);
 const pairs = stylePairs(m.STYLE_IDS);
 const cases = Array.from({ length: n }, (_, i) => { const [a, b] = pairs[i % pairs.length]; const lv = LEVELS[Math.floor(i / pairs.length) % 3]; return i % 2 ? { a: b, b: a, level: lv, seed: seed0 + i } : { a, b, level: lv, seed: seed0 + i }; });
 const kind = (r) => (r.winner == null ? 'draw' : r.method === 'DEC' || r.method === 'DECISION' ? 'DEC' : r.method);
-const S = { thrown: 0, short: 0, jammed: 0, entryHits: 0, entries: 0, opens: 0, opensFeint: 0, opensFeintLand: 0, opensLand: 0, opensBare: 0, opensBareLand: 0, whiffs: 0, punished: 0, exits: 0, exitDeg: [], hitsLanded: 0, standTicks: 0 };
+const S = { thrown: 0, short: 0, jammed: 0, entryHits: 0, entries: 0, opens: 0, opensFeint: 0, opensFeintLand: 0, opensLand: 0, opensBare: 0, opensBareLand: 0, whiffs: 0, punished: 0, exits: 0, exitDeg: [], hitsLanded: 0, standTicks: 0, under80: 0, minD: Infinity, hitD: {} };
 const fin = {};
 const axis = (F) => { const [A, B] = F.fighters; return Math.atan2(B.pos.z - A.pos.z, B.pos.x - A.pos.x); };
 const wrap = (a) => { while (a > Math.PI) a -= 2 * Math.PI; while (a < -Math.PI) a += 2 * Math.PI; return a; };
@@ -26,7 +26,7 @@ for (const c of cases) {
     }
     const pre = Object.fromEntries(F.fighters.map((x) => [x.id, wasAdv[x.id] || (x.action && x.action.t < x.action.startup && !x.action.chain)]));
     const { events } = m.stepFight(f);
-    if (F.phase === 'stand') S.standTicks++;
+    if (F.phase === 'stand') { S.standTicks++; } if (F.phase === 'stand' && !F.pounce) { const dd = F.geo.distance(F.fighters[0], F.fighters[1]) / PX_PER_M; if (dd < 0.795) S.under80++; if (dd < S.minD) S.minD = dd; }
     for (const x of F.fighters) {
       const a = x.action;
       if (a && a !== lastAct[x.id] && F.phase === 'stand' && !a.feint && STAND_STRIKES.includes(a.move) && !a.chain) {
@@ -45,6 +45,7 @@ for (const c of cases) {
         const o = open[e.attacker];
         if (o && e.move === o.a.move) { if (e.type === 'hit') { S.opensLand++; if (o.fe) S.opensFeintLand++; else S.opensBareLand++; } delete open[e.attacker]; }
       }
+      if (e.type === 'hit' && e.move && STAND_STRIKES.includes(e.move) && F.phase === 'stand') (S.hitD[e.move] ??= []).push(F.geo.distance(F.fighters[0], F.fighters[1]) / PX_PER_M);
       if (e.type === 'hit' && e.move && STAND_STRIKES.includes(e.move)) { S.hitsLanded++; if (pre[e.defender]) S.entryHits++; }
       if (e.type === 'whiff' && e.move && STAND_STRIKES.includes(e.move)) { S.whiffs++; pend.push({ by: e.attacker, until: F.t + 40 }); }
       if (e.type === 'hit') for (let i = pend.length - 1; i >= 0; i--) if (pend[i].by === e.defender) { S.punished++; pend.splice(i, 1); }
@@ -54,7 +55,7 @@ for (const c of cases) {
   const k = kind(m.getResult(f)); fin[k] = (fin[k] || 0) + 1;
 }
 const pc = (a, b) => (100 * a / Math.max(1, b)).toFixed(1) + '%';
-const med = (a) => { const s = [...a].sort((x, y) => x - y); return s.length ? s[Math.floor(s.length / 2)].toFixed(1) : 'NaN'; };
+const med = (a) => { const s = [...a].sort((x, y) => x - y); return s.length ? s[Math.floor(s.length / 2)].toFixed(2) : 'NaN'; };
 console.log(`n=${n} seeds ${seed0}..${seed0 + n - 1}`);
 console.log(`finales: ${['KO', 'TKO', 'SUB', 'DEC', 'draw'].map((k) => `${k} ${pc(fin[k] || 0, n)}`).join(' | ')}`);
 console.log(`golpes de pie lanzados ${S.thrown}  al aire fuera de rango: short ${pc(S.short, S.thrown)} jammed ${pc(S.jammed, S.thrown)}`);
@@ -62,4 +63,6 @@ console.log(`golpes conectados al que estaba entrando: ${pc(S.entryHits, S.hitsL
 console.log(`aperturas ${S.opens}: tras finta ${pc(S.opensFeint, S.opens)}  conecta tras finta ${pc(S.opensFeintLand, S.opensFeint)}  sin finta ${pc(S.opensBareLand, S.opensBare)}`);
 console.log(`golpes al aire ${S.whiffs}: castigados con un golpe conectado en <=40 ticks ${pc(S.punished, S.whiffs)}`);
 console.log(`salidas tras intercambio ${S.exits}: giro del eje en 20 ticks, mediana ${med(S.exitDeg)}°`);
+console.log(`de pie a menos de 0,80 m pelvis–pelvis: ${pc(S.under80, S.standTicks)} de los ticks (mínimo ${S.minD.toFixed(3)} m)`);
+console.log('distancia al conectar (mediana m): ' + ['jab', 'cross', 'hook', 'bodyHook', 'uppercut', 'standElbow', 'lowKick', 'bodyKick'].map((id) => `${id} ${med(S.hitD[id] ?? [])}`).join(' | '));
 console.log(`ticks de pie por pelea ${(S.standTicks / n).toFixed(0)}`);
