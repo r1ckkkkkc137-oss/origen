@@ -222,6 +222,24 @@ export function bakeHookArm(clip, tImpact) {
 })();
 bakeHookArm(HOOK, HI);
 
+// FINTA DE GANCHO (ronda 4): Combate aborta el hook en el startup (el rival se fue de rango) => state.clip = 'feint' con state.move = 'hook'
+// (src/combat/core/core.js: act.feint = act.aborted = true; al cerrar el startup emite X.FEINT con move 'hook' -> actionStart).
+// El clip ES el arranque del gancho (mismas pistas hasta FEINT_CUT: la cadera abre/carga, el hombro y el codo suben al costado, el peso baja)
+// y ahí se CORTA: cadera, hombros y brazo vuelven secos a la guardia. Como coincide con el gancho hasta el corte, el animador cambia de clip a la
+// misma fase sin salto (setState). No es un jab: el puño nunca va hacia adelante, sólo se abre y vuelve.
+export const FEINT_CUT = 0.10;
+export const FEINT_HOOK = (() => {
+  const d = 0.30, tr = {};
+  for (const c in HOOK.tracks) {
+    const k = []; for (let t = 0; t <= FEINT_CUT + 1e-9; t += 0.01) k.push(K(+t.toFixed(3), sampleTrack(HOOK.tracks[c], t), LIN));
+    const vc = k[k.length - 1][1];
+    k.push(K(FEINT_CUT + 0.07, vc * 0.25, EO), K(0.22, vc * -0.04), K(d, 0));
+    tr[c] = k;
+  }
+  return { name: 'feint_hook', duration: d, impactT: FEINT_CUT, tip: 'L', feet: true, ball: { L: true }, feint: 'hook',
+    phases: [{ name: 'load', t0: 0, t1: FEINT_CUT }, { name: 'cut', t0: FEINT_CUT, t1: FEINT_CUT + 0.07 }, { name: 'recovery', t0: FEINT_CUT + 0.07, t1: d }], tracks: tr };
+})();
+
 // PATADA BAJA TRASERA (pierna R) — ronda 4: el pie de apoyo (L) da un PASO adelante/afuera en el aire (0–0.08 s) y PIVOTA sobre la bola (~70°),
 // la pelvis viaja con él y el torso se INCLINA HACIA ATRÁS (contrapeso) => la espinilla llega a 1,0 m horizontales de la raíz (= pelvis de la sim).
 // Cadera carga hacia atrás, gira entera (≈65°) con ease-in; la tibia barre con ease-in y pega a la altura del muslo; hit-stop con el peso adentro;
@@ -267,7 +285,7 @@ export const BLOCK_POSE = Object.freeze({
 const blockTracks = () => { const t = {}; for (const c in BLOCK_POSE) t[c] = [K(0, 0), K(0.09, BLOCK_POSE[c], 'easeOutQuad'), K(0.45, BLOCK_POSE[c], 'linear'), K(0.60, 0)]; return t; };
 export const BLOCK = { name: 'block', duration: 0.60, impactT: 0.30, tip: 'L', phases: [{ name: 'raise', t0: 0, t1: 0.09 }, { name: 'hold', t0: 0.09, t1: 0.45 }, { name: 'lower', t0: 0.45, t1: 0.6 }], tracks: blockTracks() };
 
-export const CLIPS = { jab: JAB, cross: CROSS, hook: HOOK, lowkick: LOWKICK, block: BLOCK };
+export const CLIPS = { jab: JAB, cross: CROSS, hook: HOOK, lowkick: LOWKICK, block: BLOCK, feint_hook: FEINT_HOOK };
 
 
 export function sampleTrack(keys, t) {

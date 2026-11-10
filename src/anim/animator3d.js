@@ -114,7 +114,23 @@ export function createAnimator3D(opts = {}) {
     }
     return true;
   };
-  A.play = (name, opts = {}) => startClip(name, opts);
+  // mientras la sim sostenga una finta de gancho (state.clip 'feint' + move hook) no se vuelve a lanzar el gancho entero (liveAnim lo re-agenda
+  // con el actionStart de X.FEINT): el amago no se tira al aire.
+  A.feintLock = null; A._pend = [];
+  A.play = (name, opts = {}) => { if (A.feintLock && name === 'hook' && !opts.force) return false; return startClip(name, opts); };
+  // finta de gancho: arranca feint_hook a la MISMA fase del gancho en curso (son iguales hasta FEINT_CUT) => sin salto; si el gancho ya pasó
+  // el corte, entra en el corte con fundido corto.
+  const FEINT_OF = { hook: 'feint_hook', bodyHook: 'feint_hook', uppercut: 'feint_hook' };
+  A.feint = (move = 'hook') => {
+    const name = FEINT_OF[move]; if (!name) return false;
+    const fc = CLIPS[name], cut = fc.impactT;
+    const t = A.clip && A.clipMode.name === 'hook' && !A.clipMode.driven ? A.clipT : 0;
+    if (A.clip && A.clipMode.name === 'hook' && t <= cut) {          // mismo arranque: continuidad exacta, sin fundido
+      A.clip = fc; A.clipT = t; const m = A.clipMode; m.name = name; m.map = null; m.speed = 1; m.prev = t; m.driven = false; m.holding = false; m.stale = 0; m.amp = 1;
+    } else startClip(name, { force: true, phase: Math.min(t, cut) / fc.duration });
+    A._pend.push({ type: 'feint', name, move });   // se entrega en el próximo update() (events se vacía al empezar)
+    return true;
+  };
   A.playAt = (name, phase01, simImpact01) => {
     const clip = CLIPS[name]; if (!clip) return false;
     const m = A.clipMode;
@@ -140,6 +156,11 @@ export function createAnimator3D(opts = {}) {
   A.lying = false; A.hurtSeen = null;
   A.setState = (st) => {
     if (!st) return;
+    // finta (ronda 4): la sim marca el amago con clip 'feint'; para un hook abortado move = 'hook' (variant no viene)
+    if (st.clip === 'feint' && FEINT_OF[st.move]) {
+      const key = `${st.animSeq ?? 0}:${st.move}`;
+      if (A.feintLock !== key) { A.feintLock = key; A.feint(st.move); }
+    } else A.feintLock = null;
     if (st.guard !== undefined) A.setGuardLevel(st.guard);
     const wantLying = st.ko === true || st.down === true || st.stance === 'ko' || st.stance === 'down';
     const name = A.clip ? A.clipMode.name : '';
@@ -170,7 +191,7 @@ export function createAnimator3D(opts = {}) {
 
   // dt en segundos; rootW = {pos:[x,y,z], yaw} del sim (solo lectura).
   A.update = (dt, rootW) => {
-    const ev = A.events; ev.length = 0;
+    const ev = A.events; ev.length = 0; if (A._pend.length) { ev.push(...A._pend); A._pend.length = 0; }
     if (!A.inited || Math.hypot(rootW.pos[0] - A.lastRoot[1], rootW.pos[2] + A.lastRoot[0]) > 3) reset(rootW);
     A.t += dt;
     // ---- entrada: raíz interna (marco +Z adelante, +X izquierda)
@@ -217,7 +238,7 @@ export function createAnimator3D(opts = {}) {
         A.clipT += dt * rate;
       }
       m.prev = A.clipT;
-      if (tPrev < clip.impactT && A.clipT >= clip.impactT) ev.push({ type: 'impact', name: m.name, tip: clip.tip || 'L' });
+      if (tPrev < clip.impactT && A.clipT >= clip.impactT) ev.push(clip.feint ? { type: 'feintCut', name: m.name, move: clip.feint } : { type: 'impact', name: m.name, tip: clip.tip || 'L' });
       if (clip.hold && A.clipT >= clip.duration) {                    // clip SOSTENIDO (rocked, ko): se queda en la última pose hasta otro play/cancel
         if (!m.holding) { m.holding = true; m.holdT = 0; ev.push({ type: 'clipHold', name: m.name }); }
         A.clipT = clip.duration; m.holdT += dt; addClip(clip, clip.duration, 1, c); if (clip.holdLayer) clip.holdLayer(m.holdT, c);
