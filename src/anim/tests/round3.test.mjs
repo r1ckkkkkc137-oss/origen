@@ -25,7 +25,9 @@ test('gancho: alcance corto frente al cuerpo (pelvis→puño dentro de la ventan
 });
 
 test('jab y cross: la distancia 3D pelvis→puño al impacto cae en la ventana de Combate; low kick ≥ 0,7 m (limitado por la longitud de la pierna)', () => {
-  for (const n of ['jab', 'cross']) { const r = pelvisReach(n); assert.ok(Math.abs(r.d3 - r.ideal) <= r.tol, `${n}: d3 ${r.d3.toFixed(2)} vs ${r.ideal}±${r.tol}`); }
+  // ronda 5: REACH_IDEAL pasó a ser el alcance HORIZONTAL raíz→puño (1,0±0,05, round5); la ventana 3D de r3 se conserva acá
+  const R3 = { jab: [1.10, 0.07], cross: [1.05, 0.07] };
+  for (const n of ['jab', 'cross']) { const r = pelvisReach(n), [id, tol] = R3[n]; assert.ok(Math.abs(r.d3 - id) <= tol, `${n}: d3 ${r.d3.toFixed(2)} vs ${id}±${tol}`); }
   // ronda 4: el low kick se mide desde la RAÍZ (pelvis de la sim) con el paso del pie de apoyo: ver round4
   const k = rootReach('lowkick');
   assert.ok(k.ok, `lowkick raíz→espinilla ${k.rootHoriz.toFixed(2)}`);
