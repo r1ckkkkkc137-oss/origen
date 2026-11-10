@@ -216,3 +216,16 @@ export function feintMetrics(name = 'feint_hook', t0 = 1.5, t1 = 2.1) {
 if (import.meta.url === `file://${process.argv[1]}`) {
   if (which === 'all' || which === 'r4' || which === 'feint') { console.log('FEINT feint_hook', fm(feintMetrics())); console.log('FEINT switch(hook->feint)', fm(feintMetrics('feintSwitch'))); console.log('FEINT ref hook', fm(feintMetrics('hook', 1.5, 2.1))); console.log('FEINT ref jab', fm(feintMetrics('jab', 1.5, 2.1))); }
 }
+
+// ---- ronda 5: KO sin "arrodillado erguido". Inclinación del torso (pelvis→cuello vs vertical, °) desde que la pelvis baja de 0,55 m
+// (rodillas en el suelo) hasta el final; componentes atrás/costado (m del cuello respecto de la pelvis, marco de la mirada) en ese instante.
+export function koTiltMetrics() {
+  const R = rec('ko', 60).filter((r) => r.t >= 1.0 && r.t <= 3.0);
+  const tilt = (r) => { const v = sub(r.P.neck, r.P.pelvis); return Math.acos(v[1] / len(v)) * D; };
+  const i0 = R.findIndex((r) => r.P.pelvis[1] < 0.55);
+  const w = R.slice(i0), tl = w.map(tilt), k = tl.indexOf(Math.min(...tl));
+  const f = fwdV(R[0]), l = lftV(R[0]), v0 = sub(w[0].P.neck, w[0].P.pelvis);
+  let minY = 9, minJ = ''; for (const r of R) for (const j in r.P) if (r.P[j][1] < minY) { minY = r.P[j][1]; minJ = j; }
+  return { kneelT: R[i0].t - 1.0, tiltAtKneel: tl[0], tiltMinAfterKneel: tl[k], tiltMinT: w[k].t - 1.0, backAtKneel: -dot(v0, f), sideAtKneel: dot(v0, l), tiltMaxStanding: Math.max(...R.slice(0, i0).map(tilt)), minJointY: minY, minJoint: minJ };
+}
+if (import.meta.url === `file://${process.argv[1]}` && (which === 'all' || which === 'r5' || which === 'ko')) console.log('KO_TILT', fm(koTiltMetrics()));

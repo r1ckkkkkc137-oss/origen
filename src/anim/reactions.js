@@ -3,7 +3,7 @@
 //   rocked : aturdido SOSTENIDO (hold + vaivén procedural) hasta que la sim lo suelte (anim.cancel() o setState).
 //   ko     : cae de espaldas (≈0.9 s), queda tendido (hold).      getUp : del suelo a la guardia (≈1.5 s), arranca EXACTAMENTE donde termina ko.
 // La sim es dueña de la raíz: todo esto es pose (pelvis/pie/torso relativos a ella); sin root motion.
-import { CLIPS } from './clips.js';
+import { CLIPS, sampleTrack } from './clips.js';
 
 const K = (t, v, e = 'easeInOutQuad') => [t, v, e];
 const Q = 'easeOutQuad';
@@ -119,11 +119,15 @@ export const KO = {
     kAL: [K(0, 0), K(0.42, 0.12), K(1.2, E0.kAL)], kAR: [K(0, 0), K(0.42, 0.18), K(1.2, E0.kAR)],
     kFL: [K(0, 0), K(0.20, 0), K(0.42, 0.9), K(1.2, E0.kFL)], kFR: [K(0, 0), K(0.20, 0), K(0.42, 0.9), K(1.2, E0.kFR)],
     // pelvis: cae como peso muerto (ease-in) hasta sentarse sobre los talones, mínimo rebote, y se va de espaldas
-    dy:      [K(0, 0), K(0.06, -0.02), K(0.42, -0.50, EI), K(0.50, -0.47), K(0.84, -0.68, EI), K(0.94, -0.65), K(1.2, E0.dy)],
+    dy:      [K(0, 0), K(0.06, -0.02), K(0.42, -0.46, EI), K(0.50, -0.45), K(0.84, -0.68, EI), K(0.94, -0.65), K(1.2, E0.dy)],
     pz:      [K(0, 0), K(0.42, 0.04), K(0.80, -0.14), K(1.2, E0.pz)],
-    hipPitch:[K(0, 0), K(0.26, 0.24), K(0.42, 0.20), K(0.50, 0.02), K(0.60, -0.45), K(0.82, -1.50, EI), K(0.94, -1.40), K(1.2, E0.hipPitch)],
-    spPitch: [K(0, 0), K(0.12, 0.15), K(0.42, 0.34), K(0.76, 0.02), K(1.2, E0.spPitch)],
-    hipYaw:  [K(0, 0), K(0.5, 0.10), K(1.2, E0.hipYaw)], hipRoll: [K(0, 0), K(0.5, 0.04), K(1.2, E0.hipRoll)], spYaw: [K(0, 0), K(1.2, E0.spYaw)],
+    // ronda 5 (Rick): sin el instante "arrodillado erguido": desde que se doblan las rodillas el tronco ya se va hacia ATRÁS y al COSTADO
+    // (cae del lado izquierdo) y sigue en esa dirección hasta el suelo: con las rodillas en el suelo nunca queda a menos de ~35° de la vertical.
+    hipPitch:[K(0, 0), K(0.10, -0.08), K(0.30, -0.55), K(0.44, -0.74), K(0.62, -1.02, EI), K(0.82, -1.50, EI), K(0.94, -1.40), K(1.2, E0.hipPitch)],
+    spPitch: [K(0, 0), K(0.12, 0.10), K(0.30, 0.02), K(0.60, -0.04), K(1.2, E0.spPitch)],
+    hipRoll: [K(0, 0), K(0.12, 0.10), K(0.30, 0.40), K(0.50, 0.46), K(0.80, 0.30), K(1.0, 0.12), K(1.2, E0.hipRoll)],
+    spRoll:  [K(0, 0), K(0.30, 0.10), K(0.70, 0.06), K(1.2, 0)],
+    hipYaw:  [K(0, 0), K(0.5, 0.10), K(1.2, E0.hipYaw)], spYaw: [K(0, 0), K(1.2, E0.spYaw)],
     // cabeza: latigazo del golpe, cae sobre el pecho (sin tono) y golpea el suelo al volcar
     hdPitch: [K(0, 0), K(0.06, -0.35, Q), K(0.26, 0.35), K(0.56, 0.32), K(0.70, 0.10), K(0.88, -0.26), K(1.02, -0.15), K(1.2, E0.hdPitch)],
     hdYaw:   [K(0, 0), K(0.06, -0.20, Q), K(0.5, 0.1), K(1.2, E0.hdYaw)],
@@ -137,6 +141,17 @@ export const KO = {
     elvL: [K(0, 0), K(0.30, 0.2), K(0.95, 1, LN), K(1.2, 1)], elvR: [K(0, 0), K(0.30, 0.2), K(0.95, 1, LN), K(1.2, 1)],
   },
 };
+
+// ronda 5: los muslos conservan la dirección en el MUNDO del KO de r4 (rodillas adelante/abajo, la trasera nunca sobre la cadera) aunque la pelvis
+// ahora se incline atrás antes: kH nuevo = (kH − hipPitch) de r4 + hipPitch nuevo (hipPitch < 0 = atrás, kH > 0 = muslo adelante).
+(function bakeKoThighs() {
+  const T = KO.tracks, oldPitch = [K(0, 0), K(0.26, 0.24), K(0.42, 0.20), K(0.50, 0.02), K(0.60, -0.45), K(0.82, -1.50, EI), K(0.94, -1.40), K(1.2, E0.hipPitch)];
+  for (const c of ['kHL', 'kHR']) {
+    const old = T[c], k = [];
+    for (let t = 0; t <= 1.2 + 1e-9; t += 0.02) { const tt = Math.min(1.2, +t.toFixed(3)); k.push(K(tt, tt === 0 ? 0 : sampleTrack(old, tt) - sampleTrack(oldPitch, tt) + sampleTrack(T.hipPitch, tt), LN)); }
+    k[k.length - 1] = K(1.2, E0[c], LN); T[c] = k;
+  }
+})();
 
 // ------------------------------------------------------------------ GET UP: del tendido con piernas plegadas se sienta sobre los talones (FK),
 // se levanta a cuclillas mientras las piernas vuelven a la IK sobre los pies plantados (kw 1 -> 0) y se para en guardia. Termina en 0 => guardia.
