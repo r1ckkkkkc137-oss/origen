@@ -1,7 +1,7 @@
 // Ronda 3 (feedback de Rick): gancho real (codo fijo ~90°, alcance corto), guardia con columna vertical, hurt/KO/trepada sin saltos.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { hookMetrics, guardMetrics, climbMetrics, koMetrics, hurtMetrics, pelvisReach, REACH_IDEAL } from '../../../scripts/anim-metrics.mjs';
+import { hookMetrics, guardMetrics, climbMetrics, koMetrics, hurtMetrics, pelvisReach, REACH_IDEAL, rootReach } from '../../../scripts/anim-metrics.mjs';
 import { HOOK_E } from '../clips.js';
 
 test('gancho: el codo queda FIJO (~90°) de la carga al impacto (±10°) y el golpe no es un jab abierto', () => {
@@ -15,7 +15,8 @@ test('gancho: el codo queda FIJO (~90°) de la carga al impacto (±10°) y el go
 test('gancho: alcance corto frente al cuerpo (pelvis→puño dentro de la ventana de Combate 0,70±0,08) y cerca del eje', () => {
   const m = hookMetrics('hook', 'L');
   assert.ok(m.reachShoulderMax < 0.6, `puño a ${m.reachShoulderMax.toFixed(2)} m del hombro como mucho (brazo plegado)`);
-  assert.ok(Math.abs(m.latImpact) < 0.15, `desvío lateral respecto del centro del cuerpo ${m.latImpact.toFixed(2)} m`);
+  // ronda 4: el húmero va abierto al costado (Rick), así que el puño pega a ~0,2 m al costado de la línea de la raíz (cara lateral de la cabeza del rival); ver round4
+  assert.ok(Math.abs(m.latImpact) < 0.30, `desvío lateral respecto del centro de los hombros ${m.latImpact.toFixed(2)} m`);
   const r = pelvisReach('hook');
   assert.ok(r.ok, `pelvis→puño ${r.horiz.toFixed(2)} m vs ideal ${r.ideal}±${r.tol}`);
   assert.ok(m.hipRot >= 25, `rotación de cadera ${m.hipRot.toFixed(0)}°`);
@@ -25,8 +26,9 @@ test('gancho: alcance corto frente al cuerpo (pelvis→puño dentro de la ventan
 
 test('jab y cross: la distancia 3D pelvis→puño al impacto cae en la ventana de Combate; low kick ≥ 0,7 m (limitado por la longitud de la pierna)', () => {
   for (const n of ['jab', 'cross']) { const r = pelvisReach(n); assert.ok(Math.abs(r.d3 - r.ideal) <= r.tol, `${n}: d3 ${r.d3.toFixed(2)} vs ${r.ideal}±${r.tol}`); }
-  const k = pelvisReach('lowkick');
-  assert.ok(k.horiz > 0.7 && k.horiz < REACH_IDEAL.lowkick[0] + 0.07, `lowkick ${k.horiz.toFixed(2)}`);
+  // ronda 4: el low kick se mide desde la RAÍZ (pelvis de la sim) con el paso del pie de apoyo: ver round4
+  const k = rootReach('lowkick');
+  assert.ok(k.ok, `lowkick raíz→espinilla ${k.rootHoriz.toFixed(2)}`);
 });
 
 test('guardia: columna casi vertical (<6° de inclinación) y mentón metido', () => {

@@ -19,11 +19,17 @@ function rec(name, hz = HZ) {
   return R;
 }
 // instante (rel. a T0) en que una señal alcanza la fracción f de su recorrido total en la ventana del clip
-function cross(sig, R, f) { const a0 = sig[0]; let m = 0; for (const v of sig) if (Math.abs(v - a0) > Math.abs(m)) m = v - a0; const i = sig.findIndex((v) => Math.abs(v - a0) >= f * Math.abs(m)); return R[i].t - T0; }
+// ronda 4: con carga (wind-up) la señal primero va al revés: el cruce se mide entre el extremo de la carga y el extremo del golpe
+function cross(sig, R, f) {
+  const a0 = sig[0]; let m = 0, im = 0; sig.forEach((v, i) => { if (Math.abs(v - a0) > Math.abs(m)) { m = v - a0; im = i; } });
+  let lo = a0, il = 0; for (let i = 0; i < im; i++) if ((sig[i] - lo) * Math.sign(m) < 0) { lo = sig[i]; il = i; }
+  const tgt = lo + (sig[im] - lo) * f; for (let i = il; i <= im; i++) if ((sig[i] - tgt) * Math.sign(m) >= 0) return R[i].t - T0;
+  return R[im].t - T0;
+}
 function window(R, dur) { return R.filter((r) => r.t >= T0 - 0.1 && r.t <= T0 + dur); }
 
 test('cadena cinética jab/cross/gancho: cadera -> hombros -> puño (orden y no simultáneos)', () => {
-  for (const [name, dur] of [['jab', 0.46], ['cross', 0.52], ['hook', 0.5]]) {
+  for (const [name, dur] of [['jab', CLIPS.jab.duration], ['cross', CLIPS.cross.duration], ['hook', CLIPS.hook.duration]]) {
     const R = window(rec(name), dur);
     const hip = unwrap(R.map((r) => lineYaw(r.P, 'hipL', 'hipR'))), sh = unwrap(R.map((r) => lineYaw(r.P, 'shoulderL', 'shoulderR')));
     const sp = R.map((r, i) => (i && r.t > T0 + 0.03) ? len(sub(r.fist, R[i - 1].fist)) * HZ : 0);
@@ -39,8 +45,8 @@ test('cadena cinética jab/cross/gancho: cadera -> hombros -> puño (orden y no 
 test('cross: rotación de cadera >=30°, brazo casi extendido; gancho: codo ~90° y horizontal; jab alcanza', () => {
   const at = (name, ti) => { const R = rec(name); return R.find((r) => r.t >= T0 + ti - 1e-9); };
   const rot = (name, dur) => { const R = window(rec(name), dur); const hip = unwrap(R.map((r) => lineYaw(r.P, 'hipL', 'hipR'))); return (Math.max(...hip) - Math.min(...hip)) * 180 / Math.PI; };
-  assert.ok(rot('cross', 0.52) >= 30, `cross cadera ${rot('cross', 0.52)}°`);
-  assert.ok(rot('hook', 0.5) >= 25, `gancho cadera ${rot('hook', 0.5)}°`);
+  assert.ok(rot('cross', CLIPS.cross.duration) >= 30, `cross cadera ${rot('cross', CLIPS.cross.duration)}°`);
+  assert.ok(rot('hook', CLIPS.hook.duration) >= 25, `gancho cadera ${rot('hook', CLIPS.hook.duration)}°`);
   const c = at('cross', CLIPS.cross.impactT), P = c.P;
   assert.ok(angle(P.shoulderR, P.elbowR, P.handR) >= 140, `cross extendido ${angle(P.shoulderR, P.elbowR, P.handR)}`);
   const j = at('jab', CLIPS.jab.impactT).P; assert.ok(angle(j.shoulderL, j.elbowL, j.handL) >= 120, 'jab extendido');
@@ -51,7 +57,7 @@ test('cross: rotación de cadera >=30°, brazo casi extendido; gancho: codo ~90�
 });
 
 test('low kick: pie de apoyo pivota, cadera gira >=60°, la espinilla pega a la altura del muslo, vuelve a la guardia', () => {
-  const R = rec('lowkick'); const w = window(R, 0.84);
+  const R = rec('lowkick'); const w = window(R, CLIPS.lowkick.duration);
   const hip = unwrap(w.map((r) => lineYaw(r.P, 'hipL', 'hipR'))); assert.ok((Math.max(...hip) - Math.min(...hip)) * 180 / Math.PI >= 60, 'giro de cadera');
   const im = R.find((r) => r.t >= T0 + CLIPS.lowkick.impactT - 1e-9);
   const rel = sub(im.fist, im.root);
@@ -81,10 +87,10 @@ test('pies sin deslizar: pie plantado (punto de apoyo / bola del pie) fijo, tamb
 });
 
 test('paso del jab: pie adelantado avanza >=10 cm, sólo se mueve en el aire, el trasero no se mueve', () => {
-  const R = rec('jab', 60); const w = window(R, 0.46);
+  const R = rec('jab', 60); const w = window(R, CLIPS.jab.duration);
   const z0 = w[0].feet[0].pos[0], zmax = Math.max(...w.map((r) => r.feet[0].pos[0]));
   assert.ok(zmax - z0 >= 0.10, `avance ${zmax - z0}`);
-  const rear = w.map((r) => r.feet[1].pos); assert.ok(Math.max(...rear.map((p) => len(sub(p, rear[0])))) < 0.01, 'pie trasero fijo');
+  const rear = w.map((r) => r.feet[1].contact); assert.ok(Math.max(...rear.map((p) => len(sub(p, rear[0])))) < 0.01, 'pie trasero fijo (bola del pie; ronda 4: el talón sube al empujar)');
   for (let i = 1; i < w.length; i++) { const a = w[i - 1].feet[0], b = w[i].feet[0]; const mv = Math.hypot(b.pos[0] - a.pos[0], b.pos[2] - a.pos[2]); if (mv > 0.004) assert.ok(!(a.planted && b.planted), 'se arrastró plantado'); }
   const end = R[R.length - 1].feet[0].pos; assert.ok(Math.abs(end[0] - z0) < 0.02, 'vuelve a su sitio');
 });
