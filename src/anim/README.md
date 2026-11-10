@@ -48,3 +48,41 @@ Clip: `feet:true` congela los pasos automáticos durante el clip; `ball:{L|R}` h
 * **KO**: desde que se doblan las rodillas el tronco se va hacia atrás y al costado y no vuelve a erguirse (≥35° de la vertical desde que apoya las rodillas); muslos con la misma dirección en el mundo que en r4 (`bakeKoThighs`), piernas por FK. `node scripts/anim-metrics.mjs ko` (KO_TILT).
 * **Gancho ≥10 m/s** al impacto (60 Hz): más carga de cadera (0,34 rad a 0,07 s) y el pecho gira con ease-in desde 0,09 s; el brazo (HOOK_A0/A1, codo 90°, snap0) es el de r4. La cadena cinética se mide hasta el valor en el impacto (`halfCross(..., iEnd)`).
 * Tests: `tests/round5.test.mjs`.
+
+## Ronda 6 (Rick): contacto real y gancho con entrada
+
+### Para Motor: enlazar los dos animadores (sin tocar src/combat ni main.js de Combate)
+El contacto necesita que cada animador vea el esqueleto del otro. Dos formas equivalentes:
+
+```js
+import { pairedAnimatorFactory, pairAnimators } from './src/anim/index.js';
+// a) fábrica: liveAnim crea a y b seguidos con opt.createAnimator3D -> quedan enlazados a<->b
+const la = createLiveAnimation(live, { createAnimator3D: pairedAnimatorFactory(), seed });
+// b) a mano, después de crear
+pairAnimators(la.anims.a, la.anims.b);           // = a.setOpponent(b); b.setOpponent(a)
+```
+`A.setOpponent(B | () => Skeleton3D | null)`. Sin enlace todo sigue como en r5 (hojas del visor, tests previos).
+Orden de update a->b: `a` lee la pose de `b` del frame anterior (extrapolada 1 frame) y, cuando `b` termina su update,
+`b` llama `a._refine()` para que `a` saque su punta/miembro contra la pose NUEVA de `b` y re-exporte. No hace falta nada más.
+
+### Contacto (src/anim/contact.js + animator3d `contactStep`)
+- Rival = primitivas desde SUS huesos: cabeza esfera (r 0,105, centro head+0,55·(headTop−head)), torso cápsula pelvis+0,06→cuello−0,09
+  (r 0,14), cuello (0,06), hombro–hombro (0,07), muslos (0,075) y espinillas (0,055). Punta: nudillos (r 0,02) / espinilla al 30 % del tobillo (0,045).
+- **Ajuste al blanco** (últimos 0,10 s antes del impacto): con la punta libre prevista (`clip.aim.ref`, marco raíz) se calcula dónde toca
+  la zona (cabeza a la altura de mentón/mandíbula: `aim.dy`; low kick: el muslo más cercano) y la diferencia entra en rampa: el golpe
+  llega a la superficie EN el impacto frenando de forma continua (sin plegarse de golpe). Si se cambia un clip hay que remedir `aim.ref`
+  (round6.test.mjs lo comprueba).
+- **Clamp**: si la punta está dentro (o el antebrazo/espinilla atravesó: barrido codo->nudillos / rodilla->espinilla) va al primer
+  contacto; el resto del miembro (codo/rodilla y muestras de los segmentos) se saca con una corrección limitada a 0,10 m/frame.
+- **Hit-stop**: desde el primer contacto de la fase de golpe hasta HITSTOP s después del impacto la mano queda clavada en el punto de
+  impacto (IK); si el rival retrocede, la acompaña como mucho 6 cm (0,06 m/frame) y luego suelta en 0,08 s.
+- Eventos: el atacante emite `{type:'contact', name, zone, point (mundo), clipT, early}`; el golpeado `{type:'contactIn', ...}`
+  (sirve para VFX/sonido en el punto). El golpeado usa el lado del contacto para el retroceso: el signo y tamaño de los canales laterales
+  (giro/inclinación de cabeza y tronco) salen de dónde pegó (gancho de izquierda -> cabeza a su izquierda; jab al centro -> sobre todo atrás).
+- `state.hurt.power` (combat-gap) manda la fuerza; sin `power`, respaldo por el salto de `state.damage`.
+
+### Gancho con entrada (combat-gap: el hook conecta a ~0,85 m sin que la raíz entre)
+`HOOK.entry`: paso del pie delantero (fLz 0,19 m, en el aire hasta 0,11 s) + pelvis que entra (pz 0,195) + el peso cruza (px −0,05),
+escalado por k: con el esqueleto del rival, k pone la punta libre a la profundidad del centro de SU cabeza (+1,5 cm); sin esqueleto,
+k = (d − 0,70)/0,16 con d = distancia raíz–raíz prevista en el impacto (`opts.entryDist` para fijarla). Se recalcula cada frame hasta el
+impacto: si la sim mete la raíz a ~0,70, k cae a ~0 y el clip no se pasa. Sin rival (visor) k = 1: alcance raíz→puño 0,864.

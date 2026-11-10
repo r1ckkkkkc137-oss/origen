@@ -198,7 +198,7 @@ HOOK.aim = { zone: 'head', dy: -0.08, ref: [0.192, 1.474, 0.667], ref1: [0.142, 
 // Capa aparte (`entry`), escalada por el animador según la distancia REAL al rival prevista para el impacto: k = (d - d0) / (d1 - d0), 0..1.25.
 // Sin rival conocido k = 1 (la sim lo lanza a ~0,86). Si la raíz de la sim ya se acerca, k baja solo => no se duplica la entrada.
 HOOK.entry = {
-  d0: 0.70, d1: 0.86, kMax: 1.25, kMin: -0.35, bias: 0.0,   // con rival: k desde la profundidad de SU cabeza (ver animator3d entryFactor); kMin<0 = la pelvis queda algo atrás
+  d0: 0.70, d1: 0.86, kMax: 1.25, kMin: -0.35, bias: 0.015,   // con rival: k desde la profundidad de SU cabeza (ver animator3d entryFactor); kMin<0 = la pelvis queda algo atrás
   tracks: {
     pz:  [K(0, 0), K(0.05, 0.015), K(HI, 0.185, EI), K(HH, 0.195), K(0.36, 0.02), K(HD, 0)],
     px:  [K(0, 0), K(0.08, 0), K(HI, -0.05, EI), K(HH, -0.05), K(0.36, 0), K(HD, 0)],   // el peso cruza hacia la línea central
