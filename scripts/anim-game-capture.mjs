@@ -18,9 +18,12 @@ const SCENES = {
   jab: { times: [1.40, 1.50, 1.58, 1.65, 1.75, 1.90, 2.10, 2.40], actions: [{ t: 1.5, who: 0, play: 'jab' }] },
   jabsync: { times: [1.50, 1.56, 1.60, 1.64, 1.70, 1.76, 1.82, 1.95], actions: [{ t: 1.5, who: 0, play: 'jab', opts: { impactIn: 0.10, duration: 0.32 } }, { t: 1.5, who: 1, play: 'jab', opts: { speed: 0.6 } }] },   // KAGE: impacto a 0.10 s, total 0.32 s
   cross: { times: [1.50, 1.58, 1.62, 1.65, 1.68, 1.71, 1.76, 1.90], actions: [{ t: 1.5, who: 0, play: 'cross' }] },
-  hook: { times: [1.50, 1.58, 1.62, 1.65, 1.68, 1.72, 1.78, 1.95], actions: [{ t: 1.5, who: 0, play: 'hook' }] },
+  // ronda 4: tiempos de la sim; sep = media distancia pelvis-pelvis (el alcance de reach3d: gancho 0.70, low kick 1.00)
+  hook: { sep: 0.35, times: [1.50, 1.55, 1.62, 1.6833, 1.7333, 1.78, 1.86, 1.98], actions: [{ t: 1.5, who: 0, play: 'hook' }] },
+  ko: { sep: 0.55, times: [1.48, 1.62, 1.72, 1.82, 1.92, 2.10, 2.34, 2.90], actions: [{ t: 1.5, who: 1, play: 'hook' }, { t: 1.5 + 11 / 60, who: 0, play: 'ko', opts: { force: true } }] },
+  feint_hook: { sep: 0.45, times: [1.50, 1.53, 1.56, 1.60, 1.63, 1.68, 1.75, 1.88], actions: [{ t: 1.5, who: 0, play: 'feint_hook' }] },
   block: { times: [1.0, 1.15, 1.3, 1.5, 1.6, 1.7, 2.2, 2.6], actions: [{ t: 1.1, who: 0, guard: 1 }, { t: 1.5, who: 1, play: 'jab' }, { t: 2.3, who: 0, guard: 0 }] },
-  lowkick: { times: [1.50, 1.58, 1.65, 1.72, 1.78, 1.82, 1.90, 2.05, 2.20, 2.40, 2.55, 2.80], actions: [{ t: 1.5, who: 0, play: 'lowkick' }] },
+  lowkick: { sep: 0.50, times: [1.50, 1.56, 1.64, 1.7333, 1.7667, 1.86, 1.96, 2.10], actions: [{ t: 1.5, who: 0, play: 'lowkick' }] },
 };
 
 const PORT = +process.env.PORT || (5300 + (process.pid % 600));   // puerto libre; sin servidores colgados al terminar (server.close)
@@ -44,7 +47,7 @@ for (const [name, sc] of Object.entries(SCENES)) {
     const { fighters, camera, renderer, world } = G; const THREE_ = camera.constructor;
     // coloca a los dos con la separación de combate sobre el suelo real
     const cx = fighters[0].root.pos[0] + 0.7, cz = fighters[0].root.pos[2], gy = fighters[0].root.pos[1];
-    const sep = 0.62; fighters[0].root.pos = [cx - sep, gy, cz]; fighters[1].root.pos = [cx + sep, gy, cz];
+    const sep = sc.sep ?? 0.62; fighters[0].root.pos = [cx - sep, gy, cz]; fighters[1].root.pos = [cx + sep, gy, cz];
     fighters[0].root.yaw = 0; fighters[1].root.yaw = Math.PI;
     const dt = 1 / 60, out = {}; for (const c of cams) out[c] = [];
     const times = sc.times, last = Math.max(...times);
@@ -52,7 +55,7 @@ for (const [name, sc] of Object.entries(SCENES)) {
     renderer.setSize(480, 400); camera.aspect = 480 / 400; camera.updateProjectionMatrix();
     const target = [cx, gy + 0.95, cz];
     const camDef = { front: [cx - 1.3, gy + 1.15, cz + 3.0], side: [cx, gy + 1.1, cz - 3.0], top34: [cx - 1.5, gy + 2.5, cz - 2.2] };   // front = 3/4 por el lado derecho de beige
-    for (let i = 0; i * dt <= last + 1e-6; i++) {
+    for (let i = 0; i * dt <= last + dt; i++) {
       const t = i * dt;
       while (acts.length && acts[0].t <= t + 1e-9) { const a = acts.shift(); if (a.play) fighters[a.who].anim.play(a.play, a.opts); if (a.guard !== undefined) fighters[a.who].anim.setGuardLevel(a.guard); }
       for (const f of fighters) f.anim.update(dt, f.root);

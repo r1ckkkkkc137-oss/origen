@@ -121,11 +121,11 @@ export const KO = {
     // pelvis: cae como peso muerto (ease-in) hasta sentarse sobre los talones, mínimo rebote, y se va de espaldas
     dy:      [K(0, 0), K(0.06, -0.02), K(0.42, -0.50, EI), K(0.50, -0.47), K(0.84, -0.68, EI), K(0.94, -0.65), K(1.2, E0.dy)],
     pz:      [K(0, 0), K(0.42, 0.04), K(0.80, -0.14), K(1.2, E0.pz)],
-    hipPitch:[K(0, 0), K(0.26, 0.24), K(0.42, 0.20), K(0.56, -0.25), K(0.82, -1.50, EI), K(0.94, -1.40), K(1.2, E0.hipPitch)],
+    hipPitch:[K(0, 0), K(0.26, 0.24), K(0.42, 0.20), K(0.50, 0.02), K(0.60, -0.45), K(0.82, -1.50, EI), K(0.94, -1.40), K(1.2, E0.hipPitch)],
     spPitch: [K(0, 0), K(0.12, 0.15), K(0.42, 0.34), K(0.76, 0.02), K(1.2, E0.spPitch)],
     hipYaw:  [K(0, 0), K(0.5, 0.10), K(1.2, E0.hipYaw)], hipRoll: [K(0, 0), K(0.5, 0.04), K(1.2, E0.hipRoll)], spYaw: [K(0, 0), K(1.2, E0.spYaw)],
     // cabeza: latigazo del golpe, cae sobre el pecho (sin tono) y golpea el suelo al volcar
-    hdPitch: [K(0, 0), K(0.06, -0.35, Q), K(0.26, 0.35), K(0.56, 0.12), K(0.88, -0.26), K(1.02, -0.15), K(1.2, E0.hdPitch)],
+    hdPitch: [K(0, 0), K(0.06, -0.35, Q), K(0.26, 0.35), K(0.56, 0.32), K(0.70, 0.10), K(0.88, -0.26), K(1.02, -0.15), K(1.2, E0.hdPitch)],
     hdYaw:   [K(0, 0), K(0.06, -0.20, Q), K(0.5, 0.1), K(1.2, E0.hdYaw)],
     hdRoll:  [K(0, 0), K(0.3, 0.12), K(1.2, E0.hdRoll)],
     shrugL:  [K(0, 0), K(0.10, -0.10, Q), K(1.2, E0.shrugL)], shrugR: [K(0, 0), K(0.10, -0.10, Q), K(1.2, E0.shrugR)],
