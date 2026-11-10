@@ -35,7 +35,7 @@ export const GROUND_POSES = {
     back:  { ...BOT_BASE },
   },
   top: {
-    mount: { ...TOP_BASE, hipPitch: 0.12, spPitch: 0.22, hdPitch: -0.20 },   // r8: a horcajadas, tronco casi erguido (las piernas las pone kneelIK)
+    mount: { ...TOP_BASE, pz: 0.26, hipPitch: 0.12, spPitch: 0.22, hdPitch: -0.20 },   // r8: a horcajadas, tronco casi erguido (las piernas las pone kneelIK)
     guard: { ...TOP_BASE, dy: -0.33, pz: -0.28, hipPitch: 0.55, spPitch: 0.50, kHL: 0.15, kKL: 1.65, kAL: 0.25, kHR: 0.15, kKR: 1.65, kAR: 0.25 },
     half:  { ...TOP_BASE, dy: -0.36, pz: -0.15, kAL: 0.35, kAR: 0.45 },
     side:  { ...TOP_BASE, dy: -0.44, px: 0.40, pz: 0.56, hipYaw: -1.45, hipPitch: 0.55, spPitch: 0.45, kHL: 0.55, kKL: 2.10, kAL: 0.35, kHR: 0.55, kKR: 2.10, kAR: 0.35 },
@@ -48,13 +48,15 @@ export const GROUND_LEAN = {
   mount: { hipPitch: 0.34, spPitch: 0.30, dy: -0.05 },
   guard: { hipPitch: 0.08, spPitch: 0.12 },
   half: {}, side: {}, back: { hipPitch: 0.2, spPitch: 0.2 },
-  // por golpe (búsqueda: hueco en el impacto ~0, sin atravesar): el codo carga el peso con la cadera
-  'gnp_punch:mount': { hipPitch: 0.75, spPitch: 0.15 },
-  'gnp_body:mount': { hipPitch: 0.30 },
-  'gnp_elbow:mount': { hipPitch: 0.60 },
+  // por golpe (búsqueda: hueco en el impacto ~0, el tronco no entra en el de abajo, la menor inclinación posible): el codo carga el peso con la cadera;
+  // en mount el puño llega con el tronco erguido (pelvis adelantada sobre el abdomen)
+  'gnp_punch:mount': {},
+  'gnp_body:mount': { dy: 0.05 },
+  'gnp_elbow:mount': { hipPitch: 0.45, spPitch: 0.30, dy: 0.05 },
   'gnp_elbow:guard': { hipPitch: 0.60 },
-  'gnp_elbow:half': { hipPitch: 0.45 },
-  'gnp_elbow:side': { hipPitch: 0.30 },
+  'gnp_elbow:half': { hipPitch: 0.30 },
+  'gnp_elbow:side': { spPitch: 0.15 },
+  'gnp_body:side': { dy: 0.05 },
 };
 
 // ---- golpes de suelo (deltas sobre la capa del de arriba). Tiempos de la sim: gnpPunch [9,3,12], gnpElbow [11,3,14], gnpBody [9,3,12] ticks.
@@ -150,9 +152,9 @@ export const HURT_GROUND_BODY = {
 };
 CLIPS.hurt_ground_body = HURT_GROUND_BODY;
 // punta LIBRE prevista en el impacto por posición (marco raíz [izq, altura, adelante]; medida con link:false) para el ajuste al blanco
-GNP_PUNCH.aim.refPos = {mount: [-0.021, 0.153, 0.711], guard: [-0.011, 0.3, 0.279], side: [0.004, 0.316, 0.685], half: [-0.01, 0.25, 0.42], back: [-0.156, 0.064, 0.428]};
-GNP_ELBOW.aim.refPos = {mount: [0.017, 0.405, 0.721], guard: [0.029, 0.209, 0.379], side: [0.05, 0.279, 0.615], half: [0.031, 0.157, 0.507], back: [0.039, 0.23, 0.54]};
-GNP_BODY.aim.refPos = {mount: [-0.021, 0.295, 0.328], guard: [-0.026, 0.214, 0.022], side: [-0.116, 0.193, 0.554], half: [-0.028, 0.157, 0.152], back: [0.035, 0.002, 0.198]};
+GNP_PUNCH.aim.refPos = {mount: [-0.029, 0.494, 0.63], guard: [-0.011, 0.3, 0.279], side: [0.004, 0.316, 0.685], half: [-0.01, 0.25, 0.42], back: [-0.156, 0.064, 0.428]};
+GNP_ELBOW.aim.refPos = {mount: [0.03, 0.445, 0.853], guard: [0.029, 0.209, 0.379], side: [0.1, 0.382, 0.615], half: [0.031, 0.235, 0.502], back: [0.039, 0.23, 0.54]};
+GNP_BODY.aim.refPos = {mount: [-0.022, 0.428, 0.335], guard: [-0.026, 0.214, 0.022], side: [-0.116, 0.243, 0.554], half: [-0.028, 0.157, 0.152], back: [0.035, 0.002, 0.198]};
 for (const c of [GNP_PUNCH, GNP_ELBOW, GNP_BODY]) CLIPS[c.name] = c;
 CLIPS.hurt_ground = HURT_GROUND;
 // moves de la sim -> clips (para opts.clipMap de createLiveAnimation; el animador además remapea 'jab'/'lowkick' por state.move)

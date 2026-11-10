@@ -343,7 +343,7 @@ export function createAnimator3D(opts = {}) {
   // que el muslo llegue (|cadera-rodilla| = muslo exacto => la IK de dos huesos deja la rodilla en el punto pedido).
   //   kx: rodilla a un lado del centro de la pelvis (m), kz: adelante(+)/atrás(-) de la pelvis, ph: pelvis sobre el piso (m), sb: tibia hacia afuera
   const KNEEL = {
-    mount: { kx: 0.30, kz: -0.16, ph: 0.40, sb: 0.30 },   // a horcajadas: rodillas junto a la cadera del de abajo, pelvis sobre su abdomen
+    mount: { kx: 0.30, kz: -0.26, ph: 0.40, sb: 0.30 },   // a horcajadas: rodillas junto a la cadera del de abajo, pelvis sobre su abdomen
     guard: { kx: 0.17, kz: 0.08, ph: 0.50, sb: 0.05 },    // de rodillas entre sus piernas
     half:  { kx: 0.24, kz: -0.08, ph: 0.42, sb: 0.20 },
     side:  { kx: 0.20, kz: 0.10, ph: 0.40, sb: 0.10 },    // en el marco de la pelvis girada 90°: rodillas contra su costado
