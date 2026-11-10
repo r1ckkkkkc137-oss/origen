@@ -1,6 +1,6 @@
 // Métricas de animación (ronda 3): hook, guardia, reacciones, KO, climb. Uso: node scripts/anim-metrics.mjs [hook|guard|hurt|ko|climb|all]
-import { simulate, simulateDuel, DUEL_DIST, FOOTWORK_SEGS, HURT_FORCE } from '../src/anim/scenarios.js';
-import { buildColliders, segPenetration, penetration, CONTACT } from '../src/anim/contact.js';
+import { simulate, simulateDuel, simulateGround, GROUND_ZONE, DUEL_DIST, FOOTWORK_SEGS, HURT_FORCE } from '../src/anim/scenarios.js';
+import { buildColliders, segPenetration, penetration, sdist, CONTACT } from '../src/anim/contact.js';
 import { CLIPS } from '../src/anim/clips.js';
 
 const D = 180 / Math.PI;
@@ -283,4 +283,32 @@ if (import.meta.url === `file://${process.argv[1]}` && (which === 'all' || which
   for (const n of ['jab', 'cross', 'hook', 'lowkick']) console.log('DUEL', n, fm(duelMetrics(n)));
   console.log('DUEL hook closeTo0.70', fm(duelMetrics('hook', { closeTo: 0.70 })));
   console.log('DUEL hook power1', fm(duelMetrics('hook', { power: 1 })));
+}
+
+// ---- ronda 7: suelo (ground and pound). Métricas de un golpe de suelo con el rival tendido (simulateGround).
+//  gapImpact: distancia superficie-punta al blanco (cabeza/torso) en el frame del impacto (<0 = penetra)
+//  penMax / segMax: penetración máx. de la punta / del segmento distal en todo el golpe contra los colisores de CUERPO (0..7) del de abajo
+//  vPeakT: instante del pico de velocidad de la punta (sin los 2 primeros frames); headFloorMin: min(y_centro_cabeza - r) del de abajo
+//  bounce: cuánto baja la cabeza respecto del reposo durante hurt_ground y cuánto vuelve a subir (rebote)
+export function groundMetrics(pos = 'mount', strike = 'gnp_punch', o = {}) {
+  const cl = CLIPS[strike], I = (w) => [-w[2], w[1], w[0]], elb = cl.tip === 'elbowR', rt = elb ? CONTACT.elbow : CONTACT.fist;
+  const zoneCol = (GROUND_ZONE[strike] || 'head') === 'head' ? 0 : 1;
+  const m = { pos, strike, gapImpact: null, penMax: 0, segMax: 0, vPeak: 0, vPeakT: 0, vImpact: 0, headFloorMin: Infinity, headRest: null, headLow: Infinity, headAfter: -Infinity, contact: null, tipJump: 0 };
+  let pf = null, t0 = null;
+  simulateGround(pos, strike, { ...o, onFrame: (t, sa, sb, a, b) => {
+    const hc = sb.pose.head[1] + (sb.tips.headTop[1] - sb.pose.head[1]) * CONTACT.headC - CONTACT.head;
+    m.headFloorMin = Math.min(m.headFloorMin, hc);
+    if (b.clip && b.clipMode.name === 'hurt_ground') { m.headLow = Math.min(m.headLow, hc); if (b.clipT > 0.12) m.headAfter = Math.max(m.headAfter, hc); }
+    else if (!b.clip && t > 0.9 && m.headLow === Infinity) m.headRest = hc;
+    if (!(a.clip && a.clipMode.name === strike)) { pf = null; return; }
+    const cols = buildColliders(sb).slice(0, 8), f = I(a.strike.fist), T = a.clipT;
+    const P = I(elb ? sa.pose.shoulderR : sa.pose['elbow' + (cl.tip === 'L' ? 'L' : 'R')]);
+    m.penMax = Math.max(m.penMax, penetration(cols, f, rt).pen); m.segMax = Math.max(m.segMax, segPenetration(cols, P, f, rt));
+    if (pf && T > 2 / 60 + 1e-9) { const v = Math.hypot(f[0] - pf[0], f[1] - pf[1], f[2] - pf[2]) * 60; if (v > m.vPeak) { m.vPeak = v; m.vPeakT = T; } if (Math.abs(T - cl.impactT) < 1 / 120) m.vImpact = v; m.tipJump = Math.max(m.tipJump, v / 60); }
+    if (Math.abs(T - cl.impactT) < 1 / 120) { const c = cols[zoneCol]; m.gapImpact = sdist(c, f) - rt; }
+    if (!m.contact && a.contact.last && a.contact.last.name === strike) m.contact = { ...a.contact.last };
+    pf = f;
+  } });
+  m.bounce = m.headRest == null ? null : { down: m.headRest - m.headLow, up: m.headAfter - m.headLow };
+  return m;
 }

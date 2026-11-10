@@ -9,7 +9,8 @@ export const CONTACT = Object.freeze({
   thigh: 0.075, shin: 0.055,
   fist: 0.02,             // la punta del puño (nudillos) es la punta de la mano: piel/guante
   shinTip: 0.045,         // la espinilla (30 % desde el tobillo): radio de la pierna
-  glove: 0.05, forearm: 0.042,   // ronda 7: guardia del rival = guante (muñeca->nudillos) y antebrazo (codo->muñeca)
+  glove: 0.05, forearm: 0.042,
+  elbow: 0.045,           // ronda 7: punta del codo (gnp_elbow)   // ronda 7: guardia del rival = guante (muñeca->nudillos) y antebrazo (codo->muñeca)
 });
 const ZONES = ['head', 'body', 'legs', 'legs', 'legs', 'legs', 'head', 'body', 'guard', 'guard', 'guard', 'guard'];
 // ronda 7: índices de los colisores. 0..7 = cuerpo (r6), 8..11 = guardia (no son blanco de un golpe NO bloqueado: el golpe los rodea).
