@@ -58,12 +58,14 @@ export function homeLocal(side, walkAmt, out = { x: 0, z: 0, yaw: 0 }) {
 
 export const STEP = Object.freeze({
   dur: 0.34,          // duración del paso (s)
+  fightDur: 0.22,     // ronda 4: paso de pelea (st.fight): mínimo 0.22 s, pie a fightFootSpeed
   lookahead: 0.18,    // el pie aterriza adelantado v*lookahead respecto del home (equilibrio de alternancia)
   minThr: 0.06,       // umbral mínimo de retraso para disparar paso en movimiento
   settleThr: 0.025,   // pasos de asentamiento con el cuerpo quieto
   turnThr: 0.14,      // desvío de posición que dispara pivote al girar
   yawThr: 0.55,       // desvío de ángulo del pie que dispara pivote
   maxFootSpeed: 1.55,  // m/s medios del pie en el aire (pico ~1.33x ≈ 2.05 m/s ≈ 3.4 cm/frame)
+  fightFootSpeed: 2.0, // ronda 4: de pelea (pico ~2.7 m/s ≈ 4.4 cm/frame; el stepIn de la sim va a ~2.7 m/s)
   lift: 0.05, liftMax: 0.11,
   force: 0.55,        // retraso que fuerza paso aunque el otro pie esté en el aire
 });
@@ -118,7 +120,7 @@ export function startSwing(f, top, to, yaw1, o = {}) {
     prof[i] = r; if (r > hMax) hMax = r;
   }
   const wall = hMax > Math.max(y0, y1) + 0.02 || (y1 > y0 + 0.02) || o.hTop != null;
-  const sw = { s: 0, dur: 0.34, from, to: [to[0], y1, to[2]], y0, y1, yaw0: f.yaw, yaw1, lift: 0, hTop: 0, sv: 0, tail: 0.3, prof, vertT: 0 };
+  const sw = { s: 0, dur: STEP.dur, from, to: [to[0], y1, to[2]], y0, y1, yaw0: f.yaw, yaw1, lift: 0, hTop: 0, sv: 0, tail: 0.3, prof, vertT: 0 };
   if (wall) {
     sw.hTop = o.hTop != null ? o.hTop : hMax + FOOT_CLEAR;
     const vertT = o.vertT ?? clamp((sw.hTop - y0) / 1.4, 0.16, 1.0);
@@ -127,7 +129,7 @@ export function startSwing(f, top, to, yaw1, o = {}) {
     sw.lift = 0;
   } else {
     const travel = Math.hypot(dist, 2 * Math.abs(y1 - y0));
-    sw.dur = clamp(travel / STEP.maxFootSpeed, STEP.dur, 0.6);
+    sw.dur = o.fight ? clamp(travel / STEP.fightFootSpeed, STEP.fightDur, 0.45) : clamp(travel / STEP.maxFootSpeed, STEP.dur, 0.6);
     sw.lift = clamp(STEP.lift + 0.06 * dist, STEP.lift, STEP.liftMax);
   }
   if (o.dur) sw.dur = o.dur;
@@ -171,9 +173,12 @@ export function updateFeet(feet, top, root, yaw, st, dt, events) {
   const hw = [{ x: 0, z: 0, yaw: 0 }, { x: 0, z: 0, yaw: 0 }];
   feet.forEach((f, i) => homeWorld(f.side, st.walkAmt, root, yaw, hw[i]));
   // 1) avanzar pies en el aire
-  for (const f of feet) {
+  for (let fi = 0; fi < feet.length; fi++) {
+    const f = feet[fi];
     if (f.planted) continue;
     const w = f.swing; w.s += dt / w.dur;
+    // ronda 4, de pelea: el destino persigue al home mientras el cuerpo sigue en la ráfaga (stepIn/stepOut duran ~0.1 s y el pie sale antes de que termine)
+    if (st.fight && !w.hTop && w.s < 0.7) { const h = hw[fi], kk = 1 - Math.exp(-dt * 30); w.to[0] += (h.x - w.to[0]) * kk; w.to[2] += (h.z - w.to[2]) * kk; }
     // re-muestrear el suelo del destino (bloques pueden cambiar) y orientación
     w.y1 = footGround(top, w.to[0], w.to[2], w.yaw1, w.y1);
     if (w.s >= 1) {
@@ -194,16 +199,19 @@ export function updateFeet(feet, top, root, yaw, st, dt, events) {
     if (moving) {
       const mx = st.vel[0] / st.speed, mz = st.vel[1] / st.speed;
       const behind = dx * mx + dz * mz;
-      const thr = Math.max(STEP.minThr, st.speed * STEP.lookahead);
+      const thr = st.fight ? STEP.minThr + 0.02 : Math.max(STEP.minThr, st.speed * STEP.lookahead);   // de pelea el pie arranca enseguida
       u = Math.max(behind / thr, dd / (thr + 0.30));
     } else {
       if (dd > STEP.turnThr || yawErr > STEP.yawThr) u = Math.max(dd / STEP.turnThr, yawErr / STEP.yawThr);
       else if (st.idleT > 0.25 && (dd > STEP.settleThr || yawErr > 0.12)) u = 1;
     }
     if (u >= 1 && !(f.lastStepT > st.t - 0.06)) {
-      if (anySwing && dd < STEP.force) continue;
+      // ronda 4, juego de pies de pelea (st.fight): el segundo pie sigue al primero apenas éste pasó la mitad del vuelo (paso-arrastre de boxeo)
+      if (anySwing && dd < STEP.force && !(st.fight && feet[1 - i].swing && feet[1 - i].swing.s > 0.3)) continue;
       // preferir alternar: el pie que no dio el último paso gana a igual urgencia
       let ue = u; if (feet[1 - i].lastStepT > f.lastStepT) ue *= 1.15;
+      // de pelea: sale primero el pie del lado hacia donde se mueve (adelante => el de adelante; atrás => el de atrás; lateral => el de ese lado)
+      if (st.fight && moving && !anySwing) { const ox = hw[i].x - root[0], oz = hw[i].z - root[2]; if (ox * st.vel[0] + oz * st.vel[1] > 0) ue *= 1.6; }
       if (ue > bestU) { bestU = ue; best = i; }
     }
   }
@@ -211,13 +219,14 @@ export function updateFeet(feet, top, root, yaw, st, dt, events) {
     const f = feet[best];
     const h = hw[best];
     // aterriza donde estará su "home" al final del paso (home actual + movimiento del cuerpo durante el vuelo)
-    const lead = moving ? Math.min(st.speed * STEP.dur * 1.5, 0.8) : 0;   // movimiento del cuerpo durante el vuelo + media zancada por delante
+    // de pelea los desplazamientos son ráfagas de ~0.1 s (stepIn/stepOut): el pie cae casi en su home (shuffle) en vez de una zancada adelantada
+    const lead = !moving ? 0 : st.fight ? Math.min(st.speed * 0.03, 0.06) : Math.min(st.speed * STEP.dur * 1.5, 0.8);   // movimiento del cuerpo durante el vuelo + media zancada por delante
     let tx = h.x + (moving ? st.vel[0] / st.speed : 0) * lead;
     let tz = h.z + (moving ? st.vel[1] / st.speed : 0) * lead;
     const yaw1 = h.yaw;
     const rf = relaxFoot(top, tx, tz, yaw1, f.sole); tx = rf.x; tz = rf.z; const y1 = rf.y;
     f.lastStepT = st.t;
-    startSwing(f, top, [tx, y1, tz], yaw1);
+    startSwing(f, top, [tx, y1, tz], yaw1, st.fight ? { fight: true } : undefined);
     events.push({ type: 'liftoff', foot: f.side, from: f.swing.from.slice(), to: [tx, y1, tz] });
   }
 }

@@ -17,6 +17,26 @@ function walkX(t, x0, v, t0, t1, ramp_ = 0.4) {
   return x0 + v * (up - down);
 }
 
+// tramos [t0, dur, dx, dz] (m): perfil suave de velocidad (smoothstep de la posición) — como los ticks de la sim, sin teletransporte
+const FOOTWORK = [[1.0, 0.11, 0.30, 0], [1.9, 0.11, -0.25, 0], [2.8, 1.20, 0, 0.42], [4.4, 0.18, 0.36, 0], [5.2, 0.11, -0.28, 0]];
+export const FOOTWORK_SEGS = FOOTWORK;
+function footworkRoot(t) {
+  let x = 0, z = 0;
+  for (const [t0, d, dx, dz] of FOOTWORK) { const u = ramp(t, t0, d); x += dx * u; z += dz * u; }
+  return { pos: [x, 0, z], yaw: Math.atan2(-z, 1.6 - x) };     // mira siempre al rival (circle = orbitar)
+}
+export const HURT_FORCE = [{ t: 1.0, zone: 'head', dmg: 6.0 }, { t: 2.5, zone: 'head', dmg: 19.4 }, { t: 4.0, zone: 'body', dmg: 6.0 }, { t: 5.5, zone: 'body', dmg: 19.4 }];
+function hurtForceActions() {
+  const PER = { head: 0.00176, body: 0.00276 }, dmg = { head: 0, body: 0, legs: 0 }, out = [];
+  for (const h of HURT_FORCE) {
+    out.push({ t: h.t - 0.05, state: { hurt: null, damage: { ...dmg } } });
+    dmg[h.zone] += h.dmg * PER[h.zone];
+    out.push({ t: h.t, state: { hurt: { zone: h.zone, age: 0 }, damage: { ...dmg } } });
+    out.push({ t: h.t + 0.02, state: { hurt: { zone: h.zone, age: 0.02 }, damage: { ...dmg } } });
+  }
+  return out;
+}
+
 export const SCENARIOS = {
   guard: { blockM: 0.5, terrain: flat(), duration: 4, root: () => ({ pos: [0, 0, 0], yaw: 0 }), actions: [] },
   walk: { blockM: 0.5, terrain: flat(), duration: 6, root: (t) => ({ pos: [walkX(t, 0, 0.8, 1.0, 5.0), 0, 0], yaw: 0 }), actions: [] },
@@ -42,8 +62,13 @@ export const SCENARIOS = {
   turn90: { blockM: 0.5, terrain: flat(), duration: 6, root: (t) => ({ pos: [0, 0, 0], yaw: t < 1.5 ? 0 : Math.PI / 2 }), actions: [] },
   turnWalk: { blockM: 0.5, terrain: flat(), duration: 7,
     root: (t) => { const yaw = t < 2.5 ? 0 : t < 4.5 ? Math.PI / 2 : -Math.PI * 0.75; const x = walkX(t, 0, 0.8, 1.0, 6.0); return { pos: [x, 0, 0], yaw }; }, actions: [] },
-};
 
+  // ronda 4: juego de pies de pelea con las velocidades MEDIDAS en la sim viva (createLiveFight seed 7): stepIn ~2.7 m/s x 0.11 s, stepOut ~2.3 m/s x 0.11 s,
+  // circle ~0.36 m/s lateral con el rumbo siguiendo al rival, avance (walk de pelea) ~2.0 m/s x 0.18 s. Rival fijo en x = 1.6.
+  footwork: { blockM: 0.5, terrain: flat(), duration: 6.5, root: (t) => footworkRoot(t), actions: [{ t: 0, state: { loco: { mode: 'guard', speed: 0 } } }] },
+  // ronda 4: reacciones con fuerza: el estado trae el salto de state.damage[zona] como la sim viva (golpe débil = 6 pts, fuerte = 19.4 pts)
+  hurtForce: { blockM: 0.5, terrain: flat(), duration: 7, root: () => ({ pos: [0, 0, 0], yaw: 0 }), actions: hurtForceActions() },
+};
 // Ejecuta el escenario a 60 Hz; onFrame(t, skeleton, animator, i) en cada frame. Devuelve el animador.
 export function simulate(name, { seed = 7, hz = 60, duration, onFrame } = {}) {
   const sc = typeof name === 'string' ? SCENARIOS[name] : name;

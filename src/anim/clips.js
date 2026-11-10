@@ -122,7 +122,7 @@ export const JAB = {
 const CI = simT('cross').i, CD = simT('cross').d, CH = CI + HITSTOP;   // 0.150, 0.433, 0.192
 export const CROSS = {
   name: 'cross', duration: CD, impactT: CI, tip: 'R', feet: true, ball: { R: true },
-  phases: [{ name: 'anticipation', t0: 0, t1: 0.045 }, { name: 'strike', t0: 0.045, t1: CH }, { name: 'recovery', t0: CH, t1: CD }],
+  phases: [{ name: 'anticipation', t0: 0, t1: 0.065 }, { name: 'strike', t0: 0.065, t1: CH }, { name: 'recovery', t0: CH, t1: CD }],
   tracks: {
     dy:      [K(0, 0), K(0.045, -0.03, EO), K(CI, -0.035, EI), K(CH, -0.052), K(0.30, -0.01), K(CD, 0)],
     pz:      [K(0, 0), K(0.045, -0.03), K(CI, 0.09, EI), K(CH, 0.115), K(0.31, 0.01), K(CD, 0)],
@@ -133,7 +133,7 @@ export const CROSS = {
     hdPitch: [K(0, 0), K(CI, 0.05), K(CD, 0)],
     shrugR:  [K(0, 0), K(0.14, 0.07, EO), K(0.28, 0.01), K(CD, 0)],
     protR:   [K(0, 0), K(CI, 0.10, EO), K(0.30, 0.01), K(CD, 0)],
-    hRz: [K(0, 0), K(0.045, -0.025, EO), K(CI, 0.38, EI), K(CH, 0.385, LIN), K(0.25, 0.02, EO), K(0.31, -0.005), K(CD, 0)],
+    hRz: [K(0, 0), K(0.065, -0.03, EO), K(CI, 0.38, EI), K(CH, 0.385, LIN), K(0.25, 0.02, EO), K(0.31, -0.005), K(CD, 0)],
     hRx: [K(0, 0), K(CI, 0.04, EI), K(CH, 0.04, LIN), K(0.25, 0), K(CD, 0)],
     hRy: [K(0, 0), K(0.05, 0.01), K(CI, 0.025), K(0.25, 0), K(CD, 0)],
     elbR: [K(0, 0), K(0.06, 0.12), K(0.14, 0), K(CD, 0)],
@@ -162,7 +162,7 @@ export const HOOK_A0 = 110 * Math.PI / 180, HOOK_A1 = 97 * Math.PI / 180;   // h
 export const HOOK = {
   name: 'hook', duration: HD, impactT: HI, tip: 'L', feet: true, ball: { L: true },
   phases: [{ name: 'anticipation', t0: 0, t1: 0.06 }, { name: 'strike', t0: 0.06, t1: HH }, { name: 'recovery', t0: HH, t1: HD }],
-  lock: { tLoad: 0.12, tRelease: HH + 0.01, tFree: 0.34, snap0: 0.10 },
+  lock: { tLoad: 0.12, tRelease: HH + 0.01, tFree: 0.34, snap0: 0.13 },
   tracks: {
     dy:      [K(0, 0), K(0.05, -0.035, EO), K(HI, -0.04), K(HH, -0.058), K(0.33, -0.01), K(HD, 0)],
     pz:      [K(0, 0), K(0.05, 0.01), K(HI, 0.05, EI), K(HH, 0.07), K(0.32, 0.01), K(HD, 0)],
@@ -300,8 +300,9 @@ export function sampleTrack(keys, t) {
   return keys[keys.length - 1][1];
 }
 // Suma (w * delta) del clip a `out`.
-export function addClip(clip, t, w, out) {
-  for (const c in clip.tracks) out[c] += w * sampleTrack(clip.tracks[c], t);
+// wHead (ronda 4): peso aparte para los canales de cabeza (hd*): las reacciones escalan cuerpo/pelvis con la fuerza más que el cuello.
+export function addClip(clip, t, w, out, wHead = w) {
+  for (const c in clip.tracks) out[c] += (c.charCodeAt(0) === 104 && c.charCodeAt(1) === 100 ? wHead : w) * sampleTrack(clip.tracks[c], t);
 }
 export function phaseAt(clip, t) {
   for (const p of clip.phases) if (t < p.t1) return p.name;

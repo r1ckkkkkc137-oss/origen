@@ -57,7 +57,7 @@ export function createAnimator3D(opts = {}) {
   const top = makeTopSampler(opts.getBlock ? getBlock : (x, y, z) => y < 0, blockM);   // sin getBlock: suelo plano y=0
   const rig = createHumanoid3D();
   const idleP = makeIdleParams(rng.next);
-  const turnOmega = opts.turnOmega ?? 7;
+  const turnOmega = opts.turnOmega ?? 7, turnOmegaFight = opts.turnOmegaFight ?? 10;   // ronda 4: de pelea el giro/circle sigue al rival más rápido
 
   const skeleton = {
     bones: HUMAN_BONES_LOCAL.slice(), parent: { ...HUMAN_PARENT },
@@ -94,14 +94,14 @@ export function createAnimator3D(opts = {}) {
   const startClip = (name, o) => {
     const clip = CLIPS[name]; if (!clip) return false;
     if (A.clip && !o.force) return false;
-    if (A.clip && o.force && clip.from !== A.clipMode.name) A.fade = { clip: A.clip, t: A.clipT, w: 1, rate: 1 / 0.08, h: A.clipMode.holding ? A.clipMode.holdT : -1 };
+    if (A.clip && o.force && clip.from !== A.clipMode.name) A.fade = { clip: A.clip, t: A.clipT, w: 1, rate: 1 / 0.08, h: A.clipMode.holding ? A.clipMode.holdT : -1, amp: A.clipMode.amp ?? 1, ampH: A.clipMode.ampHead ?? A.clipMode.amp ?? 1 };
     A.clip = clip; A.clipT = clamp(o.phase ?? 0, 0, 1) * clip.duration;
     const m = A.clipMode; m.name = name; m.driven = !!o.driven; m.map = null; m.speed = o.speed > 0 ? o.speed : 1;
     if (o.duration > 0) {
       if (o.impactIn > 0 && o.impactIn < o.duration) m.map = { ti: o.impactIn, tt: o.duration };
       else m.speed *= clip.duration / o.duration;
     }
-    m.stale = 0; m.prev = A.clipT; m.holding = false; m.holdT = 0; m.amp = o.amp > 0 ? o.amp : 1;
+    m.stale = 0; m.prev = A.clipT; m.holding = false; m.holdT = 0; m.amp = o.amp > 0 ? o.amp : 1; m.ampHead = o.ampHead > 0 ? o.ampHead : m.amp;
     A.climbC = null;
     if (clip.climb) {                                                  // trepar: detectar saliente y anclar manos/pies/pelvis en el mundo
       const O = [_root[0], _root[2]], y0 = _root[1], yw = A.visYaw;
@@ -120,13 +120,17 @@ export function createAnimator3D(opts = {}) {
   A.play = (name, opts = {}) => { if (A.feintLock && name === 'hook' && !opts.force) return false; return startClip(name, opts); };
   // finta de gancho: arranca feint_hook a la MISMA fase del gancho en curso (son iguales hasta FEINT_CUT) => sin salto; si el gancho ya pasó
   // el corte, entra en el corte con fundido corto.
+  // state.damage[zona] sube ~por punto de daño KAGE (medido en peleas vivas: cabeza 6.2 -> +0.011, 19.4 -> +0.034; cuerpo 14.3 -> +0.041; piernas 12.5 -> +0.028)
+  const DMG_PER_PT = { head: 0.00176, body: 0.00276, legs: 0.00225, armL: 0.0025, armR: 0.0025 };
+  const WALK_MODES = new Set(['exit', 'walk', 'victory', 'ko', 'down']);
+  A.fightLoco = !!opts.fightLoco;
   const FEINT_OF = { hook: 'feint_hook', bodyHook: 'feint_hook', uppercut: 'feint_hook' };
   A.feint = (move = 'hook') => {
     const name = FEINT_OF[move]; if (!name) return false;
     const fc = CLIPS[name], cut = fc.impactT;
     const t = A.clip && A.clipMode.name === 'hook' && !A.clipMode.driven ? A.clipT : 0;
     if (A.clip && A.clipMode.name === 'hook' && t <= cut) {          // mismo arranque: continuidad exacta, sin fundido
-      A.clip = fc; A.clipT = t; const m = A.clipMode; m.name = name; m.map = null; m.speed = 1; m.prev = t; m.driven = false; m.holding = false; m.stale = 0; m.amp = 1;
+      A.clip = fc; A.clipT = t; const m = A.clipMode; m.name = name; m.map = null; m.speed = 1; m.prev = t; m.driven = false; m.holding = false; m.stale = 0; m.amp = 1; m.ampHead = 1;
     } else startClip(name, { force: true, phase: Math.min(t, cut) / fc.duration });
     A._pend.push({ type: 'feint', name, move });   // se entrega en el próximo update() (events se vacía al empezar)
     return true;
@@ -146,13 +150,24 @@ export function createAnimator3D(opts = {}) {
   // nivel de guardia 0..1 (1 = bloqueo alto): sostenido mientras la sim lo pida, con resorte (≈0.08 s). Se suma bajo los clips.
   A.guard = { target: 0, sp: { x: 0, v: 0 } };
   A.setGuardLevel = (l) => { A.guard.target = clamp(+l || 0, 0, 1); };
-  A.cancel = (fade = 0.15) => { if (!A.clip) return false; A.fade = { clip: A.clip, t: A.clipT, w: 1, rate: 1 / Math.max(fade, 1e-3), h: A.clipMode.holding ? A.clipMode.holdT : -1 }; A.clip = null; return true; };
+  A.cancel = (fade = 0.10) => { if (!A.clip) return false; A.fade = { clip: A.clip, t: A.clipT, w: 1, rate: 1 / Math.max(fade, 1e-3), h: A.clipMode.holding ? A.clipMode.holdT : -1, amp: A.clipMode.amp ?? 1, ampH: A.clipMode.ampHead ?? A.clipMode.amp ?? 1 }; A.clip = null; return true; };
 
   // ---- reacciones y estados (zona del golpe, aturdido, KO, levantarse)
   //   react(zone,{power})   zone = 'head'|'body'|'legs'  (state.hurt.zone de la sim). Corta lo que haya con fundido de 80 ms. power ∈ (0..1.5] escala la pose.
   //   setState(state)       lee el state del peleador de la sim (state.hurt, rocked, stance down|ko, guard) y dispara/sostiene el clip correcto cada frame:
   //                         hurt nuevo -> hurt_<zona>; rocked -> 'rocked' sostenido; down/ko -> 'ko' (cae y queda); al salir de down/ko -> 'getUp'; guard -> setGuardLevel.
-  A.react = (zone, o = {}) => { const n = ZONE_CLIP[zone] || 'hurt_body'; return startClip(n, { force: true, amp: clamp(o.power ?? 1, 0.2, 1.5) }); };
+  // ronda 4: retroceso proporcional a la fuerza. power 0..1 = daño/16 (la misma normalización que KAGE powerNorm). Fuentes, en orden:
+  // o.power, o.damage (CombatEvent 'hit'.damage), o el salto de state.damage[zona] en el frame del golpe (lo estima setState). Sin dato => 1 (= r3).
+  // Cuerpo/pelvis (torso, cadera, pz, dy, brazos) escalan fuerte; la cabeza menos (el latigazo r3 ya está al límite de "cuello roto").
+  // El golpe fuerte además dura más (speed < 1: el pico llega ~igual de rápido por frame, sin pops) y el débil se recupera antes.
+  A.reactAmp = (power) => { const p = clamp(power, 0, 1.3), amp = 0.40 + 0.90 * p; return { amp, ampHead: 0.65 + 0.35 * p, speed: clamp(1 / Math.sqrt(amp), 0.78, 1.15) }; };
+  A.react = (zone, o = {}) => {
+    const n = ZONE_CLIP[zone] || 'hurt_body';
+    const pw = o.power ?? (o.damage != null ? o.damage / 16 : null);
+    const a = pw == null ? { amp: 1, ampHead: 1 } : A.reactAmp(pw);
+    A.lastReact = { zone, power: pw, ...a };
+    return startClip(n, { force: true, ...a });
+  };
   A.lying = false; A.hurtSeen = null;
   A.setState = (st) => {
     if (!st) return;
@@ -161,6 +176,8 @@ export function createAnimator3D(opts = {}) {
       const key = `${st.animSeq ?? 0}:${st.move}`;
       if (A.feintLock !== key) { A.feintLock = key; A.feint(st.move); }
     } else A.feintLock = null;
+    // ronda 4: juego de pies de pelea (stepIn/stepOut/circle/advance/retreat/pivot/guardia y golpes) vs caminar (exit/walk): state.loco.mode
+    if (st.loco && st.loco.mode) A.fightLoco = !WALK_MODES.has(st.loco.mode);
     if (st.guard !== undefined) A.setGuardLevel(st.guard);
     const wantLying = st.ko === true || st.down === true || st.stance === 'ko' || st.stance === 'down';
     const name = A.clip ? A.clipMode.name : '';
@@ -169,8 +186,15 @@ export function createAnimator3D(opts = {}) {
       return;
     }
     if (A.lying) { A.lying = false; startClip('getUp', { force: true }); return; }
-    if (st.hurt && (A.hurtSeen === null || st.hurt.age < A.hurtSeen - 1e-6)) A.react(st.hurt.zone, { power: st.hurt.power });
+    if (st.hurt && (A.hurtSeen === null || st.hurt.age < A.hurtSeen - 1e-6)) {
+      // state.hurt sólo trae {zone, age}; la fuerza se deduce del salto de state.damage[zona] (0..1 acumulado) en ese frame
+      let pw = st.hurt.power ?? (st.hurt.damage != null ? st.hurt.damage / 16 : null);
+      const z = st.hurt.zone, d1 = st.damage?.[z], d0 = A.dmgSeen?.[z];
+      if (pw == null && d1 != null && d0 != null && d1 > d0) pw = (d1 - d0) / (DMG_PER_PT[z] ?? DMG_PER_PT.body) / 16;
+      A.react(z, { power: pw ?? undefined });
+    }
     A.hurtSeen = st.hurt ? st.hurt.age : null;
+    if (st.damage) { A.dmgSeen = A.dmgSeen || {}; for (const k in st.damage) A.dmgSeen[k] = st.damage[k]; }
     if (st.rocked) { if (!A.clip) startClip('rocked', { force: true }); }
     else if (name === 'rocked') A.cancel(0.3);
   };
@@ -197,25 +221,25 @@ export function createAnimator3D(opts = {}) {
     // ---- entrada: raíz interna (marco +Z adelante, +X izquierda)
     _root[0] = -rootW.pos[2]; _root[1] = rootW.pos[1]; _root[2] = rootW.pos[0];
     // velocidad (suavizada) por diferencia de raíz
-    const k = 1 - Math.exp(-dt * 12);
+    const k = 1 - Math.exp(-dt * 18);   // ronda 4: 12 -> 18 (los pasos reaccionan antes al stepIn/stepOut)
     A.vel[0] += ((_root[0] - A.lastRoot[0]) / dt - A.vel[0]) * k; A.vel[1] += ((_root[2] - A.lastRoot[1]) / dt - A.vel[1]) * k;
     A.lastRoot[0] = _root[0]; A.lastRoot[1] = _root[2];
     const speed = Math.hypot(A.vel[0], A.vel[1]);
     // rumbo visual: resorte crítico sobre el error angular (el sim puede saltar)
     A.yawSp.x = wrapPi(A.visYaw - rootW.yaw);
-    springCritical(A.yawSp, 0, turnOmega, dt);
+    springCritical(A.yawSp, 0, A.fightLoco ? turnOmegaFight : turnOmega, dt);
     A.visYaw = rootW.yaw + A.yawSp.x;
     const yaw = A.visYaw;
     // modo de locomoción
-    const wTarget = clamp(speed / 0.5, 0, 1);
-    A.walkAmt += (wTarget - A.walkAmt) * (1 - Math.exp(-dt * 8));
+    const wTarget = clamp(speed / 0.5, 0, 1) * (A.fightLoco ? 0 : 1);   // de pelea se mantiene la estancia de guardia (no pasa a marcha)
+    A.walkAmt += (wTarget - A.walkAmt) * (1 - Math.exp(-dt * 13));   // ronda 4: 8 -> 13
     const turning = Math.abs(A.yawSp.x) > 0.08 || Math.abs(A.yawSp.v) > 0.3;
     A.idleT = (speed > 0.08 || turning) ? 0 : A.idleT + dt;
     // ---- pies
     const CLm = A.clip && A.clip.climb && A.climbC ? A.climbC : null;
     if (CLm) { A.walkAmt = 0; A.vel[0] = A.vel[1] = 0; }
     if (CLm && A.clipT > 1.40) initFeet(A.feet, top, _root, yaw, 0);   // salida: pies de reposo sobre la raíz (el sim ya la subió al saliente)
-    if (!CLm) updateFeet(A.feet, top, _root, yaw, { t: A.t, vel: A.vel, speed, walkAmt: A.walkAmt, idleT: A.idleT, freeze: !!(A.clip && A.clip.feet && A.walkAmt < 0.3) }, dt, ev);
+    if (!CLm) updateFeet(A.feet, top, _root, yaw, { t: A.t, vel: A.vel, speed, walkAmt: A.walkAmt, idleT: A.idleT, fight: A.fightLoco, freeze: !!(A.clip && A.clip.feet && A.walkAmt < 0.3) }, dt, ev);
     const [fL, fR] = A.feet;
     // ---- canales: guardia + idle + caminar + clips
     const c = A.ch; for (const n of CHANNELS) c[n] = GUARD[n];
@@ -223,11 +247,11 @@ export function createAnimator3D(opts = {}) {
     springCritical(A.gate, swingEnv(fL) - swingEnv(fR), 16, dt);
     const fwdSpeed = A.vel[0] * Math.sin(yaw) + A.vel[1] * Math.cos(yaw);
     walkLayer(A.gate.x, A.walkAmt, fwdSpeed, c);
-    springCritical(A.guard.sp, A.guard.target, 22, dt);
+    springCritical(A.guard.sp, A.guard.target, 30, dt);   // ronda 4: 22 -> 30 (subir/bajar la guardia más seco)
     if (A.guard.sp.x > 1e-4) { const g = clamp(A.guard.sp.x, 0, 1.05); for (const n in BLOCK_POSE) c[n] += BLOCK_POSE[n] * g; }
     const S = A.strike; S.active = false; S.phase = 'none';
     if (A.fade) {
-      A.fade.w -= dt * A.fade.rate; if (A.fade.w <= 0) A.fade = null; else { const fw = A.fade.w * A.fade.w * (3 - 2 * A.fade.w); addClip(A.fade.clip, A.fade.t, fw, c); if (A.fade.h >= 0 && A.fade.clip.holdLayer) { A.fade.h += dt; const tmp = makeChannels(); A.fade.clip.holdLayer(A.fade.h, tmp); for (const n of CHANNELS) c[n] += fw * tmp[n]; } }
+      A.fade.w -= dt * A.fade.rate; if (A.fade.w <= 0) A.fade = null; else { const fw = A.fade.w * A.fade.w * (3 - 2 * A.fade.w); addClip(A.fade.clip, A.fade.t, fw * (A.fade.amp ?? 1), c, fw * (A.fade.ampH ?? 1)); if (A.fade.h >= 0 && A.fade.clip.holdLayer) { A.fade.h += dt; const tmp = makeChannels(); A.fade.clip.holdLayer(A.fade.h, tmp); for (const n of CHANNELS) c[n] += fw * tmp[n]; } }
     }
     if (A.clip) {
       const m = A.clipMode, clip = A.clip, tPrev = m.prev;
@@ -245,7 +269,7 @@ export function createAnimator3D(opts = {}) {
         S.phase = 'hold'; S.t = clip.duration; S.impactT = clip.impactT; S.name = m.name; S.phase01 = 1; S.tip = clip.tip || 'L';
       } else if (A.clipT >= clip.duration || (m.driven && m.cutAt)) { addClip(clip, clip.duration, 1, c); A.clip = null; ev.push({ type: 'clipEnd', name: m.name }); }
       else {
-        addClip(clip, A.clipT, m.amp ?? 1, c);
+        addClip(clip, A.clipT, m.amp ?? 1, c, m.ampHead ?? m.amp ?? 1);
         S.phase = phaseAt(clip, A.clipT); S.t = A.clipT; S.impactT = clip.impactT; S.name = m.name; S.phase01 = A.clipT / clip.duration; S.tip = clip.tip || 'L';
         S.active = A.clipT >= clip.phases[1].t0 && A.clipT <= clip.phases[1].t1;
       }
