@@ -72,10 +72,26 @@ export function guardOf(ev) {
 
 export function createCombatTranslator(opt = {}) {
   const ids = opt.ids ?? { a: 0, b: 1 };
+  // Patada atrapada: la sim decide en el MISMO tick (onCatch) si derriba (TAKEDOWN move 'kickCatch') o suelta (A.action = null, sin evento).
+  // El traductor guarda la atrapada y, al cerrar el tick (endTick), si no hubo derribo emite `release` (catcher = attacker, pateador = target).
+  let pendCatch = null;
+  const endTick = () => {
+    const c = pendCatch; pendCatch = null;
+    if (!c) return [];
+    const r = { type: 'release', tick: c.tick, src: 'catch', result: 'release' };
+    if (c.round != null) r.round = c.round;
+    if (c.attacker != null) r.attacker = c.attacker;   // el que atrapó
+    if (c.target != null) r.target = c.target;         // el pateador
+    if (c.action) r.action = c.action;                 // la patada atrapada
+    return [r];
+  };
   return {
+    /** Cierra el tick: devuelve 0..1 CombatEvent `release` (patada atrapada soltada sin derribo). Llamar tras traducir todos los eventos de un stepFight. */
+    endTick,
     translate(ev, F) {
       const type = KAGE_TO_COMBAT[ev.type];
       if (!type) return [];
+      if (pendCatch && ev.tick !== pendCatch.tick) pendCatch = null;   // tick viejo sin endTick: se descarta (no inventa nada)
       const out = { type, tick: ev.tick, src: ev.type };
       if (ev.round != null) out.round = ev.round;   // contrato v0.4: round (1-based) del evento
       if (ev.attacker != null) out.attacker = ids[ev.attacker];
@@ -101,12 +117,21 @@ export function createCombatTranslator(opt = {}) {
         const p = mv && F.byId?.[ev.attacker] && F.byId?.[ev.defender] ? F.geo.contactPoint(F.byId[ev.attacker], F.byId[ev.defender], mv) : null;
         if (p) out.point = F.geo.toBlocks(p);   // CombatEvent.point = MUNDO en bloques
       }
+      if (ev.type === X.CATCH) pendCatch = { tick: ev.tick, round: out.round, attacker: ids[ev.defender], target: ids[ev.attacker], action: out.action };
+      if (ev.type === FIGHT_EVENTS.TAKEDOWN && ev.move === 'kickCatch') pendCatch = null;   // derribó: no hay suelta
       const res = [out];
       if (ev.type === FIGHT_EVENTS.HIT && ev.injury) res.push({ type: 'injury', tick: ev.tick, target: ids[ev.defender], zone: ev.injury.part, action: ev.injury.kind, src: ev.type });
       return res;
     },
     /** Todos los CombatEvents de una lista de eventos KAGE (sin point: no hay F en diferido). */
-    translateAll(evs) { return evs.flatMap((e) => this.translate(e)); },
+    translateAll(evs) {
+      const res = [];
+      for (let i = 0; i < evs.length; i++) {
+        res.push(...this.translate(evs[i]));
+        if (i === evs.length - 1 || evs[i + 1].tick !== evs[i].tick) res.push(...endTick());
+      }
+      return res;
+    },
   };
 }
 export { ALL_EVENT_TYPES };
