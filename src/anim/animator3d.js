@@ -14,8 +14,8 @@ import { makeTopSampler, createFoot, initFeet, updateFeet, capHeightForFoot, wra
 import { GUARD, CHANNELS, makeChannels, makeIdleParams, idleLayer, walkLayer, addClip, phaseAt, CLIPS, BLOCK_POSE, HITSTOP, sampleTrack } from './clips.js';
 import { ZONE_CLIP } from './reactions.js';
 import './kicks.js';
-import { GROUND_POSES, GROUND_KEYS, GROUND_MOVE_CLIP } from './ground.js';
-import { buildColliders, extrapolate, firstContact, penetration, pushOut, pushIn, sdist, axisU, axisAt, CONTACT, COL, guardIndex } from './contact.js';
+import { GROUND_POSES, GROUND_KEYS, GROUND_MOVE_CLIP, GROUND_LEAN } from './ground.js';
+import { buildColliders, extrapolate, firstContact, penetration, segPenetration, pushOut, pushIn, sdist, axisU, axisAt, CONTACT, COL, guardIndex } from './contact.js';
 import { planClimb, buildClimb, sampleClimb, wallToXZ, xzToWall, climbPathAt, CLIMB_T } from './climb.js';
 import { createRng } from '../shared/rng.js';
 import { clamp, smoothstep, smin, spring, springCritical, lerp, qRot, qFromYPR } from './math3.js';
@@ -55,6 +55,16 @@ function fkLegs(r, c, yaw, kw, ground) {
   }
 }
 
+// punto de [c,d] más cercano al segmento [a,b] (r8)
+function closestSegSeg(a, b, c, d) {
+  const u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], v = [d[0] - c[0], d[1] - c[1], d[2] - c[2]], w = [a[0] - c[0], a[1] - c[1], a[2] - c[2]];
+  const A = u[0] * u[0] + u[1] * u[1] + u[2] * u[2], B = u[0] * v[0] + u[1] * v[1] + u[2] * v[2], C = v[0] * v[0] + v[1] * v[1] + v[2] * v[2];
+  const D = u[0] * w[0] + u[1] * w[1] + u[2] * w[2], E = v[0] * w[0] + v[1] * w[1] + v[2] * w[2], den = A * C - B * B;
+  let sN = den > 1e-9 ? (B * E - C * D) / den : 0; sN = clamp(sN, 0, 1);
+  let tN = C > 1e-9 ? (B * sN + E) / C : 0; tN = clamp(tN, 0, 1);
+  sN = A > 1e-9 ? clamp((tN * B - D) / A, 0, 1) : 0;
+  return [c[0] + v[0] * tN, c[1] + v[1] * tN, c[2] + v[2] * tN];
+}
 /** Enlaza dos animadores como rivales (contacto + distancia de entrada). Devuelve [a, b]. */
 export function pairAnimators(a, b) { a.setOpponent(b); b.setOpponent(a); return [a, b]; }
 /**
@@ -149,8 +159,10 @@ export function createAnimator3D(opts = {}) {
   A.clipMode = { name: '', speed: 1, map: null, driven: false, cutAt: 0 };
   // ronda 5: jab/cross llegan a 1,0 m (mano ~0,65 m fuera de la guardia): cortar un golpe extendido con menos de 0,14 s daría saltos >15 cm/frame
   const STRIKE_MIN_FADE = 0.14;
+  const CONTACT_SKIN_GND = 0.025;   // r8: golpe de suelo en pelea real: el tendido se mueve (cabeza que rebota/gira); a <= 2,5 cm en el impacto toca y el clavado lo lleva a la superficie
   const CONTACT_SKIN = 0.006, AIM_DRIVE = 0.015, AIM_SEEK = 0.15, ARM_REACH = 0.68;   // ARM_REACH: hombro->nudillos con el codo ~150° (brazo 0,31+0,27+0,12)                           // ronda 6: el ajuste mete 1,5 cm (lo para el contacto); busca la zona si el arco pasa a <15 cm
-  const PIN_FOLLOW = 0.06, PIN_FOLLOW_MAX = 0.06, PIN_FOLLOW_LATE = 0.10;   // r7: aviso de bloqueo tardío -> la mano va al guante más rápido   // la mano acompaña el retroceso como mucho 6 cm (luego se queda: el rival se separa)
+  const REBOUND_RATE = 0.9, REBOUND_BACK = 0.10;                    // r8: rebote de la patada bloqueada (velocidad del clip hacia atrás, cuánto desanda)
+  const PIN_FOLLOW = 0.06, PIN_FOLLOW_MAX = 0.06, PIN_FOLLOW_LATE = 0.16;   // r7: aviso de bloqueo tardío -> la mano va al guante más rápido   // la mano acompaña el retroceso como mucho 6 cm (luego se queda: el rival se separa)
                                              // ronda 6: m/frame que la mano clavada sigue al rival que retrocede
   const strikeExtended = () => !!(A.clip && A.clip.tip && A.clip.impactT > 0 && !A.clip.feint && !A.clip.hold && A.clipT > A.clip.impactT * 0.6 && A.clipT < A.clip.duration * 0.6);
   const startClip = (name, o) => {
@@ -158,7 +170,7 @@ export function createAnimator3D(opts = {}) {
     if (A.clip && !o.force) return false;
     if (A.clip && o.force && clip.from !== A.clipMode.name) A.fade = { clip: A.clip, t: A.clipT, w: 1, rate: 1 / (strikeExtended() ? STRIKE_MIN_FADE : 0.08), h: A.clipMode.holding ? A.clipMode.holdT : -1, amp: A.clipMode.amp ?? 1, ampH: A.clipMode.ampHead ?? A.clipMode.amp ?? 1, ek: A.clipMode.entryK || 0, lat: A.clipMode.lat };
     A.clip = clip; A.clipT = clamp(o.phase ?? 0, 0, 1) * clip.duration;
-    const m = A.clipMode; m.name = name; m.driven = !!o.driven; m.map = null; m.speed = o.speed > 0 ? o.speed : 1;
+    const m = A.clipMode; m.name = name; m.driven = !!o.driven; m.map = null; m.rebound = null; m.speed = o.speed > 0 ? o.speed : 1;
     if (o.duration > 0) {
       if (o.impactIn > 0 && o.impactIn < o.duration) m.map = { ti: o.impactIn, tt: o.duration };
       else m.speed *= clip.duration / o.duration;
@@ -210,7 +222,7 @@ export function createAnimator3D(opts = {}) {
     const fc = CLIPS[name], cut = fc.impactT;
     const t = A.clip && A.clipMode.name === 'hook' && !A.clipMode.driven ? A.clipT : 0;
     if (A.clip && A.clipMode.name === 'hook' && t <= cut) {          // mismo arranque: continuidad exacta, sin fundido
-      A.clip = fc; A.clipT = t; const m = A.clipMode; m.name = name; m.map = null; m.speed = 1; m.prev = t; m.driven = false; m.holding = false; m.stale = 0; m.amp = 1; m.ampHead = 1;
+      A.clip = fc; A.clipT = t; const m = A.clipMode; m.name = name; m.map = null; m.rebound = null; m.speed = 1; m.prev = t; m.driven = false; m.holding = false; m.stale = 0; m.amp = 1; m.ampHead = 1;
     } else startClip(name, { force: true, phase: Math.min(t, cut) / fc.duration });
     A._pend.push({ type: 'feint', name, move });   // se entrega en el próximo update() (events se vacía al empezar)
     return true;
@@ -224,6 +236,7 @@ export function createAnimator3D(opts = {}) {
       const pi = clip.impactT / clip.duration;
       p = p <= simImpact01 ? (p / simImpact01) * pi : pi + ((p - simImpact01) / (1 - simImpact01)) * (1 - pi);
     }
+    if (m.rebound) { m.stale = 0; return true; }                       // r8: rebotando: no sigue la fase de la sim
     A.clipT = p * clip.duration; m.cutAt = p >= 1 ? 1 : 0; m.stale = 0;
     return true;
   };
@@ -326,6 +339,63 @@ export function createAnimator3D(opts = {}) {
     }
   }
   const GROUND_STANCE = { groundTop: 'top', groundBottom: 'bottom' };
+  // ---- r8: de rodillas con IK (el de arriba). Rodillas SOBRE el piso real de vóxeles (sampler top(), r = espinilla), a los lados del de
+  // abajo (se empujan fuera de sus colisores), tibias tendidas hacia atrás sobre el piso, empeine apoyado. La pelvis baja lo que haga falta para
+  // que el muslo llegue (|cadera-rodilla| = muslo exacto => la IK de dos huesos deja la rodilla en el punto pedido).
+  //   kx: rodilla a un lado del centro de la pelvis (m), kz: adelante(+)/atrás(-) de la pelvis, ph: pelvis sobre el piso (m), sb: tibia hacia afuera
+  const KNEEL = {
+    mount: { kx: 0.30, kz: -0.26, ph: 0.40, sb: 0.30 },   // a horcajadas: rodillas junto a la cadera del de abajo, pelvis sobre su abdomen
+    guard: { kx: 0.17, kz: 0.08, ph: 0.50, sb: 0.05 },    // de rodillas entre sus piernas
+    half:  { kx: 0.24, kz: -0.08, ph: 0.42, sb: 0.20 },
+    side:  { kx: 0.20, kz: 0.10, ph: 0.40, sb: 0.10 },    // en el marco de la pelvis girada 90°: rodillas contra su costado
+    back:  { kx: 0.26, kz: -0.06, ph: 0.42, sb: 0.20 },
+  };
+  const KNEE_R = CONTACT.shin + 0.004, _kq = [0, 0, 0, 1];
+  A.kneel = { L: null, R: null, w: 0 };
+  function kneelIK(r, c, yaw) {
+    let w = 0, pos = null, bw = 0;
+    for (const k of GROUND_KEYS) { const x = GW['top:' + k].x; w += x; if (x > bw) { bw = x; pos = k; } }
+    A.kneel.w = w; if (w < 1e-3 || !pos) { A.kneel.L = A.kneel.R = null; return; }
+    const K = KNEEL[pos], P0 = GROUND_POSES.top[pos], P = r.pelvisPos, y0 = _root[1];
+    const hy = yaw + c.hipYaw, fx = Math.sin(hy), fz = Math.cos(hy), lx = Math.cos(hy), lz = -Math.sin(hy);   // adelante / izquierda (pelvis)
+    const fl = (x, z, yh) => top(x, z, yh);
+    // pelvis: altura sobre el piso bajo ella + lo que el clip suma a dy (golpes)
+    const fp = fl(P[0], P[2], y0 + 0.3), pyT = fp + K.ph + (c.dy - P0.dy);
+    const osk = oppSkel(), oc = osk ? (CT.kcols = buildColliders(osk, CT.kcols)).slice(0, 8) : null;   // cuerpo + piernas del de abajo
+    const qPel = qFromYPR(hy, c.hipPitch, c.hipRoll, _kq);
+    // una pierna con la pelvis a altura pY: la rodilla en el piso a |muslo| exacto de la cadera, en la dirección horizontal pedida (kx, kz)
+    // girada `da` rad; tibia hacia atrás sobre el piso. pen = cuánto entran muslo/tibia en el de abajo.
+    const leg = (s, sx, pY, da) => {
+      const hip = qRot(qPel, [sx * DIM.hipHalf, 0, 0]); hip[0] += P[0]; hip[1] += pY; hip[2] += P[2];
+      let ux = lx * sx * (K.kx - DIM.hipHalf) + fx * K.kz, uz = lz * sx * (K.kx - DIM.hipHalf) + fz * K.kz; const u0 = Math.hypot(ux, uz) || 1; ux /= u0; uz /= u0;
+      if (da) { const cs = Math.cos(da * sx), sn = Math.sin(da * sx), x2 = ux * cs + uz * sn; uz = -ux * sn + uz * cs; ux = x2; }
+      let kf = fl(hip[0] + ux * 0.3, hip[2] + uz * 0.3, y0 + 0.3) + KNEE_R;
+      const dy = hip[1] - kf, hh = Math.sqrt(Math.max(0.0004, DIM.thigh * DIM.thigh - Math.min(dy * dy, DIM.thigh * DIM.thigh)));
+      const knee = [hip[0] + ux * hh, kf, hip[2] + uz * hh];
+      kf = fl(knee[0], knee[2], y0 + 0.3) + KNEE_R; knee[1] = kf;
+      let bx = -fx + lx * sx * K.sb, bz = -fz + lz * sx * K.sb; const bl = Math.hypot(bx, bz); bx /= bl; bz /= bl;
+      const ay = fl(knee[0] + bx * DIM.shin, knee[2] + bz * DIM.shin, y0 + 0.3) + KNEE_R, sdy = ay - knee[1], sh = Math.sqrt(Math.max(1e-6, DIM.shin * DIM.shin - Math.min(sdy * sdy, DIM.shin * DIM.shin * 0.999)));
+      const ank = [knee[0] + bx * sh * 0.999, ay, knee[2] + bz * sh * 0.999];
+      const pen = oc ? Math.max(segPenetration(oc, hip, knee, CONTACT.thigh), segPenetration(oc, knee, ank, CONTACT.shin), penetration(oc, knee, 0.06).pen) : 0;
+      return { hip, knee, ank, pen, floor: kf - KNEE_R, maxY: pY + (kf + DIM.thigh * 0.985 - hip[1]) };
+    };
+    // la pierna no atraviesa al de abajo: se gira la dirección de la rodilla (afuera/atrás/adelante) hasta que muslo y tibia quedan libres
+    const DA = [0, 0.2, -0.2, 0.4, -0.4, 0.6, -0.6, 0.8, -0.8, 1.0, -1.0];
+    const solve = (pY) => { const o = {}; for (const [s, sx] of [['L', 1], ['R', -1]]) { let g = null, gs = Infinity;
+      for (const da of DA) { const h = leg(s, sx, pY, da), sc = Math.max(0, h.pen - 0.004) * 10 + Math.abs(da) * 0.02; if (sc < gs) { gs = sc; g = h; } if (h.pen <= 0.004 && da === 0) break; }
+      o[s] = g; } return o; };
+    let G = solve(pyT);
+    const pyFit = Math.min(pyT, G.L.maxY, G.R.maxY);
+    if (pyFit < pyT - 1e-4) G = solve(pyFit);
+    const py = P[1] + (pyFit - P[1]) * w; P[1] = py; A.lastPelvis[1] = py; A.pelvisY = py;
+    for (const s of ['L', 'R']) {
+      const L = r.legs[s], g = G[s], th = [g.knee[0] - g.hip[0], g.knee[1] - g.hip[1], g.knee[2] - g.hip[2]], tl = Math.hypot(...th) || 1;
+      for (let k = 0; k < 3; k++) { L.ankle[k] += (g.ank[k] - L.ankle[k]) * w; L.pole[k] += (th[k] / tl * 1.5 - L.pole[k]) * w; }
+      // pie: apunta atrás a lo largo de la tibia, apoyado en el empeine (como kF = 1 de fkLegs)
+      L.footYaw += wrapPi(hy - L.footYaw) * w; L.footPitch += (Math.PI - 0.35 - L.footPitch) * w;
+      A.kneel[s] = { knee: g.knee, ankle: g.ank, floor: g.floor, pen: g.pen };
+    }
+  }
   // cabeza del que está abajo: nunca entra en el suelo (esfera de la cabeza del colisor, r = CONTACT.head). Se corrige con el cabeceo del
   // cuello (pendiente medida en la pose actual) -> el latigazo de hurt_ground "choca" con el suelo y rebota sin atravesarlo.
   A.headFloor = { pen: 0, hits: 0 };
@@ -390,16 +460,19 @@ export function createAnimator3D(opts = {}) {
     if (A.guard.sp.x > 1e-4 && A.gndW < 0.999) { const g = clamp(A.guard.sp.x, 0, 1.05) * (1 - A.gndW); for (const n in BLOCK_POSE) c[n] += BLOCK_POSE[n] * g; }
     if (A.gndW > 1e-4) groundLayer(c);
     const S = A.strike; S.active = false; S.phase = 'none';
+    if (A.clip && A.clipMode.rebound && A.clipMode.rebound.end) { A.clipMode.rebound = null; const nm = A.clipMode.name; A.cancel(0.20); ev.push({ type: 'clipEnd', name: nm, rebound: true }); }
     if (A.fade) {
       A.fade.w -= dt * A.fade.rate; if (A.fade.w <= 0) A.fade = null; else { const fw = A.fade.w * A.fade.w * (3 - 2 * A.fade.w); addClip(A.fade.clip, A.fade.t, fw * (A.fade.amp ?? 1), c, fw * (A.fade.ampH ?? 1)); if (A.fade.clip.entry && A.fade.ek) addClip(A.fade.clip.entry, A.fade.t, fw * A.fade.ek, c); if (A.fade.lat != null && A.fade.lat !== 1) latLayer(A.fade.clip, A.fade.t, A.fade.lat - 1, fw * (A.fade.amp ?? 1), fw * (A.fade.ampH ?? 1), c); if (A.fade.h >= 0 && A.fade.clip.holdLayer) { A.fade.h += dt; const tmp = makeChannels(); A.fade.clip.holdLayer(A.fade.h, tmp); for (const n of CHANNELS) c[n] += fw * tmp[n]; } }
     }
     if (A.clip) {
       const m = A.clipMode, clip = A.clip, tPrev = m.prev;
-      if (m.driven) { if ((m.stale += dt) > 0.25) { A.cancel(0.12); ev.push({ type: 'clipEnd', name: m.name, stale: true }); } }   // la sim dejó de conducirlo
+      if (m.driven && !m.rebound) { if ((m.stale += dt) > 0.25) { A.cancel(0.12); ev.push({ type: 'clipEnd', name: m.name, stale: true }); } }   // la sim dejó de conducirlo
       else {
         let rate = m.speed;
         if (m.map) rate = m.speed * (A.clipT < clip.impactT ? clip.impactT / m.map.ti : (clip.duration - clip.impactT) / (m.map.tt - m.map.ti));
+        if (m.rebound) rate = -REBOUND_RATE;                            // r8: patada bloqueada/chequeada: rebota (desanda la carga) y vuelve a la guardia
         A.clipT += dt * rate;
+        if (m.rebound && A.clipT <= m.rebound.until) { A.clipT = m.rebound.until; m.rebound.end = true; }
       }
       m.prev = A.clipT;
       if (tPrev < clip.impactT && A.clipT >= clip.impactT) ev.push(clip.feint ? { type: 'feintCut', name: m.name, move: clip.feint } : { type: 'impact', name: m.name, tip: clip.tip || 'L' });
@@ -427,6 +500,9 @@ export function createAnimator3D(opts = {}) {
     }
     // ---- altura de pelvis
     const sf = Math.sin(yaw), cf = Math.cos(yaw);                       // adelante visual (marco interno)
+    if (c.gLean && A.ground && A.ground.role === 'top') for (const k of GROUND_KEYS) {   // r8: inclinación del golpe de suelo por posición
+      const gw = GW['top:' + k].x, sn = isStrike(A.clip) ? A.clip.name : A.fade && isStrike(A.fade.clip) ? A.fade.clip.name : '', L = GROUND_LEAN[sn + ':' + k] || GROUND_LEAN[k]; if (gw > 0 && L) for (const n in L) c[n] += c.gLean * gw * L[n];
+    }
     const px = _root[0] + c.px * cf + c.pz * sf, pz = _root[2] - c.px * sf + c.pz * cf;
     const wf = clamp(1 - A.walkAmt * 1.5, 0, 1);                        // los clips de pies solo mandan con el cuerpo quieto
     const eff = A.eff;
@@ -500,6 +576,7 @@ export function createAnimator3D(opts = {}) {
       },
     };
     if (kw > 1e-4) fkLegs(r, c, yaw, kw, Math.min(eff[0].sole, eff[1].sole));
+    kneelIK(r, c, yaw);
     solveRig(rig, r);
     if (c.ptR > 1e-3) {                                                // r7: pie de la patada en punta (empeine alineado con la tibia)
       const sh = rig.pose.shinR, dx = sh.t[0] - sh.p[0], dy = sh.t[1] - sh.p[1], dz = sh.t[2] - sh.p[2], dl = Math.hypot(dx, dy, dz) || 1, w = clamp(c.ptR, 0, 1), L = r.legs.R;
@@ -519,13 +596,14 @@ export function createAnimator3D(opts = {}) {
       solveRig(rig, r);
     }
     guardYield(dt, r);
+    catchLayer(dt, r, yaw, ev);
     { const kc = A.clip && A.clip.tip === 'kickR' ? A.clip : A.fade && A.fade.clip.tip === 'kickR' ? A.fade.clip : null; if (kc) A._kf = kc.kickFrac ?? 0.3; }
     { const sc = isStrike(A.clip) ? A.clip : A.fade && isStrike(A.fade.clip) ? A.fade.clip : null; A._elb = !!(sc && sc.tip === 'elbowR'); }   // r7: punta = codo   // r7: punta de la patada (fracción tobillo->rodilla)
     contactStep(dt, r, ev);
     if (A.gndW > 0.05 && A.ground && A.ground.role === 'bottom') floorHead(r);
     CT.lastR = r; CT.lastS = S;
     exportSkeleton(rootW, yaw, S);
-    if (A.opp && A.opp._refine && Math.abs(A.opp.t - A.t) < 1e-9) A.opp._refine();   // orden a->b: b ya movido, a corrige su punta contra la pose NUEVA de b
+    if (A.opp && A.opp._refine && Math.abs(A.opp.t - A.t) < 1e-9) { A.opp._guardRefine(); A._guardRefine(); A.opp._refine(); A._refine(); A.opp._guardRefine(); A._guardRefine(); A.opp._refine(); A._refine(); }   // orden a->b: b ya movido, a corrige su punta contra la pose NUEVA de b; r8: y b contra la a corregida
     A.diag.clamped = (rig.diag.legReachedL && rig.diag.legReachedR) ? 0 : 1;
     return skeleton;
   };
@@ -587,31 +665,39 @@ export function createAnimator3D(opts = {}) {
   // el resto del miembro (codo/rodilla y la mitad del segmento distal) tampoco entra: si penetra, se desplaza la punta pedida
   // (gana x2 en la articulación media) y se re-resuelve; 2 pasadas. Cubre la rodilla de la patada que vuelve y el torso que se dobla.
   const _m = [0, 0, 0], _h = [0, 0, 0];
-  const LIMB_STEP = 0.10, LIMB_STEP_KICK = 0.10, LIMB_STEP_REC = 0.035, REFINE_LIMB_MAX = 0.04;                                             // m/frame (60 Hz) que puede cambiar la corrección del miembro
+  const LIMB_STEP = 0.10, LIMB_STEP_KICK = 0.10, LIMB_STEP_REC = 0.035, LIMB_DEEP = 0.012, LIMB_DEEP_MAX = 0.12, REFINE_LIMB_MAX = 0.04;                                             // m/frame (60 Hz) que puede cambiar la corrección del miembro
+  const BK_TOL = 0.012, _bk1 = [null], BK1 = (c) => { _bk1[0] = c; return _bk1; };
   const limbNeed = (cols, side, kick, rt, e) => {
     const P = rig.pose, J = kick ? P.thighR.t : P['upperArm' + side].t; tipOf(side, kick, _tip);
-    e[0] = e[1] = e[2] = 0;
+    e[0] = e[1] = e[2] = 0; CT.limbPen = 0;                              // r8: profundidad real máxima de las muestras (no la suma ponderada)
     const R0 = kick ? P.thighR.p : P['upperArm' + side].p;               // cadera / hombro
-    const nq = kick ? 8 : 5;
+    const nq = kick && A.clip && A.clip.aim && A.clip.aim.zone === 'head' ? 8 : 9;   // patada media/baja: + q8 = mitad punta->tobillo (r8; la alta envuelve la cabeza con el empeine)                                              // r8: brazo + húmero a 0,3 y 0,75 (el guante del rival que se cruza)
     // patada bloqueada (r7): el brazo/espinilla que bloquea apoya sobre la pierna; no se la empuja (sólo la punta contra él, por el clavado)
     // patada: los brazos del rival (guantes/antebrazos) ceden ante la pierna (guardYield del rival), no la empujan; sólo el cuerpo (0..7)
-    const bk0 = CT.blk && kick && A.clip && CT.blk.clip === A.clip ? cols[CT.blk.i] : null, bk = bk0 && bk0.limb !== 'glove' ? bk0 : null, lc = kick ? (CT.lc || (CT.lc = [])) : cols;
+    const bk0 = CT.blk && A.clip && CT.blk.clip === A.clip ? cols[CT.blk.i] : null, bk = bk0 && (bk0.limb !== 'glove' || !kick) && bk0.limb !== 'shin' ? bk0 : null, lc = kick || bk ? (CT.lc || (CT.lc = [])) : cols;   // r8: puño bloqueado: el guante/antebrazo que bloquea apoya en el brazo (no lo empuja)
     const rec = kick && A.clip && A.clip.tip === 'kickR' ? A.clipT > A.clip.impactT + 0.05 && !(A.clip.aim && A.clip.aim.zone === 'legs') : false;   // recogida: la pierna rodea también los brazos (que bajan a cubrir)
     CT.rec = rec && !bk0 && !!kick;
-    if (kick) { lc.length = 0; for (const c of cols) if (c !== bk && (bk0 || rec || !c.guard)) lc.push(c); }   // bloqueada: el resto de la guardia sí frena la pierna
+    if (kick) { lc.length = 0; for (const c of cols) if (c !== bk && (bk0 || rec || CT.refAll || !c.guard)) lc.push(c); }
+    else if (bk) { lc.length = 0; for (const c of cols) if (c !== bk) lc.push(c); }   // r8: la 2.ª pasada (rival ya movido/cedido) no deja la pierna dentro de sus brazos   // bloqueada: el resto de la guardia sí frena la pierna
     for (let q = 0; q < nq; q++) {
-      if (A._elb && !kick && q < 4) continue;                         // codo: la punta ES la articulación (la lleva el clavado); sólo antebrazo lejano y húmero
+      if (A._elb && !kick && (q < 4 || q >= 7)) continue;                         // codo: la punta ES la articulación (la lleva el clavado); sólo antebrazo lejano y húmero
       // muestras: articulación media (x2), 1/4, 1/2 y 3/4 del segmento distal, mitad del proximal; patada (r7): + tobillo y medio pie
-      const g = q === 0 ? 2 : q === 4 || q === 7 ? 2.5 : 1.3;
+      const g = q === 0 ? 2 : q === 4 || (kick && (q === 7 || q === 8)) ? 2.5 : !kick && q === 5 ? 3 : !kick && q === 6 ? 1.8 : 1.3;
       let rq = kick ? CONTACT.thigh * 0.8 : rt + 0.02;
       if (q === 0) { _m[0] = J[0]; _m[1] = J[1]; _m[2] = J[2]; }
       else if (q < 4) { const u = q / 4, D = A._elb && !kick ? P['forearm' + side].t : _tip; for (let k = 0; k < 3; k++) _m[k] = J[k] + (D[k] - J[k]) * u; }
       else if (q === 4) for (let k = 0; k < 3; k++) _m[k] = (R0[k] + J[k]) / 2;
+      else if (kick && q === 8) { const a = P.shinR.t; for (let k = 0; k < 3; k++) _m[k] = (_tip[k] + a[k]) / 2; rq = CONTACT.shinTip; }
+      else if (q >= 8 || (!kick && q === 7)) { const u = q === 7 ? 0.875 : q === 8 ? 0.125 : 0.625, D = A._elb && !kick ? P['forearm' + side].t : _tip; for (let k = 0; k < 3; k++) _m[k] = J[k] + (D[k] - J[k]) * u; }   // r8: segmento distal más denso
+      else if (!kick) { const u = q === 5 ? 0.3 : 0.75; for (let k = 0; k < 3; k++) _m[k] = R0[k] + (J[k] - R0[k]) * u; }
       else if (q === 5) { const a = P.shinR.t; _m[0] = a[0]; _m[1] = a[1]; _m[2] = a[2]; rq = CONTACT.shinTip; }
       else if (q === 6) { const f = P.footR; for (let k = 0; k < 3; k++) _m[k] = (f.p[k] + f.t[k]) / 2; rq = 0.035; }
       else for (let k = 0; k < 3; k++) _m[k] = R0[k] + (J[k] - R0[k]) * 0.8;
       _h[0] = _m[0]; _h[1] = _m[1]; _h[2] = _m[2];
-      if (pushOut(lc, _h, rq) > 0) for (let k = 0; k < 3; k++) e[k] += (_h[k] - _m[k]) * g;
+      // r8: el húmero no entra en el guante que bloquea (sólo el antebrazo/puño se apoyan en él)
+      let dd = pushOut(!kick && bk && q >= 4 && q <= 6 ? cols : lc, _h, rq);
+      if (!kick && bk && (q < 4 || q >= 7)) { const d2 = pushOut(BK1(bk), _h, rq - BK_TOL); if (d2 > 0) dd = Math.max(dd, d2 + BK_TOL); }   // r8: antebrazo/puño apoyan en el guante que bloquea, sin hundirse más de BK_TOL
+      if (dd > 0) { for (let k = 0; k < 3; k++) e[k] += (_h[k] - _m[k]) * g; if (dd > CT.limbPen) CT.limbPen = dd; }
     }
     return Math.hypot(e[0], e[1], e[2]);
   };
@@ -627,7 +713,7 @@ export function createAnimator3D(opts = {}) {
     shiftTip(r, cols, side, kick, rt, L);                             // corrección del frame anterior
     const need = limbNeed(cols, side, kick, rt, _e);
     const tx = need > 1e-3 ? L[0] + _e[0] : L[0] * Math.exp(-dt / 0.06), ty = need > 1e-3 ? L[1] + _e[1] : L[1] * Math.exp(-dt / 0.06), tz = need > 1e-3 ? L[2] + _e[2] : L[2] * Math.exp(-dt / 0.06);
-    let sx = tx - L[0], sy = ty - L[1], sz = tz - L[2]; const sl = Math.hypot(sx, sy, sz), cap = (kick ? (CT.rec ? LIMB_STEP_REC : LIMB_STEP_KICK) : LIMB_STEP) * dt * 60;
+    let sx = tx - L[0], sy = ty - L[1], sz = tz - L[2]; const sl = Math.hypot(sx, sy, sz), cap = Math.max((kick ? (CT.rec ? LIMB_STEP_REC : LIMB_STEP_KICK) : LIMB_STEP) * dt * 60, Math.min((CT.limbPen - LIMB_DEEP) * 0, LIMB_DEEP_MAX));   // r8: si el miembro entra hondo (rival que se mete), sale en el frame (queda <= LIMB_DEEP)
     if (sl > cap) { sx *= cap / sl; sy *= cap / sl; sz *= cap / sl; }
     L[0] += sx; L[1] += sy; L[2] += sz;
     if (need > 1e-3) shiftTip(r, cols, side, kick, rt, [sx, sy, sz]);
@@ -635,34 +721,39 @@ export function createAnimator3D(opts = {}) {
   // r7: MI guardia cede ante el miembro del rival (la pierna de su patada, su brazo que pasa entre mis guantes): si mi antebrazo/guante
   // entra en sus muslos/espinillas/antebrazos/guantes, la muñeca se aparta (<= GUARD_STEP m/frame) y vuelve sola (0,08 s) cuando se libera.
   const GUARD_STEP = 0.06, GUARD_STEP_KICK = 0.14, _gy = { L: [0, 0, 0], R: [0, 0, 0] }, _gs = [0, 0, 0], _ge = [0, 0, 0];
-  const GUARD_OPP = [2, 3, 4, 5, 8, 9, 10, 11];
+  const GUARD_OPP = [2, 3, 4, 5, 8, 9, 10, 11], UPPER_ARM_R = 0.05;
   A.guardShift = _gy;
   // r7: bloqueo -> el miembro que bloquea VA al golpe: su superficie se lleva hasta la punta del golpe del rival (muñeca para guante/antebrazo,
   // tobillo para la espinilla del chequeo), con envolvente (entra 0,05 s, sostiene, suelta a 0,30 s) y <= MEET_STEP m/frame. El que golpea
   // persigue la superficie más cercana del mismo miembro (clavado tardío) => se encuentran sin atravesarse.
-  const MEET_STEP = 0.07, _mt = [0, 0, 0], _mc = [0, 0, 0], _mo = [0, 0, 0];
+  const MEET_INTO = 0.016, MEET_INTO_FA = 0.03, MEET_STEP = 0.07, MEET_STEP_FIST = 0.10, MEET_STEP_SHIN = 0.12, _mt = [0, 0, 0], _mc = [0, 0, 0], _mo = [0, 0, 0];
   A.meet = null;
   function meetStep(dt, r) {
     const M = A.meet, o = A.opp && typeof A.opp !== 'function' ? A.opp : null;
     if (!M) return false;
     const oc = o && (isStrike(o.clip) ? o.clip : null), op = o && o.contact && o.contact.pin;
-    const on = !!(oc && oc.tip === 'kickR' && M.limb !== 'glove' && op && !op.done && A.t - M.t0 < 0.4);   // puños/guante: ya frenan bien sin ir al golpe              // sólo mientras el golpe del rival está clavado (impacto + hit-stop)
-    M.e = on ? Math.min(1, (M.e || 0) + dt / 0.05) : Math.max(0, (M.e || 0) - dt / 0.12);
+    const on = !!(oc && op && !op.done && A.t - M.t0 < 0.4);   // r8: todo miembro que bloquea va al golpe mientras está clavado (puños: a un punto FIJO)   // puños/guante: ya frenan bien sin ir al golpe              // sólo mientras el golpe del rival está clavado (impacto + hit-stop)
+    M.e = on ? Math.min(1, (M.e || 0) + dt / 0.025) : Math.max(0, (M.e || 0) - dt / 0.12);
     const env = M.e;
     let tx = 0, ty = 0, tz = 0;
     if (oc && env > 0) {
       const f = o.strike.fist; _mt[0] = -f[2]; _mt[1] = f[1]; _mt[2] = f[0];
+      if (M.limb !== 'shin') { if (!M.fix) M.fix = _mt.slice(); _mt[0] = M.fix[0]; _mt[1] = M.fix[1]; _mt[2] = M.fix[2]; }   // puño: el guante va adonde estaba el puño al aviso (si siguiera al puño que lo persigue, derivarían juntos)
       const P = rig.pose, s = M.side, leg = M.limb === 'shin';
       const a0 = leg ? P['shin' + s].p : M.limb === 'glove' ? P['forearm' + s].t : P['upperArm' + s].t, b0 = leg ? P['shin' + s].t : M.limb === 'glove' ? P['hand' + s].t : P['forearm' + s].t;
       const ax = b0[0] - a0[0], ay = b0[1] - a0[1], az = b0[2] - a0[2], L2 = ax * ax + ay * ay + az * az || 1;
+      if (leg && o.skeleton && o.skeleton.pose) {                       // r8: chequeo: el punto de la espinilla del rival (rodilla->tobillo) más cercano a la mía (no se cruzan)
+        const kp = o.skeleton.pose.kneeR, ap = o.skeleton.pose.footR, K0 = [-kp[2], kp[1], kp[0]], K1 = [-ap[2], ap[1], ap[0]];
+        const cp = closestSegSeg(a0, b0, K0, K1); _mt[0] = cp[0]; _mt[1] = cp[1]; _mt[2] = cp[2];
+      }
       let u = ((_mt[0] - a0[0]) * ax + (_mt[1] - a0[1]) * ay + (_mt[2] - a0[2]) * az) / L2; u = clamp(u, 0.15, 0.95);
       for (let k = 0; k < 3; k++) _mc[k] = a0[k] + (b0[k] - a0[k]) * u;
       const dx = _mt[0] - _mc[0], dy = _mt[1] - _mc[1], dz = _mt[2] - _mc[2], dl = Math.hypot(dx, dy, dz) || 1;
-      const R = (leg ? CONTACT.shin : M.limb === 'glove' ? CONTACT.glove : CONTACT.forearm) + (oc.tip === 'kickR' ? CONTACT.shinTip : CONTACT.fist);
+      const R = leg ? CONTACT.shin * 2 + 0.004 : (M.limb === 'glove' ? CONTACT.glove : CONTACT.forearm) + (oc.tip === 'kickR' ? CONTACT.shinTip : CONTACT.fist) - (M.limb === 'forearm' && oc.tip !== 'kickR' ? MEET_INTO_FA : MEET_INTO);   // chequeo: eje a eje = 2 radios de espinilla (+4 mm)   // r8: apunta 1 cm dentro (la punta del rival lo saca): las superficies quedan juntas
       const k = Math.max(0, dl - R) / dl * env / Math.max(u, 0.3);       // el extremo (muñeca/tobillo) se mueve más que el punto medio
       tx = dx * k; ty = dy * k; tz = dz * k;
     }
-    let sx = tx - M.off[0], sy = ty - M.off[1], sz = tz - M.off[2]; const sl = Math.hypot(sx, sy, sz), cap = MEET_STEP * dt * 60;
+    let sx = tx - M.off[0], sy = ty - M.off[1], sz = tz - M.off[2]; const sl = Math.hypot(sx, sy, sz), cap = (oc && oc.tip !== 'kickR' ? MEET_STEP_FIST : M.limb === 'shin' ? MEET_STEP_SHIN : MEET_STEP) * dt * 60;
     if (sl > cap) { sx *= cap / sl; sy *= cap / sl; sz *= cap / sl; }
     M.off[0] += sx; M.off[1] += sy; M.off[2] += sz;
     if (env <= 0 && Math.hypot(M.off[0], M.off[1], M.off[2]) < 1e-4) { A.meet = null; return false; }
@@ -679,12 +770,13 @@ export function createAnimator3D(opts = {}) {
     const oc = A.opp && typeof A.opp !== 'function' && A.opp.clip ? A.opp.clip : null;
     const holding = A.blockedAt >= 0 && A.t - A.blockedAt < 0.35 && !(oc && oc.tip === 'kickR' && A.meet && A.meet.limb !== 'glove');   // bloqueando un puño: la guardia lo sostiene (no se aparta); una patada: el brazo apoya sobre la pierna
     for (const s of ['L', 'R']) {
-      if (holding) { const g = _gy[s], k = 1 - Math.exp(-dt / 0.08); g[0] -= g[0] * k; g[1] -= g[1] * k; g[2] -= g[2] * k; }
+      if (holding && (!A.meet || A.meet.side === s || A.meet.limb === 'shin')) { const g = _gy[s], k = 1 - Math.exp(-dt / 0.08); g[0] -= g[0] * k; g[1] -= g[1] * k; g[2] -= g[2] * k; }
       if (sc && sc.tip === s) { _gy[s][0] = _gy[s][1] = _gy[s][2] = 0; continue; }   // el brazo que golpea lo maneja el contacto
       const meetArm = A.meet && A.meet.side === s && A.meet.limb !== 'shin' && A.t - A.meet.t0 < 0.4;   // el brazo que bloquea la patada apoya, no se aparta
       const g = _gy[s], P = rig.pose, el = P['upperArm' + s].t, wr = P['forearm' + s].t, kn = P['hand' + s].t;
       _ge[0] = _ge[1] = _ge[2] = 0; let need = 0;
-      if (ocols && !holding && !meetArm) for (let q = 0; q < 6; q++) {
+      const hold = holding && (!A.meet || A.meet.side === s || A.meet.limb === 'shin');   // r8: sólo el brazo que bloquea sostiene; el otro cede
+      if (ocols && !hold && !meetArm) for (let q = 0; q < 6; q++) {
         // muestras: antebrazo 1/2 y muñeca, guante 1/2 y nudillos, y (r7, el muslo de la patada entra por el codo) antebrazo 0 y 1/4
         const u = q < 2 ? 0.5 + 0.5 * q : q < 4 ? 0.5 * (q - 1) : 0.25 * (q - 4), A0 = q < 2 || q > 3 ? el : wr, B0 = q < 2 || q > 3 ? wr : kn, rr = q < 2 || q > 3 ? CONTACT.forearm : CONTACT.glove;
         for (let k = 0; k < 3; k++) _gs[k] = A0[k] + (B0[k] - A0[k]) * u;
@@ -723,16 +815,60 @@ export function createAnimator3D(opts = {}) {
   };
   // 2.ª pasada sin estado (la llama el rival al terminar SU update en el mismo tick): sólo saca la punta / el miembro si la pose nueva
   // del rival los dejó dentro, re-resuelve y re-exporta. No toca el clavado ni las rampas.
+  // r8: 2.ª pasada de la GUARDIA (sin tope): tras las correcciones de los golpes de este tick, mis brazos que no golpean ni sostienen un bloqueo
+  // salen de los miembros del rival (su brazo/pierna ya está en su pose final). Lo que se mueve queda en _gy (vuelve solo).
+  A._guardRefine = () => {
+    const r = CT.lastR, S = CT.lastS, sk = oppSkel(); if (!r || !sk || A.gndW > 0.5 || A.catchSt) return;   // r8: sujetando la pierna: los brazos SÍ la tocan
+    const ocols = CT.gcols = buildColliders(sk, CT.gcols), sub = GUARD_OPP.map((i) => ocols[i]);
+    // r8: + húmeros del rival (hombro->codo; no son colisores de contacto): mi guante no se mete en su brazo que golpea
+    const ua = CT.gua || (CT.gua = ['L', 'R'].map(() => ({ kind: 'cap', a: [0, 0, 0], b: [0, 0, 0], r: UPPER_ARM_R })));
+    if (!A.ground && !(A.opp && A.opp.ground)) ['L', 'R'].forEach((s, j) => { const a = sk.pose['shoulder' + s], b = sk.pose['elbow' + s]; if (!a || !b) return; ua[j].a[0] = -a[2]; ua[j].a[1] = a[1]; ua[j].a[2] = a[0]; ua[j].b[0] = -b[2]; ua[j].b[1] = b[1]; ua[j].b[2] = b[0]; sub.push(ua[j]); });
+    const sc = isStrike(A.clip) ? A.clip : A.fade && isStrike(A.fade.clip) ? A.fade.clip : null;
+    const oc = A.opp && typeof A.opp !== 'function' && A.opp.clip ? A.opp.clip : null;
+    const holding = A.blockedAt >= 0 && A.t - A.blockedAt < 0.35 && !(oc && oc.tip === 'kickR' && A.meet && A.meet.limb !== 'glove');
+    let any = false;
+    for (const s of ['L', 'R']) {
+      if (sc && (sc.tip === s || (sc.tip === 'elbowR' && s === 'R'))) continue;
+      if (holding && (!A.meet || A.meet.side === s || A.meet.limb === 'shin')) continue;
+      // (el brazo que va a la patada SÍ, con más margen: apoya en la superficie de la pierna sin cruzarla)
+      const mA = !!(A.meet && A.meet.side === s && A.meet.limb !== 'shin' && A.t - A.meet.t0 < 0.4);
+      for (let it = 0; it < 5; it++) {
+        const P = rig.pose, el = P['upperArm' + s].t, wr = P['forearm' + s].t, kn = P['hand' + s].t; let need = 0; _ge[0] = _ge[1] = _ge[2] = 0;
+        for (let q = 0; q < 6; q++) {
+          const u = q < 2 ? 0.5 + 0.5 * q : q < 4 ? 0.5 * (q - 1) : 0.25 * (q - 4), A0 = q < 2 || q > 3 ? el : wr, B0 = q < 2 || q > 3 ? wr : kn, rr = q < 2 || q > 3 ? CONTACT.forearm : CONTACT.glove;
+          for (let k = 0; k < 3; k++) _gs[k] = A0[k] + (B0[k] - A0[k]) * u;
+          const m0 = _gs.slice(); const d = pushOut(sub, _gs, rr); if (d > 0) { for (let k = 0; k < 3; k++) _ge[k] += (_gs[k] - m0[k]) * (q === 0 || q === 4 ? 1.8 : q === 5 ? 1.5 : 1.15); if (d > (mA ? 0.018 : LIMB_DEEP * 0.7)) need = 1; }
+        }
+        if (!need) break;
+        const g = _gy[s]; g[0] += _ge[0]; g[1] += _ge[1]; g[2] += _ge[2];
+        r.arms[s].rel = null; r.arms[s].wrist = [wr[0] + _ge[0], wr[1] + _ge[1], wr[2] + _ge[2]]; solveRig(rig, r); any = true;
+      }
+    }
+    if (any) exportSkeleton({ pos: skeleton.root.pos.slice(), yaw: skeleton.root.yaw }, skeleton.visualYaw, S);
+  };
   A._refine = () => {
     const r = CT.lastR, S = CT.lastS, sk = oppSkel();
-    if (!r || !sk || !(isStrike(A.clip) || (A.fade && isStrike(A.fade.clip)))) return;
+    if (!r || !sk || A.catchSt || !(isStrike(A.clip) || (A.fade && isStrike(A.fade.clip)))) return;
     const cl = isStrike(A.clip) ? A.clip : A.fade.clip, kick = cl.tip === 'kickR', side = tipSide(cl), rt = rtOf(kick);
     const cols = CT.rcols = buildColliders(sk, CT.rcols);
     tipOf(side, kick, _tip); _want[0] = _tip[0]; _want[1] = _tip[1]; _want[2] = _tip[2];
-    const mv = pushOut(cols, _want, rt), need = limbNeed(cols, side, kick, rt, _e);
+    CT.refAll = true; const mv = pushOut(cols, _want, rt), need = limbNeed(cols, side, kick, rt, _e); CT.refAll = false;
     if (mv < 1e-3 && need < 1e-3) { if (kick && footOut(r, cols)) exportSkeleton({ pos: skeleton.root.pos.slice(), yaw: skeleton.root.yaw }, skeleton.visualYaw, S); return; }
-    { const el = Math.hypot(_e[0], _e[1], _e[2]), cap = REFINE_LIMB_MAX, k = el > cap ? cap / el : 1; for (let q = 0; q < 3; q++) _want[q] += _e[q] * k; }   // el miembro: tope por frame (sin pops); la punta sí sale entera
+    { const el = Math.hypot(_e[0], _e[1], _e[2]), cap = Math.max(REFINE_LIMB_MAX, Math.min((CT.limbPen - LIMB_DEEP) * 2.5, LIMB_DEEP_MAX)), k = el > cap ? cap / el : 1; for (let q = 0; q < 3; q++) _want[q] += _e[q] * k; }   // el miembro: tope por frame (sin pops); la punta sí sale entera
     pushOut(cols, _want, rt); applyTip(r, side, kick, _want);
+    { // r8: si sigue hondo (> LIMB_DEEP), más pasadas amortiguadas (la IK no lo saca en una; entre dos colisores oscila): se queda la mejor
+      let best = Infinity; const bw = [0, 0, 0];
+      for (let it = 0; it < 8; it++) {
+        CT.refAll = true; const n2 = limbNeed(cols, side, kick, rt, _e); CT.refAll = false;
+        tipOf(side, kick, _tip);
+        if (n2 < best) { best = n2; bw[0] = _tip[0]; bw[1] = _tip[1]; bw[2] = _tip[2]; }
+        if (CT.limbPen <= LIMB_DEEP) break;
+        const st = (it < 2 ? 1 : 0.5) * Math.min(1, Math.min(CT.limbPen * 2.5, LIMB_DEEP_MAX) / (n2 || 1));
+        for (let q = 0; q < 3; q++) _want[q] = _tip[q] + _e[q] * st;
+        pushOut(cols, _want, rt); applyTip(r, side, kick, _want);
+        if (it === 7) { CT.refAll = true; const n3 = limbNeed(cols, side, kick, rt, _e); CT.refAll = false; if (n3 > best) applyTip(r, side, kick, bw); }
+      }
+    }
     if (kick) footOut(r, cols);
     exportSkeleton({ pos: skeleton.root.pos.slice(), yaw: skeleton.root.yaw }, skeleton.visualYaw, S);
     CT.refined = (CT.refined || 0) + 1;
@@ -760,7 +896,7 @@ export function createAnimator3D(opts = {}) {
       // sin guard: lo más cercano a la trayectoria (hombro/cadera -> blanco previsto o punta actual)
       const P = rig.pose, S0 = kick ? P.thighR.p : P['upperArm' + tipSide(cl)].p, T = CT.aimQ || tipOf(tipSide(cl), kick, [0, 0, 0]);
       const low = kick && (src === 'check' || (cl.aim && cl.aim.zone === 'legs'));   // low kick: chequeo con la espinilla (la adelantada, L); media/alta: brazos
-      const cand = low ? [COL.shinL, COL.shinR] : kick ? [COL.gloveL, COL.forearmL] : [COL.gloveL, COL.gloveR, COL.forearmL, COL.forearmR];   // media/alta de derecha: llega por la izquierda del rival (su brazo L)
+      const cand = low ? [COL.shinL] : kick ? [COL.forearmL] : [COL.gloveL, COL.gloveR, COL.forearmL, COL.forearmR];   // r8: como Combate (combat-guard): media/alta = antebrazo; media/alta de derecha: llega por la izquierda del rival (su brazo L)
       let bd = Infinity; const q = [0, 0, 0];
       for (const k of cand) for (let j = 4; j <= 24; j++) { const u = j / 24; for (let m = 0; m < 3; m++) q[m] = S0[m] + (T[m] - S0[m]) * u; const d = sdist(cols[k], q); if (d < bd) { bd = d; i = k; } }
     }
@@ -775,7 +911,7 @@ export function createAnimator3D(opts = {}) {
       const S0 = kick ? rig.pose.thighR.p : rig.pose['upperArm' + tipSide(cl)].p, ax = axisNear(c, S0, tp), u = axisU(c, ax);
       const nx = S0[0] - ax[0], ny = S0[1] - ax[1], nz = S0[2] - ax[2], nl = Math.hypot(nx, ny, nz) || 1, R = c.r + rt;
       const g = [ax[0] + nx / nl * R, ax[1] + ny / nl * R, ax[2] + nz / nl * R];
-      CT.pin = { fol: 0, max: kick ? 0.30 : 0.20, i, u, p: tp, off: [g[0] - ax[0], g[1] - ax[1], g[2] - ax[2]], tImp: A.t, done: false, t0: A.clipT, late: true, chase: kick };
+      CT.pin = { fol: 0, max: kick ? 0.40 : 0.20, i, u, p: tp, off: [g[0] - ax[0], g[1] - ax[1], g[2] - ax[2]], tImp: A.t, done: false, t0: A.clipT, late: true, chase: true };   // r8: el puño persigue la superficie del guante/antebrazo que va al golpe
       CT.zone = c.zone; CT.last = { name: A.clipMode.name, zone: c.zone, limb: c.limb, side: c.side, blocked: true, point: toW(g, [0, 0, 0]), clipT: A.clipT, early: cl.impactT - A.clipT };
       A._pend.push({ type: 'contact', ...CT.last });
     } else if (CT.pin && CT.pin.i !== i) CT.pin = null;                // aviso temprano: re-clava sobre el miembro de guardia al tocarlo
@@ -788,14 +924,22 @@ export function createAnimator3D(opts = {}) {
     const zone = info.zone || (oc && oc.aim ? oc.aim.zone : null);
     let name = 'block_hit';
     if (src === 'check' || (g && g.limb === 'shin') || (kickish && zone === 'legs')) {   // chequeo: levanta la pierna por donde entra la patada
-      let side = g && (g.side === 'L' || g.side === 'R') ? g.side : null;
+      let side = g && (g.side === 'L' || g.side === 'R') ? g.side : oc && oc.tip === 'kickR' ? 'L' : null;   // r8: espejo del miembro que patea (como Combate)
       if (!side && o) { const f = o.strike.fist, P = rig.pose.pelvis.p, yw = A.visYaw, lx = -f[2] - P[0], lz = f[0] - P[2]; side = lx * Math.cos(yw) - lz * Math.sin(yw) > 0 ? 'L' : 'R'; }
       name = side === 'R' ? 'check_hit_R' : 'check_hit';
     }
     else if (kickish) {                                                 // patada media/alta: brazo del lado por donde entra (guard.side o geometría)
-      let side = g && (g.side === 'L' || g.side === 'R') ? g.side : null;
+      let side = g && (g.side === 'L' || g.side === 'R') ? g.side : oc.tip === 'kickR' ? 'L' : null;
       if (!side) { const f = o.strike.fist, P = rig.pose.head.p, yw = A.visYaw, lx = -f[2] - P[0], lz = f[0] - P[2]; side = lx * Math.cos(yw) - lz * Math.sin(yw) > 0 ? 'L' : 'R'; }
       name = `block_kick_${zone === 'head' ? 'high' : 'body'}_${side}`;
+    }
+    if (src === 'catch' && kickish && o) {                               // r8: patada atrapada (pose propia; ver catchLayer)
+      A.blockedAt = A.t; A.catchSt = { role: 'catcher', t0: A.t, w: 0, rel: false, relT: -1, why: null };
+      A.meet = null; if (A.clip && !isStrike(A.clip)) A.cancel(0.1);
+      o._caught?.(info);
+      A.lastBlock = { name: 'catch', power: pw, guard: g, src, at: A.t };
+      A._pend.push({ type: 'blockHit', name: 'catch', power: pw }, { type: 'caught', role: 'catcher' });
+      return true;
     }
     A.blockedAt = A.t; A.hurtSeen = A.hurtSeen ?? null;
     { // qué miembro bloquea: guard del evento, o el que eligió el rival enlazado (strikeBlocked), o por el clip
@@ -810,8 +954,72 @@ export function createAnimator3D(opts = {}) {
     A._pend.push({ type: 'blockHit', name, power: pw });
     return ok;
   };
+  // ---- r8: PATADA ATRAPADA. Combate emite block{src:'catch', guard:{limb:'glove'}} y en el mismo tick o derriba (takedown move 'kickCatch'
+  // -> knockdown action 'kickCatch' + suelo en guard) o suelta (A.action = null; el que atrapa puede contragolpear). La sim no lo retiene:
+  // el animador sostiene la pierna CATCH_HOLD s (o hasta que llegue el suelo, un clip nuevo del pateador, sweep/release, o termine el
+  // contragolpe del que atrapa) y la suelta con un fundido de CATCH_FADE s.
+  //   atrapa : brazo L por debajo del tobillo apretándolo contra las costillas izquierdas; mano R sobre la tibia.
+  //   pateador: el tobillo en ese punto (costado izquierdo del que atrapa, a la altura de la cintura), en un pie, brazos abiertos, tronco atrás.
+  const CATCH_HOLD = 0.42, CATCH_FADE = 0.20, CATCH_IN = 0.07, CATCH_LAT = 0.17, CATCH_MIN = 0.15;   // CATCH_MIN: se ve al menos eso aunque el derribo llegue en el mismo tick
+  A.catchSt = null;                                                       // { role: 'catcher'|'kicker', t0, w, rel, relT, why }
+  A.caught = false;
+  const catchRelease = (why = 'release') => { const C = A.catchSt; if (!C || C.rel) return false; if (A.t - C.t0 < CATCH_MIN - 1e-9) { C.pend = C.pend || why; return true; } C.rel = true; C.relT = A.t; C.why = why; A._pend.push({ type: 'catchRelease', role: C.role, why }); const o = A.opp && typeof A.opp !== 'function' ? A.opp : null; if (o && o.catchSt && !o.catchSt.rel) o._catchRelease(why); return true; };
+  A._catchRelease = catchRelease;
+  A.catchRelease = (info = {}) => catchRelease(info.why || info.type || 'release');
+  A._caught = (info = {}) => {                                            // lo llama el que atrapa (blockHit src 'catch') sobre el pateador
+    A.catchSt = { role: 'kicker', t0: A.t, w: 0, rel: false, relT: -1, why: null, clip: A.clip };
+    A.caught = true; if (A.clip) A.cancel(0.15); CT.pin = null;   // CT.blk queda (registro: el guante que atrapa)
+    A._pend.push({ type: 'caught', role: 'kicker' });
+  };
+  const _cH = [0, 0, 0], _cA = [0, 0, 0], _cK = [0, 0, 0];
+  function catchLayer(dt, r, yaw, ev) {
+    const C = A.catchSt; if (!C) return;
+    const o = A.opp && typeof A.opp !== 'function' ? A.opp : null, osk = oppSkel();
+    // fin: suelo, clip nuevo del pateador, contragolpe terminado del que atrapa, o tiempo
+    if (!C.rel) {
+      if (C.pend && A.t - C.t0 >= CATCH_MIN - 1e-9) catchRelease(C.pend);
+      else if (A.ground || (o && o.ground)) catchRelease('ground');
+      else if (C.role === 'kicker' && A.clip && A.clip !== C.clip) catchRelease('kickerClip');
+      else if (A.t - C.t0 > CATCH_HOLD && !(C.role === 'catcher' && isStrike(A.clip))) catchRelease('timeout');
+      else if (A.t - C.t0 > CATCH_HOLD + 0.35) catchRelease('timeout');
+    }
+    C.w = C.rel ? Math.max(0, 1 - (A.t - C.relT) / CATCH_FADE) : Math.min(1, (A.t - C.t0) / CATCH_IN);
+    const w = smooth01(C.w);
+    if (C.rel && C.w <= 0) { A.catchSt = null; A.caught = false; return; }
+    if (!osk || w < 1e-4) return;
+    const I = (v, out) => { out[0] = -v[2]; out[1] = v[1]; out[2] = v[0]; return out; };
+    if (C.role === 'kicker') {
+      // punto de sujeción: costado izquierdo del que atrapa (su pelvis + 0,25 a su izquierda + 0,08 adelante, a la altura de la cintura)
+      const cp = I(osk.pose.pelvis, [0, 0, 0]), sL = I(osk.pose.shoulderL, [0, 0, 0]), sR = I(osk.pose.shoulderR, [0, 0, 0]);
+      let lx = sL[0] - sR[0], lz = sL[2] - sR[2]; const ll = Math.hypot(lx, lz) || 1; lx /= ll; lz /= ll;
+      const fx = -lz, fz = lx;                                            // adelante del que atrapa (izquierda girada 90°)
+      _cH[0] = cp[0] + lx * CATCH_LAT + fx * 0.06; _cH[1] = cp[1] + 0.20; _cH[2] = cp[2] + lz * CATCH_LAT + fz * 0.06;
+      const L = r.legs.R; for (let k = 0; k < 3; k++) L.ankle[k] += (_cH[k] - L.ankle[k]) * w;
+      const pl = [0, 0.6, 0]; const hx = rig.pose.thighR.p; const dx = _cH[0] - hx[0], dz = _cH[2] - hx[2], dl = Math.hypot(dx, dz) || 1; pl[0] = dx / dl; pl[2] = dz / dl;   // rodilla arriba/adelante
+      for (let k = 0; k < 3; k++) L.pole[k] += (pl[k] - L.pole[k]) * w;
+      L.footPitch += (0.25 - L.footPitch) * w; L.footYaw += wrapPi(Math.atan2(dx, dz) - L.footYaw) * w;
+      // equilibrio en un pie: brazos abiertos, tronco un poco atrás
+      const aL = r.arms.L, aR = r.arms.R, bl = [0.34, 0.02, 0.10], br = [-0.34, 0.06, 0.08];
+      if (aL.rel) for (let k = 0; k < 3; k++) aL.rel[k] += (bl[k] - aL.rel[k]) * w;
+      if (aR.rel) for (let k = 0; k < 3; k++) aR.rel[k] += (br[k] - aR.rel[k]) * w;
+      r.spPitch -= 0.14 * w; r.hdPitch += 0.10 * w;
+      solveRig(rig, r);
+    } else {
+      // el que atrapa: brazo L por debajo del tobillo del pateador (contra sus costillas), mano R sobre su tibia
+      const an = I(osk.pose.footR, _cA), kn = I(osk.pose.kneeR, _cK);
+      const cur = (s) => rig.pose['forearm' + s].t;
+      const wl = [an[0], an[1] - 0.075, an[2]], sm = [0, 1, 2].map((k) => an[k] + (kn[k] - an[k]) * 0.45 + (k === 1 ? 0.07 : 0));
+      const punchR = isStrike(A.clip) && (A.clip.tip === 'R' || A.clip.tip === 'elbowR');   // contragolpe con la R: la R suelta la tibia
+      for (const [s, tg, ws] of [['L', wl, w], ['R', sm, punchR ? 0 : w]]) {
+        if (ws < 1e-4) continue; const c0 = cur(s); r.arms[s].rel = null; r.arms[s].wrist = [c0[0] + (tg[0] - c0[0]) * ws, c0[1] + (tg[1] - c0[1]) * ws, c0[2] + (tg[2] - c0[2]) * ws];
+      }
+      r.arms.L.pole = [1.0, -0.6, -0.3];                                   // codo L pegado al costado, hacia afuera/abajo
+      solveRig(rig, r);
+    }
+  }
   function contactStep(dt, r, ev) {
     CT.raw = 0; CT.pen = 0;
+    if (A.catchSt && A.catchSt.role === 'kicker') { CT.pin = null; CT.d[0] = CT.d[1] = CT.d[2] = 0; return; }   // r8: pierna atrapada: la lleva catchLayer
     const sk = oppSkel();
     const live = isStrike(A.clip), cl = live ? A.clip : (A.fade && isStrike(A.fade.clip) ? A.fade.clip : null);
     if (!live) CT.pin = null;
@@ -849,7 +1057,7 @@ export function createAnimator3D(opts = {}) {
     // superficie EN el impacto, frenando de forma continua (sin plegarse de golpe al chocar). Se congela tras el impacto y sale en 0,15 s.
     if (live && cl.aim) {
       const tI = cl.impactT, w = aimW(cl, t);
-      if (t <= tI + 1e-9) {
+      if (t <= tI + 1e-9 && !A.clipMode.rebound) {
         const a = cl.aim, ek = A.clipMode.entryK || 0, rf = a.refPos && A.ground && a.refPos[A.ground.pos] ? a.refPos[A.ground.pos] : !a.ref ? [0, 1, 0.5] : a.ref1 ? [0, 1, 2].map((k) => a.ref[k] + (a.ref1[k] - a.ref[k]) * ek) : a.ref;
         const yw = r.root.yaw, sy = Math.sin(yw), cy = Math.cos(yw), tl = Math.max(0, tI - t);
         const rx = _root[0] + A.vel[0] * tl, rz = _root[2] + A.vel[1] * tl;
@@ -883,8 +1091,13 @@ export function createAnimator3D(opts = {}) {
     const pr = penetration(cols, _tip, rt); CT.raw = Math.max(0, pr.pen);
     if (live && CT.pin && !CT.pin.done) {
       if (CT.pin.tImp < 0 && t >= cl.impactT - 1e-9) CT.pin.tImp = A.t;
-      if (CT.pin.tImp >= 0 && A.t - CT.pin.tImp >= HITSTOP + (CT.pin.late ? 1 / 60 : 0) - 1e-9) { CT.pin.done = true; CT.rel = 1; CT.dRel[0] = CT.d[0]; CT.dRel[1] = CT.d[1]; CT.dRel[2] = CT.d[2]; }
+      if (CT.pin.tImp >= 0 && A.t - CT.pin.tImp >= HITSTOP + (CT.pin.late ? 1 / 60 : 0) - 1e-9) { CT.pin.done = true; CT.rel = 1; CT.dRel[0] = CT.d[0]; CT.dRel[1] = CT.d[1]; CT.dRel[2] = CT.d[2];
+ }
     }
+    // r8: patada bloqueada/chequeada: desde el impacto el clip va hacia atrás (rebota desandando la carga) en vez de seguir el barrido a
+    // través del miembro que bloquea; al soltar el clavado la punta libre ya está del lado del golpe (sin salto)
+    // (también la low kick que conecta en el muslo: el clip libre barre a través de la pierna, que no se va con el golpe)
+    if (live && kick && ((blk && blk.src !== 'catch') || (!blk && CT.pin && (CT.pin.i >= 2 && CT.pin.i <= 5))) && !A.caught && !A.clipMode.rebound && t >= cl.impactT - 1e-9) A.clipMode.rebound = { until: Math.max(0.02, cl.impactT - REBOUND_BACK) };
     let want = null;
     if (live && CT.pin && !CT.pin.done) {                                  // clavado al colisor tocado: sigue el retroceso del rival
       // clavado en el punto de impacto (mundo); si el rival se mueve, la mano lo acompaña con velocidad limitada (<= PIN_FOLLOW m/frame a 60 Hz)
@@ -897,12 +1110,12 @@ export function createAnimator3D(opts = {}) {
     } else {
       let fc = firstContact(stop, _org, _tip, rt, _fc);
       if (!fc && live && !CT.pin && Math.abs(t - cl.impactT) <= 1 / 60 + 1e-9) {   // r7: punta a ras (<= 6 mm) de la superficie en el impacto => toca
-        let bi = -1, bd = CONTACT_SKIN; for (let k = 0; k < stop.length; k++) { const d = sdist(stop[k], _tip) - rt; if (d < bd) { bd = d; bi = k; } }
+        let bi = -1, bd = cl.ground ? CONTACT_SKIN_GND : CONTACT_SKIN; for (let k = 0; k < stop.length; k++) { const d = sdist(stop[k], _tip) - rt; if (d < bd) { bd = d; bi = k; } }
         if (bi >= 0) { _fc[0] = _tip[0]; _fc[1] = _tip[1]; _fc[2] = _tip[2]; pushOut([stop[bi]], _fc, rt); fc = { point: _fc, i: bi, s: 1 }; }
       }
       if (fc) {
         _want[0] = fc.point[0]; _want[1] = fc.point[1]; _want[2] = fc.point[2]; want = _want;
-        if (live && !CT.pin && t >= cl.phases[1].t0 - 1e-9 && t <= cl.impactT + HITSTOP) {
+        if (live && !CT.pin && !A.clipMode.rebound && t >= cl.phases[1].t0 - 1e-9 && t <= cl.impactT + HITSTOP) {
           const c = stop[fc.i]; fc.i = c.i; const u = axisU(c, fc.point); axisAt(c, u, _ref);
           CT.pin = { fol: 0, i: fc.i, u, p: [fc.point[0], fc.point[1], fc.point[2]], off: [fc.point[0] - _ref[0], fc.point[1] - _ref[1], fc.point[2] - _ref[2]], tImp: t >= cl.impactT ? A.t : -1, done: false, t0: t };
           CT.zone = c.zone;

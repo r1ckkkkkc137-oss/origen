@@ -131,8 +131,8 @@ export function simulateDuel(name, { dist = DUEL_DIST[name] ?? 0.95, link = true
 // ---- ronda 7: suelo. Raíces en el mismo punto (como la sim de combat-gap), a = arriba (groundTop) mirando +X, b = abajo (groundBottom)
 // mirando -X. `a` lanza `strike` (gnp_punch | gnp_elbow | gnp_body) en t0; en el impacto b recibe state.hurt (head/body) como live.js.
 export const GROUND_ZONE = Object.freeze({ gnp_punch: 'head', gnp_elbow: 'head', gnp_body: 'body' });
-export function simulateGround(pos = 'mount', strike = 'gnp_punch', { hz = 60, t0 = 1.0, tail = 0.8, power = 0.7, link = true, seedA = 7, seedB = 11, onFrame, viaPlay = null } = {}) {
-  const a = createAnimator3D({ seed: seedA }), b = createAnimator3D({ seed: seedB });
+export function simulateGround(pos = 'mount', strike = 'gnp_punch', { hz = 60, t0 = 1.0, tail = 0.8, power = 0.7, link = true, seedA = 7, seedB = 11, onFrame, viaPlay = null, animOpts = {} } = {}) {
+  const a = createAnimator3D({ ...animOpts, seed: seedA }), b = createAnimator3D({ ...animOpts, seed: seedB });   // r8: animOpts (getBlock/blockM) para piso de vóxeles
   if (link) pairAnimators(a, b);
   const clip = CLIPS[strike], dt = 1 / hz, n = Math.round((t0 + clip.duration + tail) * hz), zone = GROUND_ZONE[strike] || 'head';
   const move = { gnp_punch: 'gnpPunch', gnp_elbow: 'gnpElbow', gnp_body: 'gnpBody' }[strike];

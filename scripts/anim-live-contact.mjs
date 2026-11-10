@@ -55,3 +55,35 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const r = liveContact({ fights, link, seeds, clipMap: process.argv.includes('clipmap') ? MOVE_CLIP : null });
   console.log(JSON.stringify(r, (k, v) => typeof v === 'number' ? +v.toFixed(3) : v, 1));
 }
+
+// ---- r8: penetración de TODO el clip (no sólo la ventana del impacto) en peleas reales, contra los 12 colisores del rival
+//  (cabeza, torso, muslos, espinillas, cuello, hombros, guantes, antebrazos). Segmentos: hombro->codo (OM), codo->punta (MT),
+//  y en patadas cadera->rodilla (r 0,06), rodilla->espinilla, espinilla->pie (TF). Devuelve por golpe { n, max, over } y la lista > thr.
+export function liveClipPen({ seeds = [3, 7, 8, 36], frames = 60 * 400, thr = 0.02 } = {}) {
+  const out = [], per = {};
+  for (const seed of seeds) {
+    const live = createLiveFight({ seed });
+    const la = createLiveAnimation(live, { createAnimator3D: pairedAnimatorFactory(), seed, clipMap: MOVE_CLIP });
+    const off = bindCombatEvents(live, la.anims); const open = {};
+    const close = (s) => { const R = open[s]; if (!R) return; const p = (per[R.name] ||= { n: 0, max: 0, over: 0 }); p.n++; p.max = Math.max(p.max, R.v); if (R.v > thr) { p.over++; out.push(R); } open[s] = null; };
+    for (let i = 0; i < frames && !live.done; i++) {
+      la.update(1 / 60);
+      for (const [s, o] of [['a', 'b'], ['b', 'a']]) {
+        const A = la.anims[s], B = la.anims[o]; const name = A.clip ? A.clipMode.name : '';
+        if (!STRIKES.has(name)) { close(s); continue; }
+        if (!open[s] || open[s].name !== name || A.clipT < open[s].lt - 1e-6) { close(s); open[s] = { seed, i, name, v: 0, lt: 0 }; }
+        const R = open[s]; R.lt = A.clipT;
+        const sk = A.skeleton, cols = buildColliders(B.skeleton), tip = CLIPS[name].tip, kick = tip === 'kickR', elb = tip === 'elbowR', side = kick || elb ? 'R' : tip;
+        const O = I3(kick ? sk.pose.hipR : sk.pose['shoulder' + side]), M = I3(kick ? sk.pose.kneeR : sk.pose['elbow' + side]), T = I3(A.strike.fist), rt = kick ? CONTACT.shinTip : elb ? CONTACT.elbow : CONTACT.fist;
+        const F = kick ? I3(sk.pose.footR) : null;
+        for (let k = 0; k < 12; k++) {
+          const C = [cols[k]], segs = [['OM', segPenetration(C, O, M, kick ? 0.06 : rt)], ['MT', elb ? 0 : segPenetration(C, M, T, rt)]];
+          if (kick) segs.push(['TF', segPenetration(C, T, F, rt)]);
+          for (const [sn, v] of segs) if (v > R.v) Object.assign(R, { v, seg: sn, col: k, t: +(A.clipT - A.clip.impactT).toFixed(3) });
+        }
+      }
+    }
+    close('a'); close('b'); off();
+  }
+  return { per, over: out.sort((a, b) => b.v - a.v) };
+}

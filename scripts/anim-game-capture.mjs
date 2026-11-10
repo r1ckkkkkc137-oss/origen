@@ -11,6 +11,7 @@ const ONLY = process.argv[3] ? process.argv[3].split(',') : null;
 const FLOOR = process.argv[4] || 'flat';
 fs.mkdirSync(OUT, { recursive: true });
 const CAMS = ['front', 'side', 'top34'];
+const CAMS_TOP = ['front', 'side', 'top34', 'overhead'];
 const W = 480, H = 400;
 // acciones: { t, who: 0|1, play, opts }.  who 0 = beige (mira +X), 1 = rojo (mira -X)
 const SCENES = {
@@ -38,7 +39,12 @@ const SCENES = {
   gnp_mount: { link: true, sep: 0, ground: 'mount', times: [1.40, 1.55, 1.633, 1.65, 1.70, 1.75, 1.83, 1.95], actions: [{ t: 1.5, who: 0, play: 'gnp_punch' }, { t: 1.65, who: 1, hurt: { zone: 'head', power: 0.7 } }] },
   gnp_mount_elbow: { link: true, sep: 0, ground: 'mount', times: [1.40, 1.58, 1.667, 1.683, 1.73, 1.78, 1.86, 1.98], actions: [{ t: 1.5, who: 0, play: 'gnp_elbow' }, { t: 1.6833, who: 1, hurt: { zone: 'head', power: 0.7 } }] },
   lowkick: { sep: 0.50, times: [1.50, 1.56, 1.64, 1.7333, 1.7667, 1.86, 1.96, 2.10], actions: [{ t: 1.5, who: 0, play: 'lowkick' }] },
+  // ronda 8: codo desde la guardia, patada atrapada, chequeo, patada media con cámara cenital
+  gnp_guard_elbow: { link: true, sep: 0, ground: 'guard', times: [1.40, 1.58, 1.667, 1.683, 1.73, 1.78, 1.86, 1.98], actions: [{ t: 1.5, who: 0, play: 'gnp_elbow' }, { t: 1.6833, who: 1, hurt: { zone: 'head', power: 0.7 } }] },
+  bodykick_caught: { link: true, sep: 0.475, times: [1.50, 1.62, 1.733, 1.7667, 1.92, 2.07, 2.22, 2.45], actions: [{ t: 1.5, who: 0, play: 'bodykick' }, { t: 1.5 + 16 / 60, who: 0, block: { src: 'catch', guard: { limb: 'glove', side: 'L' }, power: 0.7 } }] },
+  lowkick_check: { link: true, sep: 0.50, times: [1.50, 1.65, 1.70, 1.7333, 1.7583, 1.80, 1.90, 2.05], actions: [{ t: 1.5, who: 0, play: 'lowkick' }, { t: 1.5 + 14 / 60, who: 0, block: { src: 'check', guard: { limb: 'shin', side: 'L' }, power: 0.6 } }] },
 };
+
 
 const PORT = +process.env.PORT || (5300 + (process.pid % 600));   // puerto libre; sin servidores colgados al terminar (server.close)
 const server = await createServer({ configFile: false, root: path.resolve('.'), server: { port: PORT, host: '127.0.0.1' }, logLevel: 'error' });
@@ -53,6 +59,7 @@ const save = (name, dataUrl) => fs.writeFileSync(path.join(OUT, name), Buffer.fr
 
 for (const [name, sc] of Object.entries(SCENES)) {
   if (ONLY && !ONLY.includes(name)) continue;
+  const cams = (name === 'bodykick_contact' || name === 'bodykick_caught' || sc.overhead) ? CAMS_TOP : CAMS;
   await page.goto(`http://127.0.0.1:${PORT}/?seed=1${FLOOR === 'flat' ? '&floor=flat&adapt=0' : '&r=2&adapt=0'}`, { waitUntil: 'load' });
   await page.waitForFunction('window.__ORIGEN__ && window.__ORIGEN__.ready', { timeout: 120000 });
   await new Promise((r) => setTimeout(r, 1500));
@@ -69,7 +76,7 @@ for (const [name, sc] of Object.entries(SCENES)) {
     if (sc.link) { fighters[0].anim.setOpponent(fighters[1].anim); fighters[1].anim.setOpponent(fighters[0].anim); }
     renderer.setSize(480, 400); camera.aspect = 480 / 400; camera.updateProjectionMatrix();
     const target = [cx, gy + (sc.ground ? 0.35 : 0.95), cz];
-    const camDef = { front: [cx - 1.3, gy + 1.15, cz + 3.0], side: [cx, gy + 1.1, cz - 3.0], top34: [cx - 1.5, gy + 2.5, cz - 2.2] };   // front = 3/4 por el lado derecho de beige
+    const camDef = { front: [cx - 1.3, gy + 1.15, cz + 3.0], side: [cx, gy + 1.1, cz - 3.0], top34: [cx - 1.5, gy + 2.5, cz - 2.2], overhead: [cx, gy + 3.4, cz] };   // front = 3/4 por el lado derecho de beige
     for (let i = 0; i * dt <= last + dt; i++) {
       const t = i * dt;
       if (sc.ground) for (let k = 0; k < 2; k++) fighters[k].anim.setState({ stance: k === 0 ? 'groundTop' : 'groundBottom', groundPos: sc.ground });
@@ -87,7 +94,7 @@ for (const [name, sc] of Object.entries(SCENES)) {
       }
     }
     return out;
-  }, sc, CAMS);
+  }, sc, cams);
   const mk = (camList, perRow, scale, label) => sheetPage.evaluate(async (res, times, cams, perRow, cw, ch, label) => {
     const rowsPer = Math.ceil(times.length / perRow);
     const cv = document.createElement('canvas'); cv.width = cw * perRow; cv.height = 22 + ch * rowsPer * cams.length; const g = cv.getContext('2d');
@@ -99,8 +106,8 @@ for (const [name, sc] of Object.entries(SCENES)) {
     }
     return cv.toDataURL('image/png');
   }, res, sc.times, camList, perRow, Math.round(W * scale), Math.round(H * scale), label);
-  save(`game_${name}.png`, await mk(CAMS, Math.min(4, sc.times.length), 0.8, `JUEGO REAL ${name} (${FLOOR}) filas: ${CAMS.join(' / ')}`));
-  for (const c of CAMS) { save(`game_${name}_${c}.png`, await mk([c], 4, 1.0, `JUEGO REAL ${name} cam ${c}`)); }
+  save(`game_${name}.png`, await mk(cams, Math.min(4, sc.times.length), 0.8, `JUEGO REAL ${name} (${FLOOR}) filas: ${cams.join(' / ')}`));
+  for (const c of cams) { save(`game_${name}_${c}.png`, await mk([c], 4, 1.0, `JUEGO REAL ${name} cam ${c}`)); }
   console.log('ok', name);
 }
 await browser.close(); await server.close();

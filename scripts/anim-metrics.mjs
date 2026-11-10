@@ -307,6 +307,8 @@ export function groundMetrics(pos = 'mount', strike = 'gnp_punch', o = {}) {
     m.penMax = Math.max(m.penMax, penetration(cols, f, rt).pen); m.segMax = Math.max(m.segMax, segPenetration(cols, P, f, rt));
     if (pf && T > 2 / 60 + 1e-9) { const v = Math.hypot(f[0] - pf[0], f[1] - pf[1], f[2] - pf[2]) * 60; if (v > m.vPeak) { m.vPeak = v; m.vPeakT = T; } if (Math.abs(T - cl.impactT) < 1 / 120) m.vImpact = v; m.tipJump = Math.max(m.tipJump, v / 60); }
     if (Math.abs(T - cl.impactT) < 1 / 120) { const c = cols[zoneCol]; m.gapImpact = sdist(c, f) - rt; }
+    if (m.tImp == null && T >= cl.impactT - 1e-9) { m.tImp = t; m.fImp = f; }   // r8: hit-stop: cuánto se mueve la punta en HITSTOP (tiempo de pared)
+    if (m.tImp != null && t <= m.tImp + HITSTOP + 1e-9) m.hitStopMove = Math.max(m.hitStopMove || 0, Math.hypot(f[0] - m.fImp[0], f[1] - m.fImp[1], f[2] - m.fImp[2]));
     if (!m.contact && a.contact.last && a.contact.last.name === strike) m.contact = { ...a.contact.last };
     pf = f;
   } });
@@ -342,19 +344,32 @@ export function kickMetrics(name, o = {}) {
 }
 // bloqueo en duelo: distancia superficie-punta al miembro de guardia elegido (blkGap) mínima en la ventana impacto..+hit-stop+1 frame,
 // clips del defensor (sin hurt_*), y si el golpe NO bloqueado atraviesa los guantes/antebrazos (guardSeg).
+// r8: distancia superficie-superficie entre dos cápsulas (muestreo 25x25)
+export function capGap(A, B) {
+  let best = Infinity;
+  for (let i = 0; i <= 24; i++) { const u = i / 24, p = [0, 1, 2].map((k) => A.a[k] + (A.b[k] - A.a[k]) * u);
+    for (let j = 0; j <= 24; j++) { const v = j / 24, q = [0, 1, 2].map((k) => B.a[k] + (B.b[k] - B.a[k]) * v); const d = Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]) - A.r - B.r; if (d < best) best = d; } }
+  return best;
+}
 export function blockMetrics(name, block = null, o = {}) {
   const c = CLIPS[name], I3 = (w) => [-w[2], w[1], w[0]], kick = c.tip === 'kickR', rt = kick ? CONTACT.shinTip : CONTACT.fist;
   const m = { name, block, blk: -1, blkGapMin: Infinity, guardSeg: 0, bodyPenMax: 0, defClips: new Set(), events: [] };
   simulateDuel(name, { ...o, block: block ? { ...block } : null, onFrame: (t, sa, sb, a, b) => {
     if (b.clip) m.defClips.add(b.clipMode.name);
     for (const e of a.events) if (e.type === 'blocked' || e.type === 'contact') m.events.push(e.type + (e.blocked ? ':blocked' : '') + (e.limb ? ':' + e.limb + e.side : ''));
+    if (a.caught && a.contact.blk && m.blk < 0) m.blk = a.contact.blk.i;   // r8: atrapada: el clip de la patada se corta (lo sostiene catchLayer); queda el guante que atrapa
     if (!(a.clip && a.clipMode.name === name)) return;
     const cols = buildColliders(sb), f = I3(a.strike.fist), T = a.clipT, P = sa.pose;
     const blk = a.contact.blk && a.contact.blk.clip === a.clip ? a.contact.blk.i : -1; if (blk >= 0) m.blk = blk;
     m.bodyPenMax = Math.max(m.bodyPenMax, penetration(cols.slice(0, 8), f, rt).pen);
     const O = I3(kick ? P.kneeR : P['elbow' + c.tip]), G = cols.slice(8); m.guardSeg = Math.max(m.guardSeg, segPenetration(G, O, f, rt));
     if (kick) m.guardSeg = Math.max(m.guardSeg, segPenetration(G, f, I3(P.footR), rt), segPenetration(G, I3(P.hipR), I3(P.kneeR), 0.06));   // toda la pierna: muslo, espinilla y empeine
-    if (blk >= 0 && T >= c.impactT - 1e-9 && T <= c.impactT + HITSTOP + 1 / 60 + 1e-9) m.blkGapMin = Math.min(m.blkGapMin, sdist(cols[blk], f) - rt);
+    if (m.tI == null && T >= c.impactT - 1e-9) m.tI = t;   // r8: ventana en tiempo de pared (la patada bloqueada rebota: el clip va hacia atrás)
+    if (blk >= 0 && m.tI != null && t <= m.tI + HITSTOP + 1 / 60 + 1e-9) {
+      // r8: chequeo = espinilla contra espinilla: distancia superficie-superficie entre la espinilla R del que patea y la que chequea (no la punta)
+      const g = cols[blk].limb === 'shin' ? capGap(buildColliders(sa)[5], cols[blk]) : sdist(cols[blk], f) - rt;
+      m.blkGapMin = Math.min(m.blkGapMin, g); m.blkGapLo = Math.min(m.blkGapLo ?? Infinity, g);
+    }
   } });
   m.defClips = [...m.defClips];
   return m;
