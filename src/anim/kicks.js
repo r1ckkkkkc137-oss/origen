@@ -44,9 +44,9 @@ function roundKick(name, p) {
     fLyaw:   [K(0, 0), K(tL, 0.1), K(I, p.pivot, EI), K(tR1, p.pivot, LIN), K(tR3, 0), K(D, 0)],
     fLpitch: [K(0, 0), K(tL + 0.01, -0.1), K(I, -0.55), K(tR1, -0.5, LIN), K(tR3, 0), K(D, 0)],
     // pie que patea (R): despega -> rodilla cargada (tC) -> la tibia se despliega con ease-in hasta el blanco -> hit-stop -> repliega -> baja
-    fRx: [K(0, 0), K(0.05, 0.0), K(tC, C[0], EO), K(I, A[0], EI), K(H, A[0], LIN), K(tR1, B[0]), K(tR2, 0.02), K(tR3, 0), K(D, 0)],
-    fRy: [K(0, 0), K(0.05, 0.07, EO), K(tC, C[1], EO), K(I, A[1], EI), K(H, A[1], LIN), K(tR1, B[1]), K(tR2, 0.06, EI), K(tR3, 0), K(D, 0)],
-    fRz: [K(0, 0), K(0.05, 0.06), K(tC, C[2], EO), K(I, A[2], EI), K(H, A[2], LIN), K(tR1, B[2]), K(tR2, 0.04), K(tR3, 0), K(D, 0)],
+    fRx: [K(0, 0), K(0.05, 0.0), K(tC, C[0]), K(I, A[0], EI), K(H, A[0], LIN), K(tR1, B[0]), K(tR2, 0.02), K(tR3, 0), K(D, 0)],
+    fRy: [K(0, 0), K(0.05, 0.07, EO), K(tC, C[1]), K(I, A[1], EI), K(H, A[1], LIN), K(tR1, B[1]), K(tR2, 0.06, EI), K(tR3, 0), K(D, 0)],
+    fRz: [K(0, 0), K(0.05, 0.06), K(tC, C[2]), K(I, A[2], EI), K(H, A[2], LIN), K(tR1, B[2]), K(tR2, 0.04), K(tR3, 0), K(D, 0)],
     fRyaw: [K(0, 0), K(tC, 0.6), K(I, p.footYaw), K(tR1, 0.8), K(tR3, 0), K(D, 0)],
     fRpitch: [K(0, 0), K(tC, -0.3), K(I, -0.6), K(tR1, -0.5), K(tR3, 0), K(D, 0)],
     ptR: [K(0, 0), K(0.05, 0.2), K(tC, 0.85), K(I - 0.03, 1), K(tR1, 1, LIN), K(tR2, 0.2), K(tR3, 0), K(D, 0)],   // empeine en la línea de la tibia
@@ -60,7 +60,7 @@ function roundKick(name, p) {
 
 export const KICK_PARAMS = {
   bodykick: {
-    chamberAt: 0.56, kickFrac: 0.30, dy: 0.03, px: 0.07, pz: 0.23, hipYaw: 1.30, hipRoll: -0.30, hipPitch: -0.05, spYaw: 0.10, spRoll: -0.15, spPitch: -0.10,
+    chamberAt: 0.68, kickFrac: 0.55, dy: 0.03, px: 0.07, pz: 0.20, hipYaw: 1.30, hipRoll: -0.30, hipPitch: -0.05, spYaw: 0.10, spRoll: -0.15, spPitch: -0.10,
     hdPitch: 0.20, hdYaw: -0.60, hdRoll: 0.15, armR: [-0.10, -0.22, -0.22], step: [0.06, 0.10], pivot: 1.50, footYaw: 1.2,
     ankle: [-0.01, 0.97, 1.29], chamber: [-0.21, 0.62, 0.42], back: [-0.16, 0.57, 0.57],
   },
@@ -76,5 +76,5 @@ export { roundKick };
 Object.assign(CLIPS, { bodykick: BODYKICK, highkick: HIGHKICK });
 // contacto (ronda 6/7, sólo con rival enlazado): zona, altura del blanco y punta libre en el impacto en el marco raíz [izq, altura, adelante]
 // (medida sin rival, semilla 7; round7.test.mjs comprueba que sigue valiendo). Media: costillas = base del torso + 0,23; alta: mandíbula/cuello.
-BODYKICK.aim = { zone: 'body', dy: 0.23, ref: [-0.160, 1.057, 0.951] };
+BODYKICK.aim = { zone: 'body', dy: 0.23, ref: [-0.142, 1.014, 0.849] };
 HIGHKICK.aim = { zone: 'head', dy: -0.07, ref: [-0.098, 1.475, 0.903] };

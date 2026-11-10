@@ -1,5 +1,8 @@
-export { createAnimator3D, BLOCK_M_DEFAULT, yawToDir, dirToYaw, pairAnimators, pairedAnimatorFactory } from './animator3d.js';
-export { CONTACT, buildColliders, penetration } from './contact.js';
+export { createAnimator3D, BLOCK_M_DEFAULT, yawToDir, dirToYaw, pairAnimators, pairedAnimatorFactory, MOVE_CLIP } from './animator3d.js';
+export { bindCombatEvents, routeBlockEvent } from './combatBind.js';
+export { BODYKICK, HIGHKICK, KICK_TICKS } from './kicks.js';
+export { GROUND_POSES, GNP_PUNCH, GNP_ELBOW, GNP_BODY, HURT_GROUND, HURT_GROUND_BODY, GROUND_MOVE_CLIP } from './ground.js';
+export { CONTACT, COL, guardIndex, buildColliders, penetration } from './contact.js';
 export { createHumanoid3D, solveRig, DIM, HEIGHT, STAND_PELVIS_Y } from './skeleton3d.js';
 export { solveTwoBone } from './ik.js';
 export { makeTopSampler } from './footplacement.js';
