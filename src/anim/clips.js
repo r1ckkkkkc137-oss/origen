@@ -158,8 +158,8 @@ export const CROSS = {
 const HI = simT('hook').i, HD = simT('hook').d, HH = HI + HITSTOP;     // 0.183, 0.483, 0.225
 // ronda 6 (contacto, sólo con rival enlazado): zona, altura del blanco (centro de la cabeza + dy) y punta libre en el impacto en el marco
 // de la raíz [izq, altura, adelante] (medida sin rival, semilla 7; round6.test.mjs comprueba que sigue valiendo).
-JAB.aim = { zone: 'head', dy: -0.05, ref: [-0.035, 1.342, 1.004] };
-CROSS.aim = { zone: 'head', dy: -0.05, ref: [0.096, 1.402, 1.018] };
+JAB.aim = { zone: 'head', dy: -0.02, ref: [-0.035, 1.342, 1.004], sref: [0.032, 1.293, 0.311] };   // sref: hombro libre en el impacto (la pelvis entra menos si el blanco está cerca)
+CROSS.aim = { zone: 'head', dy: -0.03, ref: [0.096, 1.402, 1.018], sref: [-0.121, 1.314, 0.362] };
 export const HOOK_E = 90 * Math.PI / 180;                       // ángulo del codo (rad), constante de la carga al impacto
 const HOOK_UA = 0.31, HOOK_FA = 0.27;                             // = DIM.upperArm, DIM.foreArm (skeleton3d.js)
 export const HOOK_R = Math.sqrt(HOOK_UA * HOOK_UA + HOOK_FA * HOOK_FA - 2 * HOOK_UA * HOOK_FA * Math.cos(HOOK_E));   // |muñeca - hombro|

@@ -1,6 +1,7 @@
 // Viewer de desarrollo: cápsulas + líneas sobre cubos de vóxel. Modo live (animación continua) y modo captura (window.CAP).
 import * as THREE from 'three';
-import { SCENARIOS, simulate, snapshot } from '../src/anim/scenarios.js';
+import { SCENARIOS, simulate, snapshot, simulateDuel } from '../src/anim/scenarios.js';
+import { buildColliders } from '../src/anim/contact.js';
 
 const canvas = document.getElementById('c');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
@@ -22,11 +23,26 @@ const SEG = [  // [a, b, color, radius]
   ['pelvis', 'hipR', 'R', 0.06], ['hipR', 'kneeR', 'R', 0.065], ['kneeR', 'footR', 'R', 0.05], ['footR', 'tips.toeR', 'R', 0.04],
 ];
 const capGeo = new THREE.CylinderGeometry(1, 1, 1, 10, 1), sphGeo = new THREE.SphereGeometry(1, 12, 8);
-const meshes = SEG.map(([a, b, c, r]) => {
-  const m = new THREE.Mesh(capGeo, new THREE.MeshStandardMaterial({ color: COL[c], roughness: 0.6 }));
+const makeChar = (group, col) => SEG.map(([a, b, c, r]) => {
+  const m = new THREE.Mesh(capGeo, new THREE.MeshStandardMaterial({ color: col[c], roughness: 0.6 }));
   const s0 = new THREE.Mesh(sphGeo, m.material), s1 = new THREE.Mesh(sphGeo, m.material);
-  charGroup.add(m, s0, s1); return { m, s0, s1, a, b, r };
+  group.add(m, s0, s1); return { m, s0, s1, a, b, r };
 });
+const meshes = makeChar(charGroup, COL);
+// ronda 6: rival (duelo) en tonos apagados + marcas de contacto y colisor de cabeza
+const rivalGroup = new THREE.Group(); scene.add(rivalGroup); rivalGroup.visible = false;
+const rivalMeshes = makeChar(rivalGroup, { L: 0x9a6a68, R: 0x6a7f9a, C: 0x8b8f98, N: 0xcfc27a });
+const headCol = new THREE.Mesh(sphGeo, new THREE.MeshBasicMaterial({ color: 0x66ffcc, wireframe: true, transparent: true, opacity: 0.35 })); rivalGroup.add(headCol);
+const contactMark = new THREE.Mesh(new THREE.SphereGeometry(0.03, 10, 8), new THREE.MeshBasicMaterial({ color: 0x33ff66 })); scene.add(contactMark); contactMark.visible = false;
+function drawRival(snap) {
+  for (const o of rivalMeshes) {
+    const pa = P(snap, o.a), pb = P(snap, o.b);
+    _a.set(...pa); _b.set(...pb); _d.subVectors(_b, _a); const L = Math.max(_d.length(), 1e-4);
+    o.m.position.copy(_a).addScaledVector(_d, 0.5); o.m.scale.set(o.r, L, o.r); o.m.quaternion.setFromUnitVectors(UP, _d.normalize());
+    o.s0.position.copy(_a); o.s1.position.copy(_b); o.s0.scale.setScalar(o.r); o.s1.scale.setScalar(o.r);
+  }
+  const c = buildColliders(snap)[0]; headCol.position.set(c.a[2], c.a[1], -c.a[0]); headCol.scale.setScalar(c.r);
+}
 const joints = SEG.length;
 const lines = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: 0xffffff }));
 charGroup.add(lines);
@@ -97,6 +113,31 @@ window.CAP = {
     }
     return out;
   },
+};
+
+// ronda 6: duelo atacante (colores) vs rival (apagado) a la distancia de conexión; cámaras de duelo (ninguna tapa a un luchador con el otro)
+const DCAMS = {
+  side: (t) => ({ pos: [t[0], t[1] + 1.05, t[2] - 3.6], look: [t[0], t[1] + 1.0, t[2]], fov: 30 }),
+  top34: (t) => ({ pos: [t[0] - 1.4, t[1] + 2.4, t[2] + 2.6], look: [t[0], t[1] + 0.95, t[2]], fov: 30 }),
+  front34: (t) => ({ pos: [t[0] + 2.4, t[1] + 1.45, t[2] - 2.4], look: [t[0], t[1] + 1.0, t[2]], fov: 30 }),
+};
+window.CAP.runDuel = (name, times, camNames, w = 480, h = 420, opts = {}) => {
+  size(w, h); const want = times.map((t) => Math.round(t * 60)); const snaps = {};
+  simulateDuel(name, { ...opts, tail: Math.max(...times) + 0.05, onFrame: (t, sa, sb, a, b, i) => { if (want.includes(i)) snaps[i] = { a: snapshot(sa, a), b: snapshot(sb, b), pin: a.contact.pin ? a.contact.pin.p.slice() : null }; } });
+  buildTerrain(SCENARIOS.guard, -2, 4); rivalGroup.visible = true;
+  const out = {};
+  for (const cn of camNames) {
+    out[cn] = [];
+    for (const i of want) {
+      const s = snaps[i]; drawSnap(s.a); drawRival(s.b);
+      contactMark.visible = !!s.pin; if (s.pin) contactMark.position.set(s.pin[2], s.pin[1], -s.pin[0]);
+      const tgt = [(s.a.pose.pelvis[0] + s.b.pose.pelvis[0]) / 2, 0, 0], c = DCAMS[cn](tgt);
+      cam.fov = c.fov; cam.position.set(...c.pos); cam.lookAt(...c.look); cam.aspect = canvas.width / canvas.height; cam.updateProjectionMatrix();
+      renderer.render(scene, cam); out[cn].push(canvas.toDataURL('image/png'));
+    }
+  }
+  rivalGroup.visible = false; contactMark.visible = false;
+  return out;
 };
 
 // ---- modo live

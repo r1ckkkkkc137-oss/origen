@@ -145,7 +145,7 @@ export function createAnimator3D(opts = {}) {
   A.clipMode = { name: '', speed: 1, map: null, driven: false, cutAt: 0 };
   // ronda 5: jab/cross llegan a 1,0 m (mano ~0,65 m fuera de la guardia): cortar un golpe extendido con menos de 0,14 s daría saltos >15 cm/frame
   const STRIKE_MIN_FADE = 0.14;
-  const AIM_DRIVE = 0.015, AIM_SEEK = 0.15;                           // ronda 6: el ajuste mete 1,5 cm (lo para el contacto); busca la zona si el arco pasa a <15 cm
+  const AIM_DRIVE = 0.015, AIM_SEEK = 0.15, ARM_REACH = 0.68;   // ARM_REACH: hombro->nudillos con el codo ~150° (brazo 0,31+0,27+0,12)                           // ronda 6: el ajuste mete 1,5 cm (lo para el contacto); busca la zona si el arco pasa a <15 cm
   const PIN_FOLLOW = 0.06, PIN_FOLLOW_MAX = 0.06;   // la mano acompaña el retroceso como mucho 6 cm (luego se queda: el rival se separa)
                                              // ronda 6: m/frame que la mano clavada sigue al rival que retrocede
   const strikeExtended = () => !!(A.clip && A.clip.tip && A.clip.impactT > 0 && !A.clip.feint && !A.clip.hold && A.clipT > A.clip.impactT * 0.6 && A.clipT < A.clip.duration * 0.6);
@@ -335,6 +335,11 @@ export function createAnimator3D(opts = {}) {
         addClip(clip, A.clipT, m.amp ?? 1, c, m.ampHead ?? m.amp ?? 1);
         if (m.latT != null && m.lat !== m.latT) m.lat += (m.latT - m.lat) * (1 - Math.exp(-dt / 0.03));
         if (m.lat != null && m.lat !== 1) latLayer(clip, A.clipT, m.lat - 1, m.amp ?? 1, m.ampHead ?? m.amp ?? 1, c);
+        if (clip.aim && clip.aim.sref && CT.fit && A.opp) {             // ronda 6: si el blanco está más cerca, la pelvis entra menos (b<0) y el brazo llega casi recto
+          CT.bodyZ = CT.bodyB || 0; const wb = aimW(clip, A.clipT) * CT.bodyZ; c.pz += wb;
+          const pzI = sampleTrack(clip.tracks.pz, clip.impactT), fI = clip.tracks.fLz ? sampleTrack(clip.tracks.fLz, clip.impactT) : 0;
+          if (pzI > 1e-3 && fI > 0) c.fLz += wb * Math.min(2, fI / pzI);   // el paso del pie delantero se acorta igual: la guardia no se abre (la pelvis no baja)
+        } else CT.bodyZ = 0;
         if (clip.entry) {                                               // ronda 6: entrada del gancho escalada por la distancia al rival en el impacto
           if (A.clipT <= clip.impactT + 1e-9) { const k = entryFactor(clip, clip.impactT - A.clipT); m.entryK += (k - m.entryK) * (1 - Math.exp(-dt * 30)); }
           addClip(clip.entry, A.clipT, m.entryK, c);
@@ -465,6 +470,7 @@ export function createAnimator3D(opts = {}) {
     else { const h = P['hand' + side].t; o[0] = h[0]; o[1] = h[1]; o[2] = h[2]; }
     return o;
   };
+  const aimW = (cl, t) => { const tI = cl.impactT, tA = Math.max(0, tI - 0.10), tH = tI + HITSTOP; return t <= tI ? smooth01((t - tA) / (tI - tA)) : t <= tH ? 1 : 1 - smooth01((t - tH) / 0.15); };
   const isStrike = (cl) => !!(cl && cl.tip && cl.impactT > 0 && !cl.hold);
   const applyTip = (r, side, kick, target) => {
     for (let it = 0; it < 3; it++) {
@@ -560,8 +566,7 @@ export function createAnimator3D(opts = {}) {
     // de superficie más cercano si el arco pasa al lado) y la diferencia entra en rampa durante los últimos 0,10 s: el golpe llega a la
     // superficie EN el impacto, frenando de forma continua (sin plegarse de golpe al chocar). Se congela tras el impacto y sale en 0,15 s.
     if (live && cl.aim) {
-      const tI = cl.impactT, tA = Math.max(0, tI - 0.10), tH = tI + HITSTOP;
-      const w = t <= tI ? smooth01((t - tA) / (tI - tA)) : t <= tH ? 1 : 1 - smooth01((t - tH) / 0.15);
+      const tI = cl.impactT, w = aimW(cl, t);
       if (t <= tI + 1e-9) {
         const a = cl.aim, ek = A.clipMode.entryK || 0, rf = a.ref1 ? [0, 1, 2].map((k) => a.ref[k] + (a.ref1[k] - a.ref[k]) * ek) : a.ref;
         const yw = r.root.yaw, sy = Math.sin(yw), cy = Math.cos(yw), tl = Math.max(0, tI - t);
@@ -570,16 +575,23 @@ export function createAnimator3D(opts = {}) {
         let ci = 0;
         if (a.zone === 'legs') { let bd = Infinity; for (let k = 2; k <= 5; k++) { const d = sdist(cols[k], [Px, Py, Pz]); if (d < bd) { bd = d; ci = k; } } }
         const col = cols[ci], Q = [Px, a.dy == null ? Py : col.a[1] + a.dy, Pz];
-        const one = [col], hit = firstContact(one, _org, Q, rt, [0, 0, 0]);
+        const S0 = kick ? rig.pose.thighR.p : rig.pose['upperArm' + side].p;   // rayo de apuntado desde hombro/cadera (no depende del codo)
+        const one = [col], hit = firstContact(one, S0, Q, rt, [0, 0, 0]);
         let G = null;
-        if (hit) { const L = Math.hypot(Q[0] - _org[0], Q[1] - _org[1], Q[2] - _org[2]) || 1; G = [0, 1, 2].map((k) => hit.point[k] + (Q[k] - _org[k]) / L * AIM_DRIVE); }
+        if (hit) { const L = Math.hypot(Q[0] - S0[0], Q[1] - S0[1], Q[2] - S0[2]) || 1; G = [0, 1, 2].map((k) => hit.point[k] + (Q[k] - S0[k]) / L * AIM_DRIVE); }
         else { const q = Q.slice(), sd = sdist(col, q) - rt; if (sd < AIM_SEEK) { pushIn(col, q, rt - AIM_DRIVE); G = q; } }
         const fx = G ? G[0] - Px : 0, fy = G ? G[1] - Py : 0, fz = G ? G[2] - Pz : 0;
         CT.fit = [fx, fy, fz];
+        if (G && a.sref) {                                                  // b: cuánto menos entra la pelvis para que hombro->blanco = ARM_REACH (codo ~150°)
+          const sr = a.sref, Sx = rx + cy * sr[0] + sy * sr[2], Sy = _root[1] + sr[1], Sz = rz - sy * sr[0] + cy * sr[2];
+          const Dx = G[0] - Sx, Dy = G[1] - Sy, Dz = G[2] - Sz, Df = Dx * sy + Dz * cy, D2 = Dx * Dx + Dy * Dy + Dz * Dz, Lt = ARM_REACH;
+          const disc = Df * Df - D2 + Lt * Lt, cap = Math.max(0, sampleTrack(cl.tracks.pz, cl.impactT)) + 0.03;
+          CT.bodyB = D2 < Lt * Lt && disc >= 0 ? Math.max(-cap, Math.min(0, Df - Math.sqrt(disc))) : 0;
+        } else CT.bodyB = 0;
       }
-      const F = CT.fit || [0, 0, 0];
-      CT.aimX = w * F[0]; CT.aim = w * F[1]; CT.aimZ = w * F[2];
-    } else { const k = Math.exp(-dt / 0.05); CT.aim *= k; CT.aimX *= k; CT.aimZ *= k; CT.fit = null; }
+      const F = CT.fit || [0, 0, 0], yw = r.root.yaw, bz = CT.bodyZ || 0;   // lo que ya absorbió la pelvis no lo hace el brazo
+      CT.aimX = w * (F[0] - bz * Math.sin(yw)); CT.aim = w * F[1]; CT.aimZ = w * (F[2] - bz * Math.cos(yw));
+    } else { const k = Math.exp(-dt / 0.05); CT.aim *= k; CT.aimX *= k; CT.aimZ *= k; CT.fit = null; CT.bodyB = 0; }
     if (Math.abs(CT.aim) + Math.abs(CT.aimX) + Math.abs(CT.aimZ) > 1e-4) { _want[0] = _tip[0] + CT.aimX; _want[1] = _tip[1] + CT.aim; _want[2] = _tip[2] + CT.aimZ; applyTip(r, side, kick, _want); tipOf(side, kick, _tip); }
     const pr = penetration(cols, _tip, rt); CT.raw = Math.max(0, pr.pen);
     if (live && CT.pin && !CT.pin.done) {
