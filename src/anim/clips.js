@@ -18,6 +18,8 @@ export const CHANNELS = [
   // ronda 4: piernas por FK (KO peso muerto): kw = peso FK (0 = IK a los pies plantados), kH* = flexión de cadera (rad, + = muslo adelante),
   // kK* = flexión de rodilla (rad, + = tibia hacia atrás), kA* = apertura del muslo (rad, + = hacia afuera), kF* = pie 0 = plano en el suelo .. 1 = alineado con la tibia (empeine).
   'kw', 'kHL', 'kKL', 'kAL', 'kFL', 'kHR', 'kKR', 'kAR', 'kFR',
+  // ronda 7: pie R en punta alineado con la tibia (0 = pie normal, 1 = empeine en la línea de la espinilla): patadas media/alta
+  'ptR',
 ];
 
 // Guardia MMA ortodoxa (izquierda adelante): cuerpo en ~30° de blade, mentón bajo, manos altas, codos pegados.
@@ -27,7 +29,7 @@ export const GUARD = Object.freeze({
   hLx: 0.00, hLy: 0.03, hLz: 0.17, hRx: 0.14, hRy: 0.04, hRz: 0.15, elbL: -0.18, elbR: -0.18,
   elvL: 0, elvR: 0, fLx: 0, fLy: 0, fLz: 0, fLyaw: 0, fLpitch: 0, fRx: 0, fRy: 0, fRz: 0, fRyaw: 0, fRpitch: 0,
   pLx: 0, pLy: 0, pLz: 0, pLw: 0, pRx: 0, pRy: 0, pRz: 0, pRw: 0,
-  kw: 0, kHL: 0, kKL: 0, kAL: 0, kFL: 0, kHR: 0, kKR: 0, kAR: 0, kFR: 0,
+  kw: 0, kHL: 0, kKL: 0, kAL: 0, kFL: 0, kHR: 0, kKR: 0, kAR: 0, kFR: 0, ptR: 0,
 });
 
 export const makeChannels = (src = null) => { const o = {}; for (const c of CHANNELS) o[c] = src ? src[c] : 0; return o; };

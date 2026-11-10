@@ -31,10 +31,9 @@ export const HURT_HEAD = {
 
 // ronda 6: con contacto real el primer frame del latigazo (ease-out desde 0) movía el codo/cabeza del golpeado ~0,14–0,16 m (>0,13 m/frame
 // a power 1). El primer tramo pasa a lineal: misma llegada al pico (0,07–0,09 s), la mitad de velocidad máxima.
-for (const ch in HURT_HEAD.tracks) {
-  const tr = HURT_HEAD.tracks[ch];
-  if (tr.length > 1 && tr[0][0] === 0 && tr[1][2] === Q) tr[1] = K(tr[1][0], tr[1][1], 'linear');
-}
+// ronda 7: igual en HURT_BODY (la patada media al cuerpo hacía saltar el codo del golpeado 0,16 m/frame).
+const linFirst = (clip) => { for (const ch in clip.tracks) { const tr = clip.tracks[ch]; if (tr.length > 1 && tr[0][0] === 0 && tr[1][2] === Q) tr[1] = K(tr[1][0], tr[1][1], 'linear'); } };
+linFirst(HURT_HEAD);
 
 // ------------------------------------------------------------------ golpe al CUERPO: se dobla sobre el estómago, codos abajo, aire fuera
 export const HURT_BODY = {
@@ -53,6 +52,8 @@ export const HURT_BODY = {
     elbL:    [K(0, 0), K(0.10, 0.2, Q), K(0.64, 0)], elbR: [K(0, 0), K(0.10, 0.2, Q), K(0.64, 0)],
   },
 };
+
+linFirst(HURT_BODY);
 
 // ------------------------------------------------------------------ golpe a las PIERNAS (low kick): la pierna adelantada cede, se hunde de lado
 export const HURT_LEGS = {
@@ -195,6 +196,54 @@ export const GETUP = {
 };
 for (const c in KO_END) if (!GETUP.tracks[c]) GETUP.tracks[c] = [K(0, GU(c)), K(0.15, GU(c)), K(1.3, 0), K(1.6, 0)];
 
-export const REACTIONS = { hurt_head: HURT_HEAD, hurt_body: HURT_BODY, hurt_legs: HURT_LEGS, rocked: ROCKED, ko: KO, getUp: GETUP };
+// ------------------------------------------------------------------ ronda 7: golpe BLOQUEADO (la guardia cede con la fuerza; sin dolor)
+// Los guantes/antebrazos se van hacia la cara (ceden), codos adentro, mentón al pecho, el tronco atrás y el peso al pie trasero; vuelve en ~0,3 s.
+// Primer tramo lineal (sin pops). amp (animador) = 0,45 + 0,8·power.
+const L1 = 'linear';
+export const BLOCK_HIT = {
+  name: 'block_hit', duration: 0.34, impactT: 0.0, tip: 'L', phases: ph(0.34, 0.05, 0.16), feet: true,
+  tracks: {
+    hLz: [K(0, 0), K(0.06, -0.04, L1), K(0.14, -0.035), K(0.34, 0)], hRz: [K(0, 0), K(0.06, -0.04, L1), K(0.14, -0.035), K(0.34, 0)],
+    hLy: [K(0, 0), K(0.05, 0.015, L1), K(0.34, 0)], hRy: [K(0, 0), K(0.05, 0.015, L1), K(0.34, 0)],
+    hLx: [K(0, 0), K(0.05, -0.01, L1), K(0.34, 0)], hRx: [K(0, 0), K(0.05, 0.01, L1), K(0.34, 0)],
+    elbL: [K(0, 0), K(0.05, -0.06, L1), K(0.34, 0)], elbR: [K(0, 0), K(0.05, -0.06, L1), K(0.34, 0)],
+    spPitch: [K(0, 0), K(0.06, -0.07, L1), K(0.18, -0.04), K(0.34, 0)],
+    hdPitch: [K(0, 0), K(0.06, 0.06, L1), K(0.34, 0)],
+    pz: [K(0, 0), K(0.07, -0.05, L1), K(0.20, -0.03), K(0.34, 0)],
+    dy: [K(0, 0), K(0.07, -0.015, L1), K(0.34, 0)],
+  },
+};
+// low kick CHEQUEADO: la pierna adelantada (L) levanta la rodilla (espinilla afuera) y el peso pasa al pie trasero; baja en ~0,45 s.
+export const CHECK_HIT = {
+  name: 'check_hit', duration: 0.50, impactT: 0.0, tip: 'L', phases: ph(0.50, 0.06, 0.24), feet: true,
+  tracks: {
+    fLy: [K(0, 0), K(0.07, 0.16, L1), K(0.24, 0.14), K(0.40, 0, 'easeInQuad'), K(0.50, 0)],
+    fLz: [K(0, 0), K(0.07, -0.06, L1), K(0.24, -0.05), K(0.40, 0), K(0.50, 0)],
+    fLx: [K(0, 0), K(0.07, 0.06, L1), K(0.24, 0.05), K(0.40, 0), K(0.50, 0)],
+    fLyaw: [K(0, 0), K(0.07, 0.45, L1), K(0.30, 0.3), K(0.45, 0), K(0.50, 0)],
+    px: [K(0, 0), K(0.08, -0.06, L1), K(0.30, -0.04), K(0.50, 0)],
+    dy: [K(0, 0), K(0.08, -0.03, L1), K(0.50, 0)],
+    hipRoll: [K(0, 0), K(0.08, 0.06, L1), K(0.50, 0)],
+    spPitch: [K(0, 0), K(0.08, -0.04, L1), K(0.50, 0)],
+  },
+};
+// patada media/alta BLOQUEADA con el brazo (lado s del que recibe): media = codo abajo pegado a las costillas, guante en la sien (antebrazo
+// vertical tapando el costado), tronco que se encoge hacia ese lado; alta = antebrazo vertical al costado de la cabeza (guante a la altura
+// de la sien/oreja, codo afuera), cabeza que se aparta. Entra en 0,06 s (lineal), sostiene y vuelve.
+function blockKick(side, high) {
+  const sx = side === 'L' ? 1 : -1, tr = {};
+  const arm = high ? { x: -0.05 * sx, y: 0.19, z: -0.11, elb: 0.50, elv: 0.35, shrug: 0.08 } : { x: 0.08 * sx, y: -0.12, z: -0.08, elb: 0.05, elv: 0.0, shrug: 0.0 };
+  const put = (c, v) => { tr[c] = [K(0, 0), K(high ? 0.10 : 0.07, v, L1), K(0.22, v * 0.9), K(0.46, 0)]; };
+  put('h' + side + 'x', arm.x); put('h' + side + 'y', arm.y); put('h' + side + 'z', arm.z); put('elb' + side, arm.elb); put('elv' + side, arm.elv); put('shrug' + side, arm.shrug);
+  put('spRoll', (high ? -0.05 : -0.12) * sx); put('hdRoll', (high ? 0.10 : 0.04) * sx); put('hdPitch', 0.06); put('dy', -0.03); put('px', 0.03 * sx); put('pz', -0.03);
+  return { name: `block_kick_${high ? 'high' : 'body'}_${side}`, duration: 0.46, impactT: 0.0, tip: 'L', phases: ph(0.46, 0.06, 0.20), feet: true, tracks: tr };
+}
+// chequeo con la pierna atrasada (R): espejo de CHECK_HIT (fL* -> fR*, x y giro con signo opuesto, peso al pie adelantado)
+export const CHECK_HIT_R = { ...CHECK_HIT, name: 'check_hit_R', tracks: Object.fromEntries(Object.entries(CHECK_HIT.tracks).map(([c, k]) => {
+  const m = c.startsWith('fL') ? 'fR' + c.slice(2) : c, neg = c === 'fLx' || c === 'fLyaw' || c === 'px' || c === 'hipRoll';
+  return [m, neg ? k.map((q) => [q[0], -q[1], q[2]]) : k];
+})) };
+export const BLOCK_KICK = Object.fromEntries(['L', 'R'].flatMap((s) => [false, true].map((hi) => { const c = blockKick(s, hi); return [c.name, c]; })));
+export const REACTIONS = { ...BLOCK_KICK, block_hit: BLOCK_HIT, check_hit: CHECK_HIT, check_hit_R: CHECK_HIT_R, hurt_head: HURT_HEAD, hurt_body: HURT_BODY, hurt_legs: HURT_LEGS, rocked: ROCKED, ko: KO, getUp: GETUP };
 Object.assign(CLIPS, REACTIONS);
 export const ZONE_CLIP = Object.freeze({ head: 'hurt_head', body: 'hurt_body', legs: 'hurt_legs' });

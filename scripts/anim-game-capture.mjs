@@ -29,6 +29,14 @@ const SCENES = {
   cross_contact: { link: true, sep: 0.475, times: [1.50, 1.60, 1.6333, 1.65, 1.6667, 1.6917, 1.75, 1.90], actions: [{ t: 1.5, who: 0, play: 'cross' }, { t: 1.65, who: 1, hurt: { zone: 'head', power: 0.7 } }] },
   hook_contact: { link: true, sep: 0.425, times: [1.50, 1.60, 1.65, 1.6833, 1.70, 1.725, 1.80, 1.95], actions: [{ t: 1.5, who: 0, play: 'hook' }, { t: 1.6833, who: 1, hurt: { zone: 'head', power: 0.8 } }] },
   lowkick_contact: { link: true, sep: 0.50, times: [1.50, 1.65, 1.70, 1.7333, 1.75, 1.7833, 1.86, 2.05], actions: [{ t: 1.5, who: 0, play: 'lowkick' }, { t: 1.7333, who: 1, hurt: { zone: 'legs', power: 0.7 } }] },
+  // ronda 7: patadas media/alta con clip propio a la distancia de conexión (DUEL_DIST), bloqueo (evento `block` de la sim: strikeBlocked +
+  // blockHit, sin hurt) frente a no bloqueado, y ground and pound en mount (stance groundTop/groundBottom, raíces juntas, yaws opuestos)
+  bodykick_contact: { link: true, sep: 0.475, times: [1.50, 1.62, 1.70, 1.7667, 1.7833, 1.8083, 1.92, 2.10], actions: [{ t: 1.5, who: 0, play: 'bodykick' }, { t: 1.7667, who: 1, hurt: { zone: 'body', power: 0.7 } }] },
+  highkick_contact: { link: true, sep: 0.50, times: [1.50, 1.64, 1.75, 1.8167, 1.8333, 1.8583, 1.97, 2.15], actions: [{ t: 1.5, who: 0, play: 'highkick' }, { t: 1.8167, who: 1, hurt: { zone: 'head', power: 0.8 } }] },
+  jab_blocked: { link: true, sep: 0.485, times: [1.50, 1.567, 1.5833, 1.60, 1.6167, 1.6417, 1.70, 1.80], actions: [{ t: 1.5, who: 0, play: 'jab' }, { t: 1.6, who: 0, block: { src: 'block', power: 0.6 } }] },
+  jab_unblocked: { link: true, sep: 0.485, times: [1.50, 1.567, 1.5833, 1.60, 1.6167, 1.6417, 1.70, 1.80], actions: [{ t: 1.5, who: 0, play: 'jab' }, { t: 1.6, who: 1, hurt: { zone: 'head', power: 0.6 } }] },
+  gnp_mount: { link: true, sep: 0, ground: 'mount', times: [1.40, 1.55, 1.633, 1.65, 1.70, 1.75, 1.83, 1.95], actions: [{ t: 1.5, who: 0, play: 'gnp_punch' }, { t: 1.65, who: 1, hurt: { zone: 'head', power: 0.7 } }] },
+  gnp_mount_elbow: { link: true, sep: 0, ground: 'mount', times: [1.40, 1.58, 1.667, 1.683, 1.73, 1.78, 1.86, 1.98], actions: [{ t: 1.5, who: 0, play: 'gnp_elbow' }, { t: 1.6833, who: 1, hurt: { zone: 'head', power: 0.7 } }] },
   lowkick: { sep: 0.50, times: [1.50, 1.56, 1.64, 1.7333, 1.7667, 1.86, 1.96, 2.10], actions: [{ t: 1.5, who: 0, play: 'lowkick' }] },
 };
 
@@ -60,14 +68,16 @@ for (const [name, sc] of Object.entries(SCENES)) {
     const acts = sc.actions.slice(); let ti = 0; const hurts = [];
     if (sc.link) { fighters[0].anim.setOpponent(fighters[1].anim); fighters[1].anim.setOpponent(fighters[0].anim); }
     renderer.setSize(480, 400); camera.aspect = 480 / 400; camera.updateProjectionMatrix();
-    const target = [cx, gy + 0.95, cz];
+    const target = [cx, gy + (sc.ground ? 0.35 : 0.95), cz];
     const camDef = { front: [cx - 1.3, gy + 1.15, cz + 3.0], side: [cx, gy + 1.1, cz - 3.0], top34: [cx - 1.5, gy + 2.5, cz - 2.2] };   // front = 3/4 por el lado derecho de beige
     for (let i = 0; i * dt <= last + dt; i++) {
       const t = i * dt;
-      while (acts.length && acts[0].t <= t + 1e-9) { const a = acts.shift(); if (a.play) fighters[a.who].anim.play(a.play, a.opts); if (a.guard !== undefined) fighters[a.who].anim.setGuardLevel(a.guard); if (a.hurt) hurts.push({ who: a.who, ...a.hurt, age: 0 }); }
+      if (sc.ground) for (let k = 0; k < 2; k++) fighters[k].anim.setState({ stance: k === 0 ? 'groundTop' : 'groundBottom', groundPos: sc.ground });
+      while (acts.length && acts[0].t <= t + 1e-9) { const a = acts.shift(); if (a.play) fighters[a.who].anim.play(a.play, a.opts);
+        if (a.block) { const ev = { type: 'block', ...a.block }; fighters[a.who].anim.strikeBlocked(ev); fighters[1 - a.who].anim.blockHit(ev); } if (a.guard !== undefined) fighters[a.who].anim.setGuardLevel(a.guard); if (a.hurt) hurts.push({ who: a.who, ...a.hurt, age: 0 }); }
       for (let k = 0; k < fighters.length; k++) {
         const f = fighters[k];
-        for (const h of hurts) if (h.who === k) { f.anim.setState({ hurt: { zone: h.zone, age: h.age, power: h.power } }); h.age += dt; }
+        for (const h of hurts) if (h.who === k) { f.anim.setState({ ...(sc.ground ? { stance: k === 0 ? 'groundTop' : 'groundBottom', groundPos: sc.ground } : {}), hurt: { zone: h.zone, age: h.age, power: h.power } }); h.age += dt; }
         f.anim.update(dt, f.root);
       }
       if (ti < times.length && Math.abs(t - times[ti]) < dt / 2) {

@@ -99,9 +99,12 @@ export function snapshot(sk, A) {
 // ---- ronda 6: duelo de dos animadores (contacto). A en x=0 mirando +X, B en x=dist mirando -X (pelvis–pelvis de pie = dist).
 // A lanza `name` en t0; en el tick de impacto de la sim B recibe state.hurt {zone, age, power} (como live.js de combat-gap).
 // closeTo (opcional): la raíz de A entra (lo que haría la sim) hasta quedar a `closeTo` del rival en el impacto.
-export const DUEL_DIST = Object.freeze({ jab: 0.97, cross: 0.95, hook: 0.85, lowkick: 1.00 });   // combat-gap 397b6e3 (REACH_3D_M / distance-3d)
-export const DUEL_ZONE = Object.freeze({ jab: 'head', cross: 'head', hook: 'head', lowkick: 'legs' });
-export function simulateDuel(name, { dist = DUEL_DIST[name] ?? 0.95, link = true, power = 0.6, hz = 60, t0 = 1.0, tail = 0.9, closeTo = null, seedA = 7, seedB = 11, onFrame } = {}) {
+export const DUEL_DIST = Object.freeze({ jab: 0.97, cross: 0.95, hook: 0.85, lowkick: 1.00, bodykick: 0.95, highkick: 1.00 });   // combat-gap 397b6e3 (REACH_3D_M / distance-3d)
+export const DUEL_ZONE = Object.freeze({ jab: 'head', cross: 'head', hook: 'head', lowkick: 'legs', bodykick: 'body', highkick: 'head' });
+// ronda 7: block = { at: 'impact' | segundos antes del impacto, guard?: {limb, side}, src?: 'block'|'parry'|'check'|'catch' }: en ese instante
+// llega el evento `block` de la sim (como bindCombatEvents): a.strikeBlocked(ev) y b.blockHit(ev); no hay state.hurt.
+// hurtBlocked = true: el respaldo (state.hurt.blocked) en vez del evento.
+export function simulateDuel(name, { dist = DUEL_DIST[name] ?? 0.95, link = true, power = 0.6, hz = 60, t0 = 1.0, tail = 0.9, closeTo = null, seedA = 7, seedB = 11, onFrame, block = null, hurtBlocked = false, guardB = null } = {}) {
   const a = createAnimator3D({ seed: seedA }), b = createAnimator3D({ seed: seedB });
   if (link) pairAnimators(a, b);
   const clip = CLIPS[name], dt = 1 / hz, n = Math.round((t0 + clip.duration + tail) * hz), zone = DUEL_ZONE[name] || 'head';
@@ -109,12 +112,42 @@ export function simulateDuel(name, { dist = DUEL_DIST[name] ?? 0.95, link = true
   for (let i = 0; i <= n; i++) {
     const t = i * dt;
     if (Math.abs(t - t0) < dt / 2) a.play(name);
-    if (hurtAge < 0 && t >= t0 + clip.impactT - 1e-9) hurtAge = 0;
+    if (block && !block.done) {
+      const tb = block.at === 'impact' || block.at == null ? t0 + clip.impactT : t0 + clip.impactT - block.at;
+      if (t >= tb - 1e-9) { block.done = true; const ev = { type: 'block', src: block.src || 'block', power, guard: block.guard ?? undefined, action: name }; a.strikeBlocked(ev); b.blockHit(ev); }
+    }
+    if (guardB != null) b.setState({ guard: guardB });
+    if (!block && hurtAge < 0 && t >= t0 + clip.impactT - 1e-9) hurtAge = 0;
     let ax = 0;
     if (closeTo != null) { const k = Math.min(1, Math.max(0, (t - t0) / clip.impactT)); const s = k * k * (3 - 2 * k); ax = (dist - closeTo) * s * (t - t0 < clip.duration ? 1 : 1); }
     const ska = a.update(dt, { pos: [ax, 0, 0], yaw: 0 });
-    if (hurtAge >= 0) { b.setState({ hurt: { zone, age: hurtAge, power } }); hurtAge += dt; }
+    if (hurtAge >= 0) { b.setState({ hurt: hurtBlocked ? { zone, age: hurtAge, power, blocked: true } : { zone, age: hurtAge, power } }); hurtAge += dt; }
     const skb = b.update(dt, { pos: [dist, 0, 0], yaw: Math.PI });
+    if (onFrame) onFrame(t, ska, skb, a, b, i);
+  }
+  return { a, b, block };
+}
+
+// ---- ronda 7: suelo. Raíces en el mismo punto (como la sim de combat-gap), a = arriba (groundTop) mirando +X, b = abajo (groundBottom)
+// mirando -X. `a` lanza `strike` (gnp_punch | gnp_elbow | gnp_body) en t0; en el impacto b recibe state.hurt (head/body) como live.js.
+export const GROUND_ZONE = Object.freeze({ gnp_punch: 'head', gnp_elbow: 'head', gnp_body: 'body' });
+export function simulateGround(pos = 'mount', strike = 'gnp_punch', { hz = 60, t0 = 1.0, tail = 0.8, power = 0.7, link = true, seedA = 7, seedB = 11, onFrame, viaPlay = null } = {}) {
+  const a = createAnimator3D({ seed: seedA }), b = createAnimator3D({ seed: seedB });
+  if (link) pairAnimators(a, b);
+  const clip = CLIPS[strike], dt = 1 / hz, n = Math.round((t0 + clip.duration + tail) * hz), zone = GROUND_ZONE[strike] || 'head';
+  const move = { gnp_punch: 'gnpPunch', gnp_elbow: 'gnpElbow', gnp_body: 'gnpBody' }[strike];
+  let hurtAge = -1;
+  for (let i = 0; i <= n; i++) {
+    const t = i * dt, striking = t >= t0 - 0.2 && t < t0 + clip.duration;
+    a.setState({ stance: 'groundTop', groundPos: pos, move: striking ? move : null, kind: striking ? 'strike' : null });
+    // viaPlay = 'jab': como liveAnim sin clipMap (pide 'jab' a windup - impactT(jab)); el animador remapea al clip de suelo
+    if (viaPlay) { const tp = t0 + clip.impactT - CLIPS[viaPlay].impactT; if (Math.abs(t - tp) < dt / 2) a.play(viaPlay); }
+    else if (Math.abs(t - t0) < dt / 2) a.play(strike);
+    if (hurtAge < 0 && t >= t0 + clip.impactT - 1e-9) hurtAge = 0;
+    const ska = a.update(dt, { pos: [0, 0, 0], yaw: 0 });
+    b.setState({ stance: 'groundBottom', groundPos: pos, hurt: hurtAge >= 0 ? { zone, age: hurtAge, power } : undefined });
+    if (hurtAge >= 0) hurtAge += dt;
+    const skb = b.update(dt, { pos: [0, 0, 0], yaw: Math.PI });
     if (onFrame) onFrame(t, ska, skb, a, b, i);
   }
   return { a, b };

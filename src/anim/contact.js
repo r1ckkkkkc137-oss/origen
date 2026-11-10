@@ -9,25 +9,39 @@ export const CONTACT = Object.freeze({
   thigh: 0.075, shin: 0.055,
   fist: 0.02,             // la punta del puño (nudillos) es la punta de la mano: piel/guante
   shinTip: 0.045,         // la espinilla (30 % desde el tobillo): radio de la pierna
+  glove: 0.05, forearm: 0.042,
+  elbow: 0.045,           // ronda 7: punta del codo (gnp_elbow)   // ronda 7: guardia del rival = guante (muñeca->nudillos) y antebrazo (codo->muñeca)
 });
-const ZONES = ['head', 'body', 'legs', 'legs', 'legs', 'legs', 'head', 'body'];
+const ZONES = ['head', 'body', 'legs', 'legs', 'legs', 'legs', 'head', 'body', 'guard', 'guard', 'guard', 'guard'];
+// ronda 7: índices de los colisores. 0..7 = cuerpo (r6), 8..11 = guardia (no son blanco de un golpe NO bloqueado: el golpe los rodea).
+export const COL = Object.freeze({ head: 0, torso: 1, thighL: 2, thighR: 3, shinL: 4, shinR: 5, neck: 6, shoulders: 7, gloveL: 8, gloveR: 9, forearmL: 10, forearmR: 11, BODY: 8 });
+const LIMB = [null, null, 'thigh', 'thigh', 'shin', 'shin', null, null, 'glove', 'glove', 'forearm', 'forearm'];
+const SIDE = [null, null, 'L', 'R', 'L', 'R', null, null, 'L', 'R', 'L', 'R'];
+/** Índice del colisor de un miembro de guardia { limb:'glove'|'forearm'|'shin', side:'L'|'R' } (formato del evento block de Combate). */
+export const guardIndex = (g) => (g && (g.side === 'L' || g.side === 'R') ? ({ glove: 8, forearm: 10, shin: 4 })[g.limb] + (g.side === 'R' ? 1 : 0) : -1);
 
 const I = (w, o) => { o[0] = -w[2]; o[1] = w[1]; o[2] = w[0]; return o; };
 const v3 = () => [0, 0, 0];
 
 /** Colisores del rival (marco interno) desde su Skeleton3D mundo. Reutiliza `cols` si se pasa. */
 export function buildColliders(sk, cols, prev = null) {
-  if (!cols) cols = [0, 1, 2, 3, 4, 5, 6, 7].map((i) => ({ kind: i ? 'cap' : 'sph', zone: ZONES[i], a: v3(), b: v3(), r: 0 }));
+  if (!cols) cols = ZONES.map((z, i) => ({ kind: i ? 'cap' : 'sph', zone: z, a: v3(), b: v3(), r: 0, i, limb: LIMB[i], side: SIDE[i], guard: i >= 8 }));
   const P = sk.pose, h = cols[0], hb = I(P.head, h.b), ht = I(sk.tips.headTop, v3());
   for (let k = 0; k < 3; k++) h.a[k] = hb[k] + (ht[k] - hb[k]) * CONTACT.headC;
   h.r = CONTACT.head;
-  I(P.pelvis, cols[1].a); I(P.neck, cols[1].b); cols[1].a[1] += CONTACT.torsoBot; cols[1].b[1] -= CONTACT.torsoTop; cols[1].r = CONTACT.torso;
+  // torso: recortes a lo largo del eje pelvis->cuello (r7: tendido en el suelo también; de pie = los recortes verticales de r6)
+  { const t = cols[1]; I(P.pelvis, t.a); I(P.neck, t.b); const dx = t.b[0] - t.a[0], dy = t.b[1] - t.a[1], dz = t.b[2] - t.a[2], L = Math.hypot(dx, dy, dz) || 1;
+    for (let k = 0, d = [dx, dy, dz]; k < 3; k++) { t.a[k] += d[k] / L * CONTACT.torsoBot; t.b[k] -= d[k] / L * CONTACT.torsoTop; } t.r = CONTACT.torso; }
   I(P.neck, cols[6].a); I(P.head, cols[6].b); cols[6].r = CONTACT.neck;
   I(P.shoulderL, cols[7].a); I(P.shoulderR, cols[7].b); cols[7].r = CONTACT.shoulders;
   I(P.hipL, cols[2].a); I(P.kneeL, cols[2].b); cols[2].r = CONTACT.thigh;
   I(P.hipR, cols[3].a); I(P.kneeR, cols[3].b); cols[3].r = CONTACT.thigh;
   I(P.kneeL, cols[4].a); I(P.footL, cols[4].b); cols[4].r = CONTACT.shin;
   I(P.kneeR, cols[5].a); I(P.footR, cols[5].b); cols[5].r = CONTACT.shin;
+  if (sk.tips.handL) { I(P.handL, cols[8].a); I(sk.tips.handL, cols[8].b); I(P.handR, cols[9].a); I(sk.tips.handR, cols[9].b); }
+  else { I(P.handL, cols[8].a); I(P.handL, cols[8].b); I(P.handR, cols[9].a); I(P.handR, cols[9].b); }
+  cols[8].r = cols[9].r = CONTACT.glove;
+  I(P.elbowL, cols[10].a); I(P.handL, cols[10].b); I(P.elbowR, cols[11].a); I(P.handR, cols[11].b); cols[10].r = cols[11].r = CONTACT.forearm;
   return cols;
 }
 /** Extrapola un frame (el rival se actualiza DESPUÉS en el mismo tick): cols += cols - prev. prev se reescribe con la pose leída. */

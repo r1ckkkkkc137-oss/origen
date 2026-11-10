@@ -22,7 +22,7 @@ test('API de rival: setOpponent / pairAnimators / pairedAnimatorFactory (lo que 
 
 test('colisores del rival: cabeza esfera, torso/cuello/hombros/piernas cápsulas; primer contacto y salida por la normal', () => {
   const A = createAnimator3D({ seed: 3 }); const sk = A.update(1 / 60, { pos: [0, 0, 0], yaw: 0 });
-  const cols = buildColliders(sk); assert.equal(cols.length, 8); assert.equal(cols[0].kind, 'sph'); assert.equal(cols[0].zone, 'head');
+  const cols = buildColliders(sk); assert.equal(cols.filter((c) => !c.guard).length, 8); assert.equal(cols.length, 12, 'r7: + guantes y antebrazos'); assert.equal(cols[0].kind, 'sph'); assert.equal(cols[0].zone, 'head');
   const h = cols[0].a, O = [h[0], h[1], h[2] - 0.6], T = [h[0], h[1], h[2] + 0.05];
   const fc = firstContact(cols, O, T, 0.02); assert.ok(fc && Math.abs(h[2] - fc.point[2] - (cols[0].r + 0.02)) < 0.003, 'el primer contacto es la superficie frontal');
   const behind = [h[0], h[1], h[2] + 0.30]; assert.ok(firstContact(cols, O, behind, 0.02), 'anti-túnel: un puño que quedó DETRÁS de la cabeza también se detecta');

@@ -1,7 +1,8 @@
 // Métricas de animación (ronda 3): hook, guardia, reacciones, KO, climb. Uso: node scripts/anim-metrics.mjs [hook|guard|hurt|ko|climb|all]
-import { simulate, simulateDuel, DUEL_DIST, FOOTWORK_SEGS, HURT_FORCE } from '../src/anim/scenarios.js';
-import { buildColliders, segPenetration, penetration, CONTACT } from '../src/anim/contact.js';
-import { CLIPS } from '../src/anim/clips.js';
+import { simulate, simulateDuel, simulateGround, GROUND_ZONE, DUEL_DIST, FOOTWORK_SEGS, HURT_FORCE } from '../src/anim/scenarios.js';
+import { buildColliders, segPenetration, penetration, sdist, CONTACT } from '../src/anim/contact.js';
+import { CLIPS, HITSTOP } from '../src/anim/clips.js';
+import '../src/anim/animator3d.js';
 
 const D = 180 / Math.PI;
 const sub = (a, b) => a.map((v, i) => v - b[i]); const len = (a) => Math.hypot(...a); const dot = (a, b) => a.reduce((s, v, i) => s + v * b[i], 0);
@@ -236,10 +237,11 @@ const I3 = (w) => [-w[2], w[1], w[0]];
 function duelRec(name, o) {
   const R = [];
   simulateDuel(name, { ...o, onFrame: (t, sa, sb, a, b) => {
-    const cols = buildColliders(sb), kick = name === 'lowkick', s = kick ? 'R' : CLIPS[name].tip;
+    const cols = buildColliders(sb), kick = CLIPS[name].tip === 'kickR', s = kick ? 'R' : CLIPS[name].tip;
     const O = I3(kick ? sa.pose.hipR : sa.pose['shoulder' + s]), T = I3(a.strike.fist), rt = kick ? CONTACT.shinTip : CONTACT.fist;
     const M = I3(kick ? sa.pose.kneeR : sa.pose['elbow' + s]);
-    const tun = Math.max(segPenetration(cols, O, M, rt), segPenetration(cols, M, T, rt));   // por segmentos: hombro->codo->nudillos / cadera->rodilla->espinilla
+    let tun = Math.max(segPenetration(cols, O, M, rt), segPenetration(cols, M, T, rt));
+    if (kick) { const An = I3(sa.pose.footR), To = I3(sa.tips.toeR); tun = Math.max(tun, segPenetration(cols, T, An, rt), segPenetration(cols, An, To, 0.035)); }   // r7: tobillo y empeine tampoco entran   // por segmentos: hombro->codo->nudillos / cadera->rodilla->espinilla
     R.push({ t, ct: a.clip ? a.clipT : -1, cn: a.clip ? a.clipMode.name : '', seg: tun, pen: Math.max(0, penetration(cols, T, rt).pen),
       P: Object.fromEntries(Object.entries(sa.pose).map(([k, v]) => [k, v.slice()])), PB: Object.fromEntries(Object.entries(sb.pose).map(([k, v]) => [k, v.slice()])),
       fist: a.strike.fist.slice(), root: sa.root.pos.slice(), rootB: sb.root.pos.slice(), vis: sa.visualYaw, ev: a.events.filter((e) => e.type === 'contact').map((e) => ({ ...e })), ek: a.clipMode.entryK ?? 0, corr: Math.hypot(...a.contact.d) });
@@ -252,10 +254,10 @@ export function duelMetrics(name, o = {}) {
   const B = duelRec(name, { ...o, dist, link: false }), L = duelRec(name, { ...o, dist, link: true });
   const win = (R) => R.filter((r) => r.cn === name);
   const iImp = (R) => R.findIndex((r) => r.cn === name && r.ct >= c.impactT - 1e-9);
-  const ib = iImp(B), il = iImp(L), s = name === 'lowkick' ? 'R' : c.tip;
+  const kk = c.tip === 'kickR', ib = iImp(B), il = iImp(L), s = kk ? 'R' : c.tip;
   let corrJump = 0, corrWho = '';
   for (let i = 1; i < L.length; i++) for (const k in L[i].P) { const d = len(sub(sub(L[i].P[k], B[i].P[k]), sub(L[i - 1].P[k], B[i - 1].P[k]))); if (d > corrJump) { corrJump = d; corrWho = k; } }
-  const strikeJ = name === 'lowkick' ? ['kneeR', 'footR'] : ['hand' + s, 'elbow' + s];
+  const strikeJ = kk ? ['kneeR', 'footR'] : ['hand' + s, 'elbow' + s];
   const ev = L.flatMap((r) => r.ev)[0] || null, iev = ev ? L.findIndex((r) => r.ev.length) : -1;
   const hz = 60, sp = (R, i) => len(sub(R[i].fist, R[i - 1].fist)) * hz;
   const rr = (r) => Math.hypot(r.rootB[0] - r.root[0], r.rootB[2] - r.root[2]);
@@ -282,4 +284,78 @@ if (import.meta.url === `file://${process.argv[1]}` && (which === 'all' || which
   for (const n of ['jab', 'cross', 'hook', 'lowkick']) console.log('DUEL', n, fm(duelMetrics(n)));
   console.log('DUEL hook closeTo0.70', fm(duelMetrics('hook', { closeTo: 0.70 })));
   console.log('DUEL hook power1', fm(duelMetrics('hook', { power: 1 })));
+}
+
+// ---- ronda 7: suelo (ground and pound). Métricas de un golpe de suelo con el rival tendido (simulateGround).
+//  gapImpact: distancia superficie-punta al blanco (cabeza/torso) en el frame del impacto (<0 = penetra)
+//  penMax / segMax: penetración máx. de la punta / del segmento distal en todo el golpe contra los colisores de CUERPO (0..7) del de abajo
+//  vPeakT: instante del pico de velocidad de la punta (sin los 2 primeros frames); headFloorMin: min(y_centro_cabeza - r) del de abajo
+//  bounce: cuánto baja la cabeza respecto del reposo durante hurt_ground y cuánto vuelve a subir (rebote)
+export function groundMetrics(pos = 'mount', strike = 'gnp_punch', o = {}) {
+  const cl = CLIPS[strike], I = (w) => [-w[2], w[1], w[0]], elb = cl.tip === 'elbowR', rt = elb ? CONTACT.elbow : CONTACT.fist;
+  const zoneCol = (GROUND_ZONE[strike] || 'head') === 'head' ? 0 : 1;
+  const m = { pos, strike, gapImpact: null, penMax: 0, segMax: 0, vPeak: 0, vPeakT: 0, vImpact: 0, headFloorMin: Infinity, headRest: null, headLow: Infinity, headAfter: -Infinity, contact: null, tipJump: 0 };
+  let pf = null, t0 = null;
+  simulateGround(pos, strike, { ...o, onFrame: (t, sa, sb, a, b) => {
+    const hc = sb.pose.head[1] + (sb.tips.headTop[1] - sb.pose.head[1]) * CONTACT.headC - CONTACT.head;
+    m.headFloorMin = Math.min(m.headFloorMin, hc);
+    if (b.clip && b.clipMode.name === 'hurt_ground') { m.headLow = Math.min(m.headLow, hc); if (b.clipT > 0.12) m.headAfter = Math.max(m.headAfter, hc); }
+    else if (!b.clip && t > 0.9 && m.headLow === Infinity) m.headRest = hc;
+    if (!(a.clip && a.clipMode.name === strike)) { pf = null; return; }
+    const cols = buildColliders(sb).slice(0, 8), f = I(a.strike.fist), T = a.clipT;
+    const P = I(elb ? sa.pose.shoulderR : sa.pose['elbow' + (cl.tip === 'L' ? 'L' : 'R')]);
+    m.penMax = Math.max(m.penMax, penetration(cols, f, rt).pen); m.segMax = Math.max(m.segMax, segPenetration(cols, P, f, rt));
+    if (pf && T > 2 / 60 + 1e-9) { const v = Math.hypot(f[0] - pf[0], f[1] - pf[1], f[2] - pf[2]) * 60; if (v > m.vPeak) { m.vPeak = v; m.vPeakT = T; } if (Math.abs(T - cl.impactT) < 1 / 120) m.vImpact = v; m.tipJump = Math.max(m.tipJump, v / 60); }
+    if (Math.abs(T - cl.impactT) < 1 / 120) { const c = cols[zoneCol]; m.gapImpact = sdist(c, f) - rt; }
+    if (!m.contact && a.contact.last && a.contact.last.name === strike) m.contact = { ...a.contact.last };
+    pf = f;
+  } });
+  m.bounce = m.headRest == null ? null : { down: m.headRest - m.headLow, up: m.headAfter - m.headLow };
+  return m;
+}
+
+// ---- ronda 7: patadas media/alta en duelo enlazado. thighMax: penetración del muslo (cadera->rodilla, r 0,06) en el cuerpo del rival;
+//  vPeakT vs impactT (pico de velocidad de la espinilla), hitStopMove: cuánto se mueve la punta durante el hit-stop, kneeChamber/kneeImpact (°),
+//  pivot: giro del pie de apoyo (rad), penImpact/segImpact/segMax como duelMetrics (cuerpo del rival 0..7).
+export function kickMetrics(name, o = {}) {
+  const c = CLIPS[name], I3 = (w) => [-w[2], w[1], w[0]];
+  const m = { name, thighMax: 0, vPeak: 0, vPeakT: 0, vImpact: 0, hitStopMove: 0, kneeChamber: 180, kneeImpact: 0, pivot: 0, penImpact: 0, segImpact: 0, segMax: 0, contact: null, defClips: new Set() };
+  let pf = null, yaw0 = null, pin0 = null;
+  simulateDuel(name, { ...o, onFrame: (t, sa, sb, a, b) => {
+    if (b.clip) m.defClips.add(b.clipMode.name);
+    if (!(a.clip && a.clipMode.name === name)) { pf = null; return; }
+    const cols = buildColliders(sb).slice(0, 8), T = a.clipT, P = sa.pose, f = I3(a.strike.fist);
+    m.thighMax = Math.max(m.thighMax, segPenetration(cols, I3(P.hipR), I3(P.kneeR), 0.06));
+    const seg = Math.max(segPenetration(cols, I3(P.kneeR), f, CONTACT.shinTip), segPenetration(cols, f, I3(P.footR), CONTACT.shinTip));
+    m.segMax = Math.max(m.segMax, seg);
+    const kn = ang(P.hipR, P.kneeR, P.footR);
+    if (T < c.impactT - 0.03) m.kneeChamber = Math.min(m.kneeChamber, kn);
+    const fy = a.feetWorld()[0].yaw; if (yaw0 == null) yaw0 = fy; m.pivot = Math.max(m.pivot, Math.abs(fy - yaw0));
+    if (pf && T > 2 / 60) { const v = len(sub(f, pf)) * 60; if (v > m.vPeak) { m.vPeak = v; m.vPeakT = T; } }
+    if (Math.abs(T - c.impactT) < 1 / 120) { m.kneeImpact = kn; m.penImpact = Math.max(0, penetration(cols, f, CONTACT.shinTip).pen); m.segImpact = seg; m.vImpact = pf ? len(sub(f, pf)) * 60 : 0; pin0 = f; }
+    if (pin0 && T > c.impactT && T <= c.impactT + HITSTOP + 1e-9) m.hitStopMove = Math.max(m.hitStopMove, len(sub(f, pin0)));
+    if (!m.contact && a.contact.last && a.contact.last.name === name) m.contact = { ...a.contact.last };
+    pf = f;
+  } });
+  m.defClips = [...m.defClips];
+  return m;
+}
+// bloqueo en duelo: distancia superficie-punta al miembro de guardia elegido (blkGap) mínima en la ventana impacto..+hit-stop+1 frame,
+// clips del defensor (sin hurt_*), y si el golpe NO bloqueado atraviesa los guantes/antebrazos (guardSeg).
+export function blockMetrics(name, block = null, o = {}) {
+  const c = CLIPS[name], I3 = (w) => [-w[2], w[1], w[0]], kick = c.tip === 'kickR', rt = kick ? CONTACT.shinTip : CONTACT.fist;
+  const m = { name, block, blk: -1, blkGapMin: Infinity, guardSeg: 0, bodyPenMax: 0, defClips: new Set(), events: [] };
+  simulateDuel(name, { ...o, block: block ? { ...block } : null, onFrame: (t, sa, sb, a, b) => {
+    if (b.clip) m.defClips.add(b.clipMode.name);
+    for (const e of a.events) if (e.type === 'blocked' || e.type === 'contact') m.events.push(e.type + (e.blocked ? ':blocked' : '') + (e.limb ? ':' + e.limb + e.side : ''));
+    if (!(a.clip && a.clipMode.name === name)) return;
+    const cols = buildColliders(sb), f = I3(a.strike.fist), T = a.clipT, P = sa.pose;
+    const blk = a.contact.blk && a.contact.blk.clip === a.clip ? a.contact.blk.i : -1; if (blk >= 0) m.blk = blk;
+    m.bodyPenMax = Math.max(m.bodyPenMax, penetration(cols.slice(0, 8), f, rt).pen);
+    const O = I3(kick ? P.kneeR : P['elbow' + c.tip]), G = cols.slice(8); m.guardSeg = Math.max(m.guardSeg, segPenetration(G, O, f, rt));
+    if (kick) m.guardSeg = Math.max(m.guardSeg, segPenetration(G, f, I3(P.footR), rt), segPenetration(G, I3(P.hipR), I3(P.kneeR), 0.06));   // toda la pierna: muslo, espinilla y empeine
+    if (blk >= 0 && T >= c.impactT - 1e-9 && T <= c.impactT + HITSTOP + 1 / 60 + 1e-9) m.blkGapMin = Math.min(m.blkGapMin, sdist(cols[blk], f) - rt);
+  } });
+  m.defClips = [...m.defClips];
+  return m;
 }

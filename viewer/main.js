@@ -1,6 +1,6 @@
 // Viewer de desarrollo: cápsulas + líneas sobre cubos de vóxel. Modo live (animación continua) y modo captura (window.CAP).
 import * as THREE from 'three';
-import { SCENARIOS, simulate, snapshot, simulateDuel } from '../src/anim/scenarios.js';
+import { SCENARIOS, simulate, snapshot, simulateDuel, simulateGround } from '../src/anim/scenarios.js';
 import { buildColliders } from '../src/anim/contact.js';
 
 const canvas = document.getElementById('c');
@@ -120,6 +120,7 @@ const DCAMS = {
   side: (t) => ({ pos: [t[0], t[1] + 1.05, t[2] - 3.6], look: [t[0], t[1] + 1.0, t[2]], fov: 30 }),
   top34: (t) => ({ pos: [t[0] - 1.4, t[1] + 2.4, t[2] + 2.6], look: [t[0], t[1] + 0.95, t[2]], fov: 30 }),
   front34: (t) => ({ pos: [t[0] + 2.4, t[1] + 1.45, t[2] - 2.4], look: [t[0], t[1] + 1.0, t[2]], fov: 30 }),
+  overhead: (t) => ({ pos: [t[0], t[1] + 4.2, t[2] - 0.01], look: [t[0], t[1] + 1.0, t[2]], fov: 26 }),   // cenital: +X a la derecha... (cámara sobre la vertical, -Z abajo)
 };
 window.CAP.runDuel = (name, times, camNames, w = 480, h = 420, opts = {}) => {
   size(w, h); const want = times.map((t) => Math.round(t * 60)); const snaps = {};
@@ -132,6 +133,32 @@ window.CAP.runDuel = (name, times, camNames, w = 480, h = 420, opts = {}) => {
       const s = snaps[i]; drawSnap(s.a); drawRival(s.b);
       contactMark.visible = !!s.pin; if (s.pin) contactMark.position.set(s.pin[2], s.pin[1], -s.pin[0]);
       const tgt = [(s.a.pose.pelvis[0] + s.b.pose.pelvis[0]) / 2, 0, 0], c = DCAMS[cn](tgt);
+      cam.fov = c.fov; cam.position.set(...c.pos); cam.lookAt(...c.look); cam.aspect = canvas.width / canvas.height; cam.updateProjectionMatrix();
+      renderer.render(scene, cam); out[cn].push(canvas.toDataURL('image/png'));
+    }
+  }
+  rivalGroup.visible = false; contactMark.visible = false;
+  return out;
+};
+
+// ronda 7: suelo (ground and pound). a arriba (colores), b abajo (apagado), raíces en el mismo punto; cámaras cercanas y bajas
+const GCAMS = {
+  side: (t) => ({ pos: [t[0], t[1] + 0.75, t[2] - 2.6], look: [t[0], t[1] + 0.35, t[2]], fov: 32 }),
+  top34: (t) => ({ pos: [t[0] - 1.2, t[1] + 2.0, t[2] + 1.9], look: [t[0], t[1] + 0.3, t[2]], fov: 32 }),
+  front34: (t) => ({ pos: [t[0] + 2.0, t[1] + 1.05, t[2] - 1.7], look: [t[0], t[1] + 0.35, t[2]], fov: 32 }),
+  overhead: (t) => ({ pos: [t[0], t[1] + 3.4, t[2] - 0.01], look: [t[0], t[1], t[2]], fov: 30 }),
+};
+window.CAP.runGround = (pos, strike, times, camNames, w = 480, h = 420, opts = {}) => {
+  size(w, h); const want = times.map((t) => Math.round(t * 60)); const snaps = {};
+  simulateGround(pos, strike, { ...opts, tail: Math.max(...times) + 0.05, onFrame: (t, sa, sb, a, b, i) => { if (want.includes(i)) snaps[i] = { a: snapshot(sa, a), b: snapshot(sb, b), pin: a.contact.pin ? a.contact.pin.p.slice() : null }; } });
+  buildTerrain(SCENARIOS.guard, -2, 4); rivalGroup.visible = true;
+  const out = {};
+  for (const cn of camNames) {
+    out[cn] = [];
+    for (const i of want) {
+      const s = snaps[i]; drawSnap(s.a); drawRival(s.b);
+      contactMark.visible = !!s.pin; if (s.pin) contactMark.position.set(s.pin[2], s.pin[1], -s.pin[0]);
+      const tgt = [0.3, 0, 0], c = GCAMS[cn](tgt);
       cam.fov = c.fov; cam.position.set(...c.pos); cam.lookAt(...c.look); cam.aspect = canvas.width / canvas.height; cam.updateProjectionMatrix();
       renderer.render(scene, cam); out[cn].push(canvas.toDataURL('image/png'));
     }

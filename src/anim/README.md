@@ -86,3 +86,61 @@ Orden de update a->b: `a` lee la pose de `b` del frame anterior (extrapolada 1 f
 escalado por k: con el esqueleto del rival, k pone la punta libre a la profundidad del centro de SU cabeza (+1,5 cm); sin esqueleto,
 k = (d − 0,70)/0,16 con d = distancia raíz–raíz prevista en el impacto (`opts.entryDist` para fijarla). Se recalcula cada frame hasta el
 impacto: si la sim mete la raíz a ~0,70, k cae a ~0 y el clip no se pasa. Sin rival (visor) k = 1: alcance raíz→puño 0,864.
+
+## Ronda 7 (Rick): patadas media/alta, ground and pound y bloqueo con colisionadores de guardia
+
+### Patadas media y alta (clips propios)
+- `bodykick` (a las costillas) y `highkick` (a la cabeza/cuello) en `kicks.js`: cadena cadera→rodilla cargada→espinilla/empeine,
+  pivote del pie de apoyo (~85°/94°), pico de velocidad de la espinilla en el impacto, hit-stop (clavado 0,042 s).
+- Enganche con la sim: `MOVE_CLIP = { bodyKick: 'bodykick', highKick: 'highkick', gnpPunch: 'gnp_punch', gnpElbow: 'gnp_elbow', gnpBody: 'gnp_body' }`.
+  - Con `clipMap: MOVE_CLIP` en liveAnim, cada move pide su clip.
+  - Sin clipMap (`CLIP_MAP` de liveAnim manda bodyKick/highKick a 'lowkick' y los gnp* a 'jab'), el animador **remapea**: si `state.move`
+    es bodyKick/highKick (o la stance es de suelo), el 'lowkick'/'jab' pedido se cambia por el clip propio con el tiempo deformado para
+    que el impacto caiga donde lo pidió liveAnim (impactIn = impactT del clip pedido).
+- Patada NO bloqueada: los brazos del rival ceden ante la pierna (guardYield) y, en la recogida, la pierna rodea los brazos que bajan a cubrir.
+
+### Ground and pound
+- Stances `groundTop` / `groundBottom` con `groundPos` ('mount' | 'guard' | 'side' | 'half' | 'back'): capa de pose de suelo con muelles;
+  las dos raíces coinciden (yaws opuestos), como la sim.
+- Clips `gnp_punch` (puño a la cabeza), `gnp_elbow` (punta = codo), `gnp_body` (puño al torso), cada uno con referencia de puntería por posición.
+- El de abajo recibe `hurt_ground` (la cabeza va al suelo y rebota, nunca por debajo: `floorHead`) o `hurt_ground_body`.
+- Mientras está en el suelo se cancelan los clips de pie; un KO tumbado sigue tumbado.
+
+### Bloqueo: lo que espera el animador de Combate
+Evento de la sim (por `live.on('*')`):
+
+```js
+{ type: 'block' | 'blocked',
+  src: 'block' | 'parry' | 'check' | 'catch',     // o result
+  attacker, target | defender,                    // ids de los peleadores (live.ids)
+  power,                                          // 0..1
+  point,                                          // hoy cae en la zona del cuerpo: NO se usa
+  guard: { limb: 'glove' | 'forearm' | 'shin', side: 'L' | 'R' } }   // próxima rama de Combate; opcional
+```
+
+- Con `guard`, ese miembro es el colisionador objetivo.
+- Sin `guard`:
+  - puño: se usa el guante o antebrazo más cercano a la trayectoria del puño;
+  - media/alta de derecha: el brazo izquierdo del rival;
+  - `check` o low kick: espinilla contra espinilla.
+- `src: 'catch'` (patada atrapada): el pie frena contra el guante. **La pose de pierna atrapada está PENDIENTE.**
+- Alternativa: `state.hurt.blocked = true` (con zone/power) en el que recibe se trata igual que `blockHit` (sin dolor en la cabeza).
+
+### API
+- `A.strikeBlocked(ev)` (lado que golpea): el golpe en curso frena y se clava sobre el miembro.
+- `A.blockHit(ev)` (lado que recibe):
+  - la guardia cede según `power`;
+  - con brazo o espinilla contra una patada, el miembro va al encuentro de la punta;
+  - no hay reacción de dolor;
+  - chequeo: `check_hit` o `check_hit_R`, según el lado de la patada.
+- `bindCombatEvents(live, anims)`: se suscribe a `live.on('*')` y enruta con `routeBlockEvent(ev, anims, ids)`. Devuelve la función para
+  desuscribirse.
+
+**Lo que tiene que llamar Motor:** `bindCombatEvents(live, la.anims)` y, si quiere clips propios sin remapeo, `clipMap: MOVE_CLIP`.
+
+### Pendiente
+- Pose de patada atrapada.
+- `guardElbow` (golpes desde abajo).
+- Reacción de dolor del de arriba en el suelo.
+- gnp desde guard, back y half menos afinado; el codo desde guard no llega.
+- El chequeo queda a ~0,03 m.
