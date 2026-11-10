@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { COMBAT_EVENT } from '../shared/contracts.js';
 import * as m from './core/index.js';
 import { levelSpec } from './digest.js';
-import { createCombatTranslator, KAGE_TO_COMBAT, UNMAPPED } from './events.js';
+import { createCombatTranslator, KAGE_TO_COMBAT, UNMAPPED, evadeOf } from './events.js';
 
 test('ningún tipo KAGE se descarta: todos mapeados a un COMBAT_EVENT; UNMAPPED vacío', () => {
   const all = [...m.ALL_EVENT_TYPES];
@@ -107,4 +107,34 @@ test('patada atrapada: cada block src catch termina en el mismo tick con knockdo
     }
   }
   assert.ok(catches > 0 && rel > 0, `catches ${catches} rel ${rel} td ${tds}`);
+});
+
+test('miss por precisión: evade {kind, side} determinista por golpe y estilo (orden de Rick)', () => {
+  const W = (move, kind = 'miss') => ({ type: m.FIGHT_EVENTS_EXT.WHIFF, kind, move });
+  assert.deepEqual(evadeOf(W('jab')), { kind: 'parry', side: 'R' });
+  assert.deepEqual(evadeOf(W('cross')), { kind: 'slip', side: 'L' });
+  assert.equal(evadeOf(W('overhand')).kind, 'slip');
+  assert.deepEqual(evadeOf(W('hook')), { kind: 'roll', side: 'R' });
+  assert.equal(evadeOf(W('uppercut')).kind, 'pull');
+  assert.equal(evadeOf(W('highKick')).kind, 'pull');
+  assert.equal(evadeOf(W('lowKick')).kind, 'pull');
+  assert.equal(evadeOf(W('teep'), 'muayThai').kind, 'parry');
+  assert.equal(evadeOf(W('teep'), 'wrestler').kind, 'pull');
+  assert.equal(evadeOf(W('cross', 'short')), null);
+  assert.equal(evadeOf(W('cross', 'jammed')), null);
+  let misses = 0;
+  for (const seed of [4000, 4001, 4002]) {
+    const fight = m.createFight(levelSpec('boxer', 50), levelSpec('muayThai', 50), seed, { geometry: '3d' });
+    const tr = createCombatTranslator();
+    let n = 0;
+    while (!fight.done && n++ < 30000) {
+      const { events } = m.stepFight(fight);
+      for (const ev of events) for (const ce of tr.translate(ev, fight.core)) {
+        if (ce.type !== 'miss') continue;
+        if (ev.kind === 'miss') { misses++; assert.ok(ce.evade && ['slip', 'roll', 'pull', 'parry'].includes(ce.evade.kind) && ['L', 'R'].includes(ce.evade.side), JSON.stringify(ce)); }
+        else assert.equal(ce.evade, undefined);
+      }
+    }
+  }
+  assert.ok(misses > 50, `misses ${misses}`);
 });
