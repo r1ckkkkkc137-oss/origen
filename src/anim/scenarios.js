@@ -66,6 +66,10 @@ export const SCENARIOS = {
   // ronda 4: juego de pies de pelea con las velocidades MEDIDAS en la sim viva (createLiveFight seed 7): stepIn ~2.7 m/s x 0.11 s, stepOut ~2.3 m/s x 0.11 s,
   // circle ~0.36 m/s lateral con el rumbo siguiendo al rival, avance (walk de pelea) ~2.0 m/s x 0.18 s. Rival fijo en x = 1.6.
   footwork: { blockM: 0.5, terrain: flat(), duration: 6.5, root: (t) => footworkRoot(t), actions: [{ t: 0, state: { loco: { mode: 'guard', speed: 0 } } }] },
+  // ronda 4: finta de gancho suelta, y el caso real (la sim aborta el hook a los 0.07 s: state.clip 'feint' + move 'hook' => cambia a feint_hook sin salto)
+  feint_hook: { blockM: 0.5, terrain: flat(), duration: 3, root: () => ({ pos: [0, 0, 0], yaw: 0 }), actions: [{ t: 1.5, play: 'feint_hook' }] },
+  feintSwitch: { blockM: 0.5, terrain: flat(), duration: 3, root: () => ({ pos: [0, 0, 0], yaw: 0 }),
+    actions: [{ t: 1.5, play: 'hook' }, { t: 1.567, state: { clip: 'feint', move: 'hook', animSeq: 4 } }, { t: 1.6, play: 'hook' }, { t: 2.2, state: { clip: 'guard', move: null, animSeq: 5 } }] },
   // ronda 4: reacciones con fuerza: el estado trae el salto de state.damage[zona] como la sim viva (golpe débil = 6 pts, fuerte = 19.4 pts)
   hurtForce: { blockM: 0.5, terrain: flat(), duration: 7, root: () => ({ pos: [0, 0, 0], yaw: 0 }), actions: hurtForceActions() },
 };

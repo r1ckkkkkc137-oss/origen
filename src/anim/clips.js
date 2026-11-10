@@ -225,19 +225,23 @@ bakeHookArm(HOOK, HI);
 // FINTA DE GANCHO (ronda 4): Combate aborta el hook en el startup (el rival se fue de rango) => state.clip = 'feint' con state.move = 'hook'
 // (src/combat/core/core.js: act.feint = act.aborted = true; al cerrar el startup emite X.FEINT con move 'hook' -> actionStart).
 // El clip ES el arranque del gancho (mismas pistas hasta FEINT_CUT: la cadera abre/carga, el hombro y el codo suben al costado, el peso baja)
-// y ahí se CORTA: cadera, hombros y brazo vuelven secos a la guardia. Como coincide con el gancho hasta el corte, el animador cambia de clip a la
+// y sigue cargando hasta 0.13 s; ahí se CORTA: cadera, hombros y brazo vuelven secos a la guardia. Como coincide con el gancho hasta el corte, el animador cambia de clip a la
 // misma fase sin salto (setState). No es un jab: el puño nunca va hacia adelante, sólo se abre y vuelve.
-export const FEINT_CUT = 0.10;
+export const FEINT_CUT = 0.06;     // hasta acá idéntico al gancho (pico de apertura de cadera); la sim aborta antes de ~0.13 s
 export const FEINT_HOOK = (() => {
-  const d = 0.30, tr = {};
-  for (const c in HOOK.tracks) {
-    const k = []; for (let t = 0; t <= FEINT_CUT + 1e-9; t += 0.01) k.push(K(+t.toFixed(3), sampleTrack(HOOK.tracks[c], t), LIN));
-    const vc = k[k.length - 1][1];
-    k.push(K(FEINT_CUT + 0.07, vc * 0.25, EO), K(0.22, vc * -0.04), K(d, 0));
+  const d = 0.38, tL = 0.13, tC = 0.21, tr = {};
+  // después del arranque común la finta SIGUE cargando (cadera abre más, pecho enrolla, hombro L sube, peso abajo) y en tL se corta en seco
+  const EXTRA = { hipYaw: 0.16, spYaw: 0.10, dy: -0.02, shrugL: 0.07, spPitch: 0.03 };
+  const arm = /^(hL|pL|elvL|elbL|protL|wrL)/;
+  for (const c of new Set([...Object.keys(HOOK.tracks), ...Object.keys(EXTRA)])) {
+    const T = HOOK.tracks[c], k = [];
+    for (let t = 0; t <= FEINT_CUT + 1e-9; t += 0.01) k.push(K(+t.toFixed(3), T ? sampleTrack(T, t) : 0, LIN));
+    const vc = k[k.length - 1][1], v = T && arm.test(c) ? 0.85 * sampleTrack(T, 0.10) : vc + (EXTRA[c] || 0);
+    k.push(K(tL, v, EO), K(tC, v * 0.18, EO), K(0.29, v * -0.03), K(d, 0));
     tr[c] = k;
   }
-  return { name: 'feint_hook', duration: d, impactT: FEINT_CUT, tip: 'L', feet: true, ball: { L: true }, feint: 'hook',
-    phases: [{ name: 'load', t0: 0, t1: FEINT_CUT }, { name: 'cut', t0: FEINT_CUT, t1: FEINT_CUT + 0.07 }, { name: 'recovery', t0: FEINT_CUT + 0.07, t1: d }], tracks: tr };
+  return { name: 'feint_hook', duration: d, impactT: tL, tip: 'L', feet: true, ball: { L: true }, feint: 'hook',
+    phases: [{ name: 'load', t0: 0, t1: tL }, { name: 'cut', t0: tL, t1: tC }, { name: 'recovery', t0: tC, t1: d }], tracks: tr };
 })();
 
 // PATADA BAJA TRASERA (pierna R) — ronda 4: el pie de apoyo (L) da un PASO adelante/afuera en el aire (0–0.08 s) y PIVOTA sobre la bola (~70°),

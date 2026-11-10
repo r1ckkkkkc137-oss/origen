@@ -193,3 +193,23 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   if (which === 'all' || which === 'r4' || which === 'force') for (const m of forceMetrics()) console.log('FORCE', fm(m));
   if (which === 'all' || which === 'r4' || which === 'loco') console.log('LOCO', JSON.stringify(locoMetrics(), (k, v) => typeof v === 'number' ? +v.toFixed(3) : v));
 }
+
+// finta de gancho vs gancho/jab: cuánto carga cadera y hombros (giro de la línea de caderas/hombros, °), cuánto sube/abre el codo L y cuánto
+// viaja el puño L hacia ADELANTE (un jab lo manda ~0.4 m al frente; la finta no debe), + pops del cambio hook -> feint_hook en vivo
+export function feintMetrics(name = 'feint_hook', t0 = 1.5, t1 = 2.1) {
+  const R = rec(name, 60).filter((r) => r.t >= t0 - 1e-6 && r.t <= t1), b = R[0];
+  const lineYaw = (a, c) => Math.atan2(a[0] - c[0], a[2] - c[2]) * D;
+  const hips = (r) => lineYaw(r.P.hipL, r.P.hipR), sh = (r) => lineYaw(r.P.shoulderL, r.P.shoulderR);
+  const wrap = (x) => ((x + 540) % 360) - 180;
+  const fwd = [1, 0, 0], side = [0, 0, -1];
+  let pop = 0; for (let i = 1; i < R.length; i++) for (const k in R[i].P) pop = Math.max(pop, len(sub(R[i].P[k], R[i - 1].P[k])));
+  const fistFwd = R.map((r) => dot(sub(r.tips.fistL ?? r.P.handL, b.tips.fistL ?? b.P.handL), fwd));
+  return {
+    hipLoadDeg: Math.max(...R.map((r) => Math.abs(wrap(hips(r) - hips(b))))), shoulderLoadDeg: Math.max(...R.map((r) => Math.abs(wrap(sh(r) - sh(b))))),
+    elbowRise: Math.max(...R.map((r) => r.P.elbowL[1] - b.P.elbowL[1])), elbowOut: Math.max(...R.map((r) => dot(sub(r.P.elbowL, b.P.elbowL), side) * -1)),
+    fistFwdMax: Math.max(...fistFwd), backToGuard: R.find((r, i) => i > 6 && R.slice(i).every((q) => len(sub(q.P.handL, b.P.handL)) < 0.04))?.t - t0, popMax: pop,
+  };
+}
+if (import.meta.url === `file://${process.argv[1]}`) {
+  if (which === 'all' || which === 'r4' || which === 'feint') { console.log('FEINT feint_hook', fm(feintMetrics())); console.log('FEINT switch(hook->feint)', fm(feintMetrics('feintSwitch'))); console.log('FEINT ref hook', fm(feintMetrics('hook', 1.5, 2.1))); console.log('FEINT ref jab', fm(feintMetrics('jab', 1.5, 2.1))); }
+}
