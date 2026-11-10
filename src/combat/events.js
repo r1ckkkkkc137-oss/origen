@@ -53,6 +53,23 @@ export const UNMAPPED = Object.freeze(
  * @param {{ids?:{a:number,b:number}}} [opt]
  * @returns {{translate:(ev:object, F?:object)=>object[]}}  translate devuelve 0..2 CombatEvents (hit con `injury` agrega un INJURY).
  */
+/**
+ * Miembro de la guardia del que DEFIENDE en un evento block (contrato anim-r7: guard {limb, side}).
+ * Todos en guardia ortodoxa: lo que el atacante lanza con su lado L entra por el lado R del rival (espejo), y al revés.
+ * - check / patada a las piernas: espinilla. catch: guante (el pie se atrapa con la mano). parry: guante.
+ * - recto o uppercut a la cabeza: guante. Hook, overhand, giro a la cabeza: antebrazo (earmuff). Al cuerpo: antebrazo (codo cerrado).
+ * - patada media o alta: antebrazo del lado por donde entra.
+ */
+export function guardOf(ev) {
+  const mv = MOVES[ev.move];
+  if (!mv) return null;
+  const side = String(mv.limb ?? '').endsWith('L') ? 'R' : 'L';
+  if (ev.type === X.CATCH || ev.type === X.PARRY) return { limb: 'glove', side };
+  if (ev.type === X.CHECK || mv.zone === 'legs') return { limb: 'shin', side };
+  if (mv.zone === 'head' && (mv.arc === 'straight' || mv.arc === 'upper') && String(mv.limb).startsWith('hand')) return { limb: 'glove', side };
+  return { limb: 'forearm', side };
+}
+
 export function createCombatTranslator(opt = {}) {
   const ids = opt.ids ?? { a: 0, b: 1 };
   return {
@@ -78,6 +95,7 @@ export function createCombatTranslator(opt = {}) {
         case X.FIGHT_END: if (ev.result?.winner != null) out.attacker = ids[ev.result.winner]; if (ev.result?.method) out.result = ev.result.method; break;
         default: break;
       }
+      if (type === 'block') { const g = guardOf(ev); if (g) out.guard = g; }
       if ((type === 'hit' || type === 'block') && F && F.geo && F.geo.units === 'm' && ev.attacker && ev.defender) {
         const mv = MOVES[ev.move];
         const p = mv && F.byId?.[ev.attacker] && F.byId?.[ev.defender] ? F.geo.contactPoint(F.byId[ev.attacker], F.byId[ev.defender], mv) : null;
